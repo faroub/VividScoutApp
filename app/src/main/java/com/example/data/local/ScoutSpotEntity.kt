@@ -49,3 +49,18 @@ class Converters {
         return value.split("|||")
     }
 }
+
+fun ScoutSpotEntity.computedDistanceMeters(userLat: Double, userLng: Double): Float {
+    return com.example.data.location.LocationTracker.distanceBetween(userLat, userLng, latitude, longitude)
+}
+
+fun ScoutSpotEntity.computedDistanceString(userLat: Double, userLng: Double): String {
+    val meters = computedDistanceMeters(userLat, userLng)
+    return com.example.data.location.LocationTracker.formatDistance(meters)
+}
+
+fun ScoutSpotEntity.computedWalkMinutes(userLat: Double, userLng: Double): Int {
+    val meters = computedDistanceMeters(userLat, userLng)
+    return com.example.data.location.LocationTracker.calculateWalkMinutes(meters)
+}
+

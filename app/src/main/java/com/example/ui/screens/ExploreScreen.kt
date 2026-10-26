@@ -57,6 +57,10 @@ import androidx.compose.material.icons.outlined.Deck
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.TravelExplore
+import android.location.Location
+import com.example.data.local.computedDistanceMeters
+import com.example.data.local.computedDistanceString
+import com.example.data.local.computedWalkMinutes
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -68,6 +72,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -123,6 +128,8 @@ fun ExploreScreen(
     onRadarClick: () -> Unit,
     onDismissOfflineBanner: () -> Unit,
     onOpenQueueDialog: () -> Unit,
+    userLocation: Location? = null,
+    userCoordinates: Pair<Double, Double> = Pair(38.7112, -9.1423),
     modifier: Modifier = Modifier
 ) {
     val strings = LocalAppStrings.current
@@ -180,7 +187,11 @@ fun ExploreScreen(
                 // Instant On-Foot Radar Compass Card
                 item {
                     Box(modifier = Modifier.padding(horizontal = 16.dp)) {
-                        OnFootRadarCard(onRadarClick = onRadarClick)
+                        OnFootRadarCard(
+                            spots = spots,
+                            userCoordinates = userCoordinates,
+                            onRadarClick = onRadarClick
+                        )
                     }
                 }
             } else {
@@ -253,6 +264,7 @@ fun ExploreScreen(
                 Box(modifier = Modifier.padding(horizontal = 16.dp)) {
                     ScoutSpotCard(
                         spot = spot,
+                        userCoordinates = userCoordinates,
                         isPlayingAudio = playingAudioId == spot.id,
                         onToggleSave = { onToggleSave(spot) },
                         onUpvote = { onUpvote(spot) },
@@ -303,8 +315,13 @@ fun ExploreScreen(
                                 .background(Secondary)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
+                        val gpsText = if (userLocation != null) {
+                            "GPS Active • Lisbon (±${userLocation.accuracy.toInt()}m)"
+                        } else {
+                            strings.gpsActive
+                        }
                         Text(
-                            text = strings.gpsActive,
+                            text = gpsText,
                             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
                             color = MaterialTheme.colorScheme.onSurface,
                             maxLines = 1,
@@ -631,7 +648,11 @@ fun FilterRibbonPill(
 }
 
 @Composable
-fun OnFootRadarCard(onRadarClick: () -> Unit) {
+fun OnFootRadarCard(
+    spots: List<ScoutSpotEntity> = emptyList(),
+    userCoordinates: Pair<Double, Double> = Pair(38.7112, -9.1423),
+    onRadarClick: () -> Unit
+) {
     val strings = LocalAppStrings.current
 
     val infiniteTransition = rememberInfiniteTransition(label = "radarRotate")
@@ -644,6 +665,14 @@ fun OnFootRadarCard(onRadarClick: () -> Unit) {
         ),
         label = "radarRotation"
     )
+
+    val top3 = remember(spots, userCoordinates) {
+        if (spots.isNotEmpty()) {
+            spots.sortedBy { it.computedDistanceMeters(userCoordinates.first, userCoordinates.second) }.take(3)
+        } else {
+            emptyList()
+        }
+    }
 
     Surface(
         shape = RoundedCornerShape(20.dp),
@@ -737,32 +766,57 @@ fun OnFootRadarCard(onRadarClick: () -> Unit) {
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // 3 Quick Mini Scanned Radar Waypoints
+            // 3 Quick Mini Scanned Radar Waypoints dynamically calculated from real GPS coordinates
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                WaypointCard(
-                    distance = "180m",
-                    name = "Nata Fresh",
-                    status = "Warm now",
-                    statusColor = Primary,
-                    modifier = Modifier.weight(1f)
-                )
-                WaypointCard(
-                    distance = "350m",
-                    name = "Pergola Nook",
-                    status = "Sunlit free",
-                    statusColor = Secondary,
-                    modifier = Modifier.weight(1f)
-                )
-                WaypointCard(
-                    distance = "520m",
-                    name = "Tile Shortcut",
-                    status = "94% verified",
-                    statusColor = Tertiary,
-                    modifier = Modifier.weight(1f)
-                )
+                if (top3.isNotEmpty()) {
+                    for (spot in top3) {
+                        val dist = spot.computedDistanceString(userCoordinates.first, userCoordinates.second)
+                        val status = when (spot.category) {
+                            "eats" -> "Warm now"
+                            "history" -> "Gothic lore"
+                            "shortcut" -> "94% verified"
+                            else -> "Sunlit free"
+                        }
+                        val color = when (spot.category) {
+                            "eats" -> Primary
+                            "history" -> Tertiary
+                            else -> Secondary
+                        }
+                        val shortName = spot.title.split("—", "-").first().trim()
+                        WaypointCard(
+                            distance = dist,
+                            name = shortName,
+                            status = status,
+                            statusColor = color,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                } else {
+                    WaypointCard(
+                        distance = "180m",
+                        name = "Nata Fresh",
+                        status = "Warm now",
+                        statusColor = Primary,
+                        modifier = Modifier.weight(1f)
+                    )
+                    WaypointCard(
+                        distance = "350m",
+                        name = "Pergola Nook",
+                        status = "Sunlit free",
+                        statusColor = Secondary,
+                        modifier = Modifier.weight(1f)
+                    )
+                    WaypointCard(
+                        distance = "520m",
+                        name = "Tile Shortcut",
+                        status = "94% verified",
+                        statusColor = Tertiary,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
             }
         }
     }
@@ -821,6 +875,7 @@ fun WaypointCard(
 @Composable
 fun ScoutSpotCard(
     spot: ScoutSpotEntity,
+    userCoordinates: Pair<Double, Double> = Pair(38.7112, -9.1423),
     isPlayingAudio: Boolean,
     onToggleSave: () -> Unit,
     onUpvote: () -> Unit,
@@ -946,8 +1001,9 @@ fun ScoutSpotCard(
                             modifier = Modifier.size(13.dp)
                         )
                         Spacer(modifier = Modifier.width(3.dp))
+                        val distText = spot.computedDistanceString(userCoordinates.first, userCoordinates.second)
                         Text(
-                            text = spot.distance,
+                            text = distText,
                             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                             color = Secondary
                         )

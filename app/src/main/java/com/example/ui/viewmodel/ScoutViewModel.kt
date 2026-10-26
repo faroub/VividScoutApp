@@ -15,6 +15,10 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+import android.location.Location
+import com.example.data.location.LocationTracker
+import com.example.data.local.computedDistanceMeters
+
 enum class MainTab {
     EXPLORE,
     RADAR,
@@ -30,6 +34,7 @@ sealed class AppScreen {
 class ScoutViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository: ScoutRepository
+    val locationTracker = LocationTracker(application)
 
     init {
         val db = AppDatabase.getDatabase(application)
@@ -37,7 +42,25 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             repository.initializeIfEmpty()
         }
+        if (locationTracker.checkHasPermission()) {
+            locationTracker.startTracking()
+        }
     }
+
+    val userLocation: StateFlow<Location?> = locationTracker.currentLocation
+    val hasLocationPermission: StateFlow<Boolean> = locationTracker.hasPermission
+    val isGpsTracking: StateFlow<Boolean> = locationTracker.isTracking
+
+    val userCoordinates: StateFlow<Pair<Double, Double>> = combine(
+        userLocation
+    ) { locs ->
+        val loc = locs[0]
+        if (loc != null) {
+            Pair(loc.latitude, loc.longitude)
+        } else {
+            Pair(38.7112, -9.1423)
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), Pair(38.7112, -9.1423))
 
     private val _currentScreen = MutableStateFlow<AppScreen>(AppScreen.Onboarding)
     val currentScreen: StateFlow<AppScreen> = _currentScreen.asStateFlow()
@@ -210,13 +233,26 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun onLocationPermissionResult(granted: Boolean) {
+        locationTracker.onPermissionResult(granted)
+    }
+
+    fun requestStartTracking() {
+        locationTracker.startTracking()
+    }
+
     fun submitGem(name: String, category: String, photoUri: String?, notes: String = "", onComplete: () -> Unit) {
         viewModelScope.launch {
+            val coords = userCoordinates.value
+            val locName = if (userLocation.value != null) "GPS: Chiado / Alfama" else "Chiado Alleyway"
             repository.submitSpotDraft(
                 name = if (name.isNotBlank()) name else "Miradouro Secreto do Beco do Forno",
                 category = category,
                 photoUri = photoUri,
-                notes = notes
+                notes = notes,
+                locationName = locName,
+                latitude = coords.first,
+                longitude = coords.second
             )
             _userPoints.value += 15
             delay(400)
@@ -233,5 +269,10 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
             }
             _showQueueDialog.value = false
         }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        locationTracker.stopTracking()
     }
 }

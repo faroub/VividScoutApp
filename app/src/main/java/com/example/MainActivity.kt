@@ -1,10 +1,13 @@
 package com.example
 
+import android.Manifest
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
@@ -83,6 +86,17 @@ fun VividScoutApp(viewModel: ScoutViewModel) {
     val exploreHeaderStyle by viewModel.exploreHeaderStyle.collectAsState()
     val appLanguage by viewModel.appLanguage.collectAsState()
     val showLanguageDialog by viewModel.showLanguageDialog.collectAsState()
+    val userLocation by viewModel.userLocation.collectAsState()
+    val hasLocationPermission by viewModel.hasLocationPermission.collectAsState()
+    val userCoordinates by viewModel.userCoordinates.collectAsState()
+
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val fineGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] ?: false
+        val coarseGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] ?: false
+        viewModel.onLocationPermissionResult(fineGranted || coarseGranted)
+    }
 
     var selectedSpotForDetail by remember { mutableStateOf<ScoutSpotEntity?>(null) }
 
@@ -156,6 +170,8 @@ fun VividScoutApp(viewModel: ScoutViewModel) {
                                         isOfflineBannerVisible = isOfflineBannerVisible,
                                         offlineDraftCount = offlineDrafts.size,
                                         playingAudioId = playingAudioId,
+                                        userLocation = userLocation,
+                                        userCoordinates = userCoordinates,
                                         onCategorySelected = { cat -> viewModel.setCategory(cat) },
                                         onSearchQueryChange = { q -> viewModel.setSearchQuery(q) },
                                         onToggleSave = { spot -> viewModel.toggleSave(spot) },
@@ -172,6 +188,16 @@ fun VividScoutApp(viewModel: ScoutViewModel) {
                                 MainTab.RADAR -> {
                                     RadarScreen(
                                         spots = allSpots,
+                                        userLocation = userLocation,
+                                        hasLocationPermission = hasLocationPermission,
+                                        onRequestLocationPermission = {
+                                            locationPermissionLauncher.launch(
+                                                arrayOf(
+                                                    Manifest.permission.ACCESS_FINE_LOCATION,
+                                                    Manifest.permission.ACCESS_COARSE_LOCATION
+                                                )
+                                            )
+                                        },
                                         onSpotClick = { spot -> selectedSpotForDetail = spot }
                                     )
                                 }
@@ -227,7 +253,9 @@ fun VividScoutApp(viewModel: ScoutViewModel) {
                                 // On complete
                             }
                         },
-                        draftCount = offlineDrafts.size
+                        draftCount = offlineDrafts.size,
+                        userLocation = userLocation,
+                        userCoordinates = userCoordinates
                     )
                 }
 

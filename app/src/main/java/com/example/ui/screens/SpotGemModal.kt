@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import android.location.Location
+import java.util.Locale
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
@@ -238,7 +240,9 @@ fun OfflineAlertBanner(
 fun SpotGemModal(
     onDismiss: () -> Unit,
     onSubmit: (name: String, category: String, photoUri: String?, notes: String) -> Unit,
-    draftCount: Int = 1
+    draftCount: Int = 1,
+    userLocation: Location? = null,
+    userCoordinates: Pair<Double, Double> = Pair(38.7112, -9.1423)
 ) {
     val strings = LocalAppStrings.current
 
@@ -564,8 +568,19 @@ fun SpotGemModal(
                                             .background(Secondary)
                                     )
                                 }
+                                val gpsLabel = if (userLocation != null) {
+                                    String.format(
+                                        Locale.US,
+                                        "GPS live: %.4f° N, %.4f° W (±%dm)",
+                                        userCoordinates.first,
+                                        userCoordinates.second,
+                                        userLocation.accuracy.toInt()
+                                    )
+                                } else {
+                                    strings.gpsCachedPrecision
+                                }
                                 Text(
-                                    text = strings.gpsCachedPrecision,
+                                    text = gpsLabel,
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.85f)
                                 )

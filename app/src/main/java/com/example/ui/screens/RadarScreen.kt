@@ -1,15 +1,21 @@
 package com.example.ui.screens
 
+import android.location.Location
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,53 +34,100 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
-import androidx.compose.material.icons.filled.CompassCalibration
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.GpsFixed
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.filled.Navigation
+import androidx.compose.material.icons.filled.Radar
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Sensors
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.example.data.local.ScoutSpotEntity
+import com.example.data.local.computedDistanceMeters
+import com.example.data.local.computedDistanceString
+import com.example.data.local.computedWalkMinutes
 import com.example.ui.theme.BrandCoral
 import com.example.ui.theme.BrandNight
 import com.example.ui.theme.BrandTeal
+import com.example.ui.theme.Primary
 import com.example.ui.theme.PrimaryContainer
 import com.example.ui.theme.Secondary
 import com.example.ui.theme.SecondaryContainer
 import com.example.ui.theme.SecondaryFixed
+import com.example.ui.theme.SurfaceContainer
+import com.example.ui.theme.SurfaceContainerHigh
 import com.example.ui.theme.SurfaceContainerLow
 import com.example.ui.theme.SurfaceContainerLowest
+import com.example.ui.theme.Tertiary
+import java.util.Locale
+import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
+
+enum class RadarViewMode {
+    MAP,
+    RADAR
+}
 
 @Composable
 fun RadarScreen(
     spots: List<ScoutSpotEntity>,
+    userLocation: Location? = null,
+    hasLocationPermission: Boolean = true,
+    onRequestLocationPermission: () -> Unit = {},
     onSpotClick: (ScoutSpotEntity) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var selectedRadius by remember { mutableStateOf("500m") }
+    var viewMode by remember { mutableStateOf(RadarViewMode.MAP) }
+    var selectedRadius by remember { mutableStateOf("1km") }
+    var selectedSpot by remember { mutableStateOf<ScoutSpotEntity?>(spots.firstOrNull()) }
 
-    val infiniteTransition = rememberInfiniteTransition(label = "radarSweep")
+    var mapZoom by remember { mutableFloatStateOf(1.0f) }
+    var mapOffset by remember { mutableStateOf(Offset.Zero) }
+
+    val userLat = userLocation?.latitude ?: 38.7112
+    val userLng = userLocation?.longitude ?: -9.1423
+    val userAccuracy = userLocation?.accuracy ?: 6f
+    val isLiveGps = userLocation != null
+
+    val infiniteTransition = rememberInfiniteTransition(label = "radarPulse")
     val sweepAngle by infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = 360f,
@@ -85,241 +138,453 @@ fun RadarScreen(
         label = "sweepAngle"
     )
 
+    val beaconPulse by infiniteTransition.animateFloat(
+        initialValue = 0.8f,
+        targetValue = 1.6f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1800, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "beaconPulse"
+    )
+
     val strings = com.example.ui.theme.LocalAppStrings.current
+
+    // Calculate real distances to all spots and sort
+    val sortedSpots = remember(spots, userLat, userLng, selectedRadius) {
+        val maxDist = when (selectedRadius) {
+            "200m" -> 200f
+            "500m" -> 500f
+            "1km" -> 1000f
+            "3km" -> 3000f
+            else -> Float.MAX_VALUE
+        }
+        spots.map { spot ->
+            Pair(spot, spot.computedDistanceMeters(userLat, userLng))
+        }.filter { it.second <= maxDist }
+            .sortedBy { it.second }
+            .map { it.first }
+    }
 
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
             .testTag("radar_screen_view"),
-        contentPadding = PaddingValues(bottom = 120.dp, top = 12.dp, start = 16.dp, end = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        contentPadding = PaddingValues(bottom = 120.dp, top = 8.dp, start = 16.dp, end = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        // Radar Header Card
-        item {
-            Surface(
-                shape = RoundedCornerShape(24.dp),
-                color = BrandNight,
-                shadowElevation = 10.dp,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(
-                    modifier = Modifier.padding(18.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
+        // 1. Permission Rationale Banner (if permission not yet granted)
+        if (!hasLocationPermission) {
+            item {
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = BrandCoral.copy(alpha = 0.12f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, BrandCoral.copy(alpha = 0.3f)),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    // Title Bar
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        modifier = Modifier.padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             Box(
                                 modifier = Modifier
-                                    .size(34.dp)
+                                    .size(38.dp)
                                     .clip(CircleShape)
-                                    .background(BrandTeal.copy(alpha = 0.2f)),
+                                    .background(BrandCoral),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.Sensors,
+                                    imageVector = Icons.Default.LocationOn,
                                     contentDescription = null,
-                                    tint = BrandTeal,
-                                    modifier = Modifier.size(18.dp)
+                                    tint = Color.White,
+                                    modifier = Modifier.size(20.dp)
                                 )
                             }
                             Spacer(modifier = Modifier.width(10.dp))
                             Column {
                                 Text(
-                                    text = strings.realtimeRadarTitle,
+                                    text = "Enable Real-Time GPS Tracking",
                                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                    color = Color.White
+                                    color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Text(
-                                    text = "GPS Lock: Lisbon • Alfama 38.7112° N",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = Color(0xFF94A3B8)
+                                    text = "Track your live position and detect hidden spots around Lisbon",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         }
 
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(999.dp))
-                                .background(SecondaryContainer.copy(alpha = 0.2f))
-                                .border(1.dp, BrandTeal.copy(alpha = 0.4f), RoundedCornerShape(999.dp))
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        Button(
+                            onClick = onRequestLocationPermission,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = BrandCoral,
+                                contentColor = Color.White
+                            ),
+                            shape = RoundedCornerShape(999.dp),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                            modifier = Modifier.testTag("grant_location_permission_button")
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(6.dp)
-                                        .clip(CircleShape)
-                                        .background(BrandTeal)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = "4 Detected",
-                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                    color = BrandTeal
-                                )
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    // Radar Canvas Drawing
-                    Box(
-                        modifier = Modifier
-                            .size(240.dp)
-                            .testTag("radar_canvas_box"),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Canvas(modifier = Modifier.size(240.dp)) {
-                            val center = Offset(size.width / 2, size.height / 2)
-                            val maxRadius = size.width / 2
-
-                            // Rings
-                            drawCircle(
-                                color = BrandTeal.copy(alpha = 0.2f),
-                                radius = maxRadius * 0.95f,
-                                style = Stroke(width = 1.5f)
-                            )
-                            drawCircle(
-                                color = BrandTeal.copy(alpha = 0.3f),
-                                radius = maxRadius * 0.65f,
-                                style = Stroke(width = 1.2f)
-                            )
-                            drawCircle(
-                                color = BrandTeal.copy(alpha = 0.45f),
-                                radius = maxRadius * 0.35f,
-                                style = Stroke(width = 1f)
-                            )
-
-                            // Crosshairs
-                            drawLine(
-                                color = BrandTeal.copy(alpha = 0.2f),
-                                start = Offset(center.x, 0f),
-                                end = Offset(center.x, size.height),
-                                strokeWidth = 1f
-                            )
-                            drawLine(
-                                color = BrandTeal.copy(alpha = 0.2f),
-                                start = Offset(0f, center.y),
-                                end = Offset(size.width, center.y),
-                                strokeWidth = 1f
-                            )
-
-                            // Rotating Sweep Beam
-                            rotate(degrees = sweepAngle, pivot = center) {
-                                drawArc(
-                                    brush = Brush.sweepGradient(
-                                        colors = listOf(
-                                            Color.Transparent,
-                                            BrandTeal.copy(alpha = 0.4f)
-                                        ),
-                                        center = center
-                                    ),
-                                    startAngle = -45f,
-                                    sweepAngle = 45f,
-                                    useCenter = true
-                                )
-                                drawLine(
-                                    color = BrandTeal,
-                                    start = center,
-                                    end = Offset(center.x + maxRadius * 0.95f, center.y),
-                                    strokeWidth = 2f
-                                )
-                            }
-
-                            // Center device blip
-                            drawCircle(
-                                color = Color.White,
-                                radius = 5f,
-                                center = center
-                            )
-                            drawCircle(
-                                color = BrandTeal,
-                                radius = 10f,
-                                center = center,
-                                style = Stroke(width = 2f)
-                            )
-
-                            // Gem Blip 1: Nata Fresh (180m - northeast)
-                            drawCircle(
-                                color = BrandCoral,
-                                radius = 6f,
-                                center = Offset(center.x + 45f, center.y - 35f)
-                            )
-                            // Gem Blip 2: Pergola Nook (350m - southeast)
-                            drawCircle(
-                                color = BrandTeal,
-                                radius = 6f,
-                                center = Offset(center.x + 75f, center.y + 40f)
-                            )
-                            // Gem Blip 3: Tile Shortcut (520m - northwest)
-                            drawCircle(
-                                color = Color(0xFFC084FC),
-                                radius = 6f,
-                                center = Offset(center.x - 70f, center.y - 60f)
-                            )
-                            // Gem Blip 4: Carmo Ruins (650m - southwest)
-                            drawCircle(
-                                color = Color(0xFF38BDF8),
-                                radius = 6f,
-                                center = Offset(center.x - 85f, center.y + 55f)
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    // Radius Selector Pills
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        listOf("100m", "300m", "500m", "1km").forEach { radius ->
-                            val isSelected = selectedRadius == radius
-                            Box(
-                                modifier = Modifier
-                                    .padding(horizontal = 4.dp)
-                                    .clip(RoundedCornerShape(999.dp))
-                                    .background(if (isSelected) BrandTeal else Color.White.copy(alpha = 0.1f))
-                                    .clickable { selectedRadius = radius }
-                                    .padding(horizontal = 12.dp, vertical = 6.dp)
-                                    .testTag("radius_pill_$radius")
-                            ) {
-                                Text(
-                                    text = radius,
-                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                    color = if (isSelected) Color(0xFF080B1E) else Color.White
-                                )
-                            }
+                            Text("Enable", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
                         }
                     }
                 }
             }
         }
 
-        // Section Title: Radar Tracked Points
+        // 2. Mode Selector: [ 🗺️ Live Gem Map ] | [ 📡 On-Foot Radar ]
         item {
-            Text(
-                text = "${strings.nearbyPings} $selectedRadius",
-                style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-                color = MaterialTheme.colorScheme.onSurface
-            )
+            Surface(
+                shape = RoundedCornerShape(999.dp),
+                color = SurfaceContainerLowest,
+                shadowElevation = 4.dp,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(4.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    val isMap = viewMode == RadarViewMode.MAP
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(if (isMap) PrimaryContainer else Color.Transparent)
+                            .clickable { viewMode = RadarViewMode.MAP }
+                            .padding(vertical = 10.dp)
+                            .testTag("mode_toggle_map"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Map,
+                                contentDescription = null,
+                                tint = if (isMap) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Live Gem Map",
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                color = if (isMap) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    val isRadar = viewMode == RadarViewMode.RADAR
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(if (isRadar) PrimaryContainer else Color.Transparent)
+                            .clickable { viewMode = RadarViewMode.RADAR }
+                            .padding(vertical = 10.dp)
+                            .testTag("mode_toggle_radar"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Radar,
+                                contentDescription = null,
+                                tint = if (isRadar) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "On-Foot Radar",
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                color = if (isRadar) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
         }
 
-        // List of Detections
-        items(spots) { spot ->
+        // 3. Main Visual Component (Map or Radar)
+        item {
             Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = SurfaceContainerLowest,
-                shadowElevation = 3.dp,
+                shape = RoundedCornerShape(24.dp),
+                color = BrandNight,
+                shadowElevation = 10.dp,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { onSpotClick(spot) }
+                    .height(380.dp)
+            ) {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    if (viewMode == RadarViewMode.MAP) {
+                        // Vector Map Canvas with Live User Beacon and Pins
+                        MapCanvasView(
+                            spots = sortedSpots,
+                            userLat = userLat,
+                            userLng = userLng,
+                            userAccuracy = userAccuracy,
+                            beaconPulse = beaconPulse,
+                            zoom = mapZoom,
+                            offset = mapOffset,
+                            selectedSpot = selectedSpot,
+                            onOffsetChange = { mapOffset += it },
+                            onSpotSelect = { selectedSpot = it }
+                        )
+
+                        // Top GPS Telemetry Pill
+                        Row(
+                            modifier = Modifier
+                                .align(Alignment.TopStart)
+                                .padding(12.dp)
+                                .clip(RoundedCornerShape(999.dp))
+                                .background(Color(0xFF080B1E).copy(alpha = 0.85f))
+                                .border(1.dp, BrandTeal.copy(alpha = 0.35f), RoundedCornerShape(999.dp))
+                                .padding(horizontal = 10.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(7.dp)
+                                    .clip(CircleShape)
+                                    .background(if (isLiveGps) BrandTeal else Color(0xFFFBBF24))
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (isLiveGps) {
+                                    String.format(Locale.US, "GPS: %.4f° N, %.4f° W (±%dm)", userLat, userLng, userAccuracy.toInt())
+                                } else {
+                                    "Lisbon GPS • Alfama Fixed Center"
+                                },
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                color = Color.White,
+                                fontSize = 11.sp
+                            )
+                        }
+
+                        // Map Control Floating Buttons (Center on Me, Zoom In, Zoom Out)
+                        Column(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            // Center on Me
+                            Box(
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF080B1E).copy(alpha = 0.85f))
+                                    .border(1.dp, BrandTeal.copy(alpha = 0.4f), CircleShape)
+                                    .clickable {
+                                        mapOffset = Offset.Zero
+                                        mapZoom = 1.0f
+                                    }
+                                    .testTag("center_on_me_button"),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.MyLocation,
+                                    contentDescription = "Center on Me",
+                                    tint = BrandTeal,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+
+                            // Zoom In
+                            Box(
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF080B1E).copy(alpha = 0.85f))
+                                    .border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape)
+                                    .clickable { mapZoom = (mapZoom * 1.25f).coerceAtMost(3.0f) }
+                                    .testTag("zoom_in_button"),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Add,
+                                    contentDescription = "Zoom In",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+
+                            // Zoom Out
+                            Box(
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF080B1E).copy(alpha = 0.85f))
+                                    .border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape)
+                                    .clickable { mapZoom = (mapZoom / 1.25f).coerceAtLeast(0.6f) }
+                                    .testTag("zoom_out_button"),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Remove,
+                                    contentDescription = "Zoom Out",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+
+                        // Bottom Floating Preview of Selected Spot
+                        selectedSpot?.let { spot ->
+                            val distStr = spot.computedDistanceString(userLat, userLng)
+                            val walkMins = spot.computedWalkMinutes(userLat, userLng)
+
+                            Surface(
+                                shape = RoundedCornerShape(18.dp),
+                                color = SurfaceContainerLowest.copy(alpha = 0.96f),
+                                shadowElevation = 12.dp,
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .padding(10.dp)
+                                    .fillMaxWidth()
+                                    .clickable { onSpotClick(spot) }
+                                    .testTag("selected_map_spot_card")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    AsyncImage(
+                                        model = spot.imageUrl,
+                                        contentDescription = spot.title,
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier
+                                            .size(54.dp)
+                                            .clip(RoundedCornerShape(12.dp))
+                                    )
+
+                                    Spacer(modifier = Modifier.width(10.dp))
+
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = spot.title,
+                                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.padding(top = 2.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.AutoMirrored.Filled.DirectionsWalk,
+                                                contentDescription = null,
+                                                tint = Secondary,
+                                                modifier = Modifier.size(13.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(3.dp))
+                                            Text(
+                                                text = "$distStr • $walkMins min walk",
+                                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                                color = Secondary
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.width(8.dp))
+
+                                    Button(
+                                        onClick = { onSpotClick(spot) },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = PrimaryContainer,
+                                            contentColor = Color.White
+                                        ),
+                                        shape = RoundedCornerShape(999.dp),
+                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                        modifier = Modifier.testTag("map_spot_scout_button")
+                                    ) {
+                                        Text("Scout", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        // High-Tech Radar View
+                        RadarSweepView(
+                            spots = sortedSpots,
+                            userLat = userLat,
+                            userLng = userLng,
+                            sweepAngle = sweepAngle,
+                            selectedRadius = selectedRadius,
+                            onSpotSelect = { selectedSpot = it }
+                        )
+                    }
+                }
+            }
+        }
+
+        // 4. Radius Filter Pills
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center
+            ) {
+                listOf("200m", "500m", "1km", "3km", "All").forEach { radius ->
+                    val isSelected = selectedRadius == radius
+                    Box(
+                        modifier = Modifier
+                            .padding(horizontal = 4.dp)
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(if (isSelected) PrimaryContainer else SurfaceContainerLowest)
+                            .shadow(if (isSelected) 4.dp else 1.dp, RoundedCornerShape(999.dp))
+                            .clickable { selectedRadius = radius }
+                            .padding(horizontal = 14.dp, vertical = 7.dp)
+                            .testTag("radius_pill_$radius")
+                    ) {
+                        Text(
+                            text = radius,
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                            color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+            }
+        }
+
+        // 5. Section Title: Nearby Detected Gems
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "${strings.nearbyPings} ($selectedRadius)",
+                    style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = "${sortedSpots.size} detected",
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                    color = Secondary
+                )
+            }
+        }
+
+        // 6. List of Detections with Real GPS Distance
+        items(sortedSpots, key = { it.id }) { spot ->
+            val distStr = spot.computedDistanceString(userLat, userLng)
+            val walkMins = spot.computedWalkMinutes(userLat, userLng)
+
+            Surface(
+                shape = RoundedCornerShape(18.dp),
+                color = SurfaceContainerLowest,
+                shadowElevation = 4.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        selectedSpot = spot
+                        onSpotClick(spot)
+                    }
                     .testTag("radar_detected_spot_${spot.id}")
             ) {
                 Row(
@@ -333,7 +598,7 @@ fun RadarScreen(
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(42.dp)
+                                .size(46.dp)
                                 .clip(RoundedCornerShape(12.dp))
                                 .background(
                                     when (spot.category) {
@@ -352,7 +617,7 @@ fun RadarScreen(
                                     "history" -> Color(0xFF7C3AED)
                                     else -> Secondary
                                 },
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier.size(22.dp)
                             )
                         }
 
@@ -363,11 +628,12 @@ fun RadarScreen(
                                 text = spot.title,
                                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                                 color = MaterialTheme.colorScheme.onSurface,
-                                maxLines = 1
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
-                                    text = spot.distance,
+                                    text = "$distStr ($walkMins min)",
                                     style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                                     color = Secondary
                                 )
@@ -384,8 +650,8 @@ fun RadarScreen(
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(999.dp))
-                            .background(SecondaryContainer.copy(alpha = 0.5f))
-                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                            .background(SecondaryContainer.copy(alpha = 0.6f))
+                            .padding(horizontal = 12.dp, vertical = 6.dp)
                     ) {
                         Text(
                             text = strings.track,
@@ -396,5 +662,359 @@ fun RadarScreen(
                 }
             }
         }
+    }
+}
+
+/**
+ * Interactive Vector Map Canvas for Lisbon
+ */
+@Composable
+fun MapCanvasView(
+    spots: List<ScoutSpotEntity>,
+    userLat: Double,
+    userLng: Double,
+    userAccuracy: Float,
+    beaconPulse: Float,
+    zoom: Float,
+    offset: Offset,
+    selectedSpot: ScoutSpotEntity?,
+    onOffsetChange: (Offset) -> Unit,
+    onSpotSelect: (ScoutSpotEntity) -> Unit
+) {
+    // Conversion factor from GPS lat/lng offset to canvas dp
+    // Around Lisbon (lat 38.7), 0.01 deg lat ~ 1110 meters; 0.01 deg lon ~ 870 meters.
+    val baseScale = 25000f
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .pointerInput(Unit) {
+                detectTransformGestures { _, pan, _, _ ->
+                    onOffsetChange(pan)
+                }
+            }
+            .testTag("map_canvas_container")
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val center = Offset(size.width / 2 + offset.x, size.height / 2 + offset.y)
+
+            // 1. Map Base / Dark Background Grid
+            drawRect(color = Color(0xFF0A0F24))
+
+            // Grid lines
+            val step = 40f * zoom
+            var x = (offset.x % step)
+            while (x < size.width) {
+                drawLine(
+                    color = Color.White.copy(alpha = 0.04f),
+                    start = Offset(x, 0f),
+                    end = Offset(x, size.height),
+                    strokeWidth = 1f
+                )
+                x += step
+            }
+            var y = (offset.y % step)
+            while (y < size.height) {
+                drawLine(
+                    color = Color.White.copy(alpha = 0.04f),
+                    start = Offset(0f, y),
+                    end = Offset(size.width, y),
+                    strokeWidth = 1f
+                )
+                y += step
+            }
+
+            // 2. Tagus River (Tejo) stylized blue water contour at South
+            val riverPath = Path().apply {
+                moveTo(-200f, size.height * 0.85f + offset.y * 0.3f)
+                cubicTo(
+                    size.width * 0.3f, size.height * 0.78f + offset.y * 0.3f,
+                    size.width * 0.7f, size.height * 0.88f + offset.y * 0.3f,
+                    size.width + 200f, size.height * 0.80f + offset.y * 0.3f
+                )
+                lineTo(size.width + 200f, size.height + 200f)
+                lineTo(-200f, size.height + 200f)
+                close()
+            }
+            drawPath(path = riverPath, color = Color(0xFF0F3254))
+
+            // 3. User Accuracy Halo Ring
+            val accuracyRadius = (userAccuracy * 2.5f * zoom).coerceIn(16f, 90f)
+            drawCircle(
+                color = BrandTeal.copy(alpha = 0.15f),
+                radius = accuracyRadius * beaconPulse,
+                center = center
+            )
+            drawCircle(
+                color = BrandTeal.copy(alpha = 0.35f),
+                radius = accuracyRadius,
+                center = center,
+                style = Stroke(width = 1.5f)
+            )
+
+            // 4. User GPS Marker (Center Blue/Teal Beacon)
+            drawCircle(
+                color = Color.White,
+                radius = 9f,
+                center = center
+            )
+            drawCircle(
+                color = BrandTeal,
+                radius = 7f,
+                center = center
+            )
+            // Heading indicator cone pointing north-northeast
+            drawPath(
+                path = Path().apply {
+                    moveTo(center.x, center.y - 18f)
+                    lineTo(center.x - 6f, center.y - 7f)
+                    lineTo(center.x + 6f, center.y - 7f)
+                    close()
+                },
+                color = BrandTeal
+            )
+
+            // 5. Plot Gem Pins
+            spots.forEach { spot ->
+                val dLng = (spot.longitude - userLng).toFloat()
+                val dLat = (spot.latitude - userLat).toFloat()
+
+                val pinX = center.x + (dLng * baseScale * zoom)
+                val pinY = center.y - (dLat * baseScale * zoom)
+
+                val isSelected = selectedSpot?.id == spot.id
+                val pinColor = when (spot.category) {
+                    "eats" -> BrandCoral
+                    "history" -> Color(0xFFC084FC)
+                    "sights" -> Color(0xFF10B981)
+                    else -> BrandTeal
+                }
+
+                // Selection glow if selected
+                if (isSelected) {
+                    drawCircle(
+                        color = pinColor.copy(alpha = 0.4f),
+                        radius = 24f,
+                        center = Offset(pinX, pinY)
+                    )
+                }
+
+                // Pin connector stem
+                drawLine(
+                    color = pinColor,
+                    start = Offset(pinX, pinY),
+                    end = Offset(pinX, pinY + 12f),
+                    strokeWidth = 2.5f
+                )
+
+                // Pin Head
+                drawCircle(
+                    color = Color.White,
+                    radius = 12f,
+                    center = Offset(pinX, pinY)
+                )
+                drawCircle(
+                    color = pinColor,
+                    radius = 9.5f,
+                    center = Offset(pinX, pinY)
+                )
+            }
+        }
+    }
+}
+
+/**
+ * High-Tech Radar Sweep View
+ */
+@Composable
+fun RadarSweepView(
+    spots: List<ScoutSpotEntity>,
+    userLat: Double,
+    userLng: Double,
+    sweepAngle: Float,
+    selectedRadius: String,
+    onSpotSelect: (ScoutSpotEntity) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.SpaceBetween
+    ) {
+        // Radar Header
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .background(BrandTeal.copy(alpha = 0.2f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Sensors,
+                        contentDescription = null,
+                        tint = BrandTeal,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Column {
+                    Text(
+                        text = "Real-Time On-Foot Radar",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        color = Color.White
+                    )
+                    Text(
+                        text = "Live Compass Scanning Active",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFF94A3B8)
+                    )
+                }
+            }
+
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(SecondaryContainer.copy(alpha = 0.25f))
+                    .border(1.dp, BrandTeal.copy(alpha = 0.4f), RoundedCornerShape(999.dp))
+                .padding(horizontal = 8.dp, vertical = 4.dp)
+            ) {
+                Text(
+                    text = "${spots.size} in range",
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                    color = BrandTeal
+                )
+            }
+        }
+
+        // Concentric Radar Scope Canvas
+        Box(
+            modifier = Modifier
+                .size(240.dp)
+                .testTag("radar_canvas_box"),
+            contentAlignment = Alignment.Center
+        ) {
+            Canvas(modifier = Modifier.size(240.dp)) {
+                val center = Offset(size.width / 2, size.height / 2)
+                val maxRadius = size.width / 2
+
+                // Concentric Range Rings
+                drawCircle(
+                    color = BrandTeal.copy(alpha = 0.2f),
+                    radius = maxRadius * 0.95f,
+                    style = Stroke(width = 1.5f)
+                )
+                drawCircle(
+                    color = BrandTeal.copy(alpha = 0.3f),
+                    radius = maxRadius * 0.65f,
+                    style = Stroke(width = 1.2f)
+                )
+                drawCircle(
+                    color = BrandTeal.copy(alpha = 0.45f),
+                    radius = maxRadius * 0.35f,
+                    style = Stroke(width = 1f)
+                )
+
+                // Crosshairs
+                drawLine(
+                    color = BrandTeal.copy(alpha = 0.2f),
+                    start = Offset(center.x, 0f),
+                    end = Offset(center.x, size.height),
+                    strokeWidth = 1f
+                )
+                drawLine(
+                    color = BrandTeal.copy(alpha = 0.2f),
+                    start = Offset(0f, center.y),
+                    end = Offset(size.width, center.y),
+                    strokeWidth = 1f
+                )
+
+                // Rotating Sweep Beam
+                rotate(degrees = sweepAngle, pivot = center) {
+                    drawArc(
+                        brush = Brush.sweepGradient(
+                            colors = listOf(
+                                Color.Transparent,
+                                BrandTeal.copy(alpha = 0.35f)
+                            ),
+                            center = center
+                        ),
+                        startAngle = -45f,
+                        sweepAngle = 45f,
+                        useCenter = true
+                    )
+                    drawLine(
+                        color = BrandTeal,
+                        start = center,
+                        end = Offset(center.x + maxRadius * 0.95f, center.y),
+                        strokeWidth = 2f
+                    )
+                }
+
+                // User Center Device Blip
+                drawCircle(
+                    color = Color.White,
+                    radius = 5f,
+                    center = center
+                )
+                drawCircle(
+                    color = BrandTeal,
+                    radius = 10f,
+                    center = center,
+                    style = Stroke(width = 2f)
+                )
+
+                // Plot detected gems on radar scope based on distance & bearing
+                val maxRangeMeters = when (selectedRadius) {
+                    "200m" -> 200f
+                    "500m" -> 500f
+                    "1km" -> 1000f
+                    "3km" -> 3000f
+                    else -> 1000f
+                }
+
+                spots.take(8).forEach { spot ->
+                    val dist = spot.computedDistanceMeters(userLat, userLng)
+                    val normDist = (dist / maxRangeMeters).coerceIn(0.15f, 0.92f) * maxRadius
+
+                    val dLat = spot.latitude - userLat
+                    val dLng = spot.longitude - userLng
+                    val bearingRad = atan2(dLng, dLat)
+
+                    val blipX = center.x + (normDist * sin(bearingRad)).toFloat()
+                    val blipY = center.y - (normDist * cos(bearingRad)).toFloat()
+
+                    val blipColor = when (spot.category) {
+                        "eats" -> BrandCoral
+                        "history" -> Color(0xFFC084FC)
+                        "sights" -> Color(0xFF10B981)
+                        else -> BrandTeal
+                    }
+
+                    drawCircle(
+                        color = blipColor,
+                        radius = 6.5f,
+                        center = Offset(blipX, blipY)
+                    )
+                    drawCircle(
+                        color = Color.White,
+                        radius = 2.5f,
+                        center = Offset(blipX, blipY)
+                    )
+                }
+            }
+        }
+
+        Text(
+            text = "Concentric Range: 100m • 300m • 500m",
+            style = MaterialTheme.typography.labelSmall,
+            color = Color(0xFF94A3B8)
+        )
     }
 }
