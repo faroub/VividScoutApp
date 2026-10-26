@@ -16,11 +16,17 @@ interface ScoutDao {
     @Query("SELECT * FROM scout_spots WHERE isSaved = 1 ORDER BY timestamp DESC")
     fun getSavedSpots(): Flow<List<ScoutSpotEntity>>
 
+    @Query("SELECT * FROM scout_spots WHERE isDiscovered = 1 ORDER BY discoveredTimestamp DESC")
+    fun getDiscoveredSpots(): Flow<List<ScoutSpotEntity>>
+
     @Query("SELECT * FROM scout_spots WHERE isOfflineDraft = 1 ORDER BY timestamp DESC")
     fun getOfflineDrafts(): Flow<List<ScoutSpotEntity>>
 
     @Query("SELECT * FROM scout_spots WHERE id = :id LIMIT 1")
     suspend fun getSpotById(id: String): ScoutSpotEntity?
+
+    @Query("SELECT * FROM scout_spots WHERE title LIKE '%' || :query || '%' OR description LIKE '%' || :query || '%'")
+    fun searchSpots(query: String): Flow<List<ScoutSpotEntity>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertSpots(spots: List<ScoutSpotEntity>)
@@ -37,9 +43,18 @@ interface ScoutDao {
     @Query("UPDATE scout_spots SET isSaved = :isSaved WHERE id = :id")
     suspend fun setSavedStatus(id: String, isSaved: Boolean)
 
+    @Query("UPDATE scout_spots SET isDiscovered = :isDiscovered, discoveredTimestamp = :timestamp WHERE id = :id")
+    suspend fun setDiscoveredStatus(id: String, isDiscovered: Boolean, timestamp: Long = System.currentTimeMillis())
+
+    @Query("UPDATE scout_spots SET userNotes = :notes WHERE id = :id")
+    suspend fun updateUserNotes(id: String, notes: String)
+
     @Query("UPDATE scout_spots SET upvotes = upvotes + 1 WHERE id = :id")
     suspend fun incrementUpvote(id: String)
 
     @Query("SELECT COUNT(*) FROM scout_spots")
     suspend fun getCount(): Int
+
+    @Query("SELECT COUNT(*) FROM scout_spots WHERE isDiscovered = 1")
+    suspend fun getDiscoveredCount(): Int
 }

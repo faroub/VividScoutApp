@@ -90,4 +90,15 @@
     <string name="english">English</string>
     <string name="french">Français</string>
     <string name="arabic">العربية</string>
+    <string name="discovered_locations">Lieux découverts</string>
+    <string name="mark_as_discovered">Marquer découvert</string>
+    <string name="mark_discovered_done">Découvert ✓</string>
+    <string name="discovered_on">Découvert</string>
+    <string name="offline_notes">Notes hors-ligne</string>
+    <string name="add_offline_notes">Ajouter une note d\'éclaireur...</string>
+    <string name="save_note">Enregistrer la note</string>
+    <string name="no_discovered_spots">Aucune pépite découverte pour l\'instant</string>
+    <string name="no_discovered_desc">Explorez Lisbonne et marquez les lieux découverts pour enrichir votre carnet hors-ligne.</string>
+    <string name="bookmarked_tab">Enregistrés (Hors-ligne)</string>
+    <string name="discovered_tab">Découverts</string>
 </resources>

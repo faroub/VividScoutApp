@@ -90,4 +90,15 @@
     <string name="english">English</string>
     <string name="french">Français</string>
     <string name="arabic">العربية</string>
+    <string name="discovered_locations">Discovered Locations</string>
+    <string name="mark_as_discovered">Mark Discovered</string>
+    <string name="mark_discovered_done">Discovered ✓</string>
+    <string name="discovered_on">Discovered</string>
+    <string name="offline_notes">Offline Notes</string>
+    <string name="add_offline_notes">Add private scout note...</string>
+    <string name="save_note">Save Note</string>
+    <string name="no_discovered_spots">No discovered gems yet</string>
+    <string name="no_discovered_desc">Explore Lisbon and mark spots as discovered to build your offline traveler log.</string>
+    <string name="bookmarked_tab">Saved (Offline)</string>
+    <string name="discovered_tab">Discovered</string>
 </resources>

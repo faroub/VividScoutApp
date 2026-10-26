@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -52,6 +53,15 @@ import com.example.data.local.ScoutSpotEntity
 import com.example.ui.theme.LocalAppStrings
 import com.example.ui.theme.PrimaryContainer
 import com.example.ui.theme.Secondary
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.EditNote
+import androidx.compose.material.icons.filled.Save
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import com.example.ui.theme.SecondaryContainer
 import com.example.ui.theme.SurfaceContainerLow
 import com.example.ui.theme.SurfaceContainerLowest
@@ -63,12 +73,16 @@ fun SpotDetailBottomSheet(
     spot: ScoutSpotEntity,
     onDismiss: () -> Unit,
     onToggleSave: () -> Unit,
+    onToggleDiscovered: () -> Unit = {},
+    onSaveNote: (String) -> Unit = {},
     onUpvote: () -> Unit,
     onToggleAudio: () -> Unit,
     isPlayingAudio: Boolean
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val strings = LocalAppStrings.current
+    var noteText by remember(spot.id) { mutableStateOf(spot.userNotes ?: "") }
+    var isNoteSaved by remember { mutableStateOf(false) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -252,6 +266,129 @@ fun SpotDetailBottomSheet(
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
+                        }
+                    }
+                }
+
+                // Offline Saving & Discovered Status Card
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = SurfaceContainerLow,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.EditNote,
+                                    contentDescription = null,
+                                    tint = Secondary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = strings.offlineNotes,
+                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+
+                            // Discovered Toggle Pill Button
+                            Button(
+                                onClick = onToggleDiscovered,
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (spot.isDiscovered) Secondary else SecondaryContainer.copy(alpha = 0.6f),
+                                    contentColor = if (spot.isDiscovered) Color.White else Secondary
+                                ),
+                                shape = RoundedCornerShape(999.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                modifier = Modifier.height(34.dp).testTag("bottomsheet_toggle_discovered_btn")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.CheckCircle,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = if (spot.isDiscovered) strings.markDiscoveredDone else strings.markAsDiscovered,
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        OutlinedTextField(
+                            value = noteText,
+                            onValueChange = {
+                                noteText = it
+                                isNoteSaved = false
+                            },
+                            placeholder = {
+                                Text(
+                                    text = strings.addOfflineNotes,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                )
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("spot_offline_note_input"),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedContainerColor = SurfaceContainerLowest,
+                                unfocusedContainerColor = SurfaceContainerLowest,
+                                focusedBorderColor = Secondary,
+                                unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
+                            ),
+                            maxLines = 3
+                        )
+
+                        if (noteText != (spot.userNotes ?: "") || isNoteSaved) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                if (isNoteSaved) {
+                                    Text(
+                                        text = "Saved to Room ✓",
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                        color = Secondary
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                }
+                                Button(
+                                    onClick = {
+                                        onSaveNote(noteText)
+                                        isNoteSaved = true
+                                    },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = Secondary,
+                                        contentColor = Color.White
+                                    ),
+                                    shape = RoundedCornerShape(999.dp),
+                                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                                    modifier = Modifier.height(32.dp).testTag("save_spot_note_btn")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Save,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = strings.saveNote,
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold)
+                                    )
+                                }
+                            }
                         }
                     }
                 }

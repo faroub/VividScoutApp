@@ -90,4 +90,15 @@
     <string name="english">English</string>
     <string name="french">Français</string>
     <string name="arabic">العربية</string>
+    <string name="discovered_locations">الأماكن المكتشفة</string>
+    <string name="mark_as_discovered">تحديد كمكتشف</string>
+    <string name="mark_discovered_done">تم الاكتشاف ✓</string>
+    <string name="discovered_on">تم الاكتشاف</string>
+    <string name="offline_notes">ملاحظات بلا اتصال</string>
+    <string name="add_offline_notes">أضف ملاحظة خاصة...</string>
+    <string name="save_note">حفظ الملاحظة</string>
+    <string name="no_discovered_spots">لا توجد جواهر مكتشفة بعد</string>
+    <string name="no_discovered_desc">استكشف لشبونة وحدد الأماكن كمكتشفة لإنشاء سجل رحلتك بلا إنترنت.</string>
+    <string name="bookmarked_tab">المحفوظات (بلا اتصال)</string>
+    <string name="discovered_tab">المكتشفة</string>
 </resources>

@@ -107,7 +107,18 @@ data class AppStringsData(
     val changeLanguage: String,
     val english: String,
     val french: String,
-    val arabic: String
+    val arabic: String,
+    val discoveredLocations: String,
+    val markAsDiscovered: String,
+    val markDiscoveredDone: String,
+    val discoveredOn: String,
+    val offlineNotes: String,
+    val addOfflineNotes: String,
+    val saveNote: String,
+    val noDiscoveredSpots: String,
+    val noDiscoveredDesc: String,
+    val bookmarkedTab: String,
+    val discoveredTab: String
 )
 
 val EnglishStrings = AppStringsData(
@@ -201,7 +212,18 @@ val EnglishStrings = AppStringsData(
     changeLanguage = "Change Language",
     english = "English",
     french = "Français",
-    arabic = "العربية"
+    arabic = "العربية",
+    discoveredLocations = "Discovered Locations",
+    markAsDiscovered = "Mark Discovered",
+    markDiscoveredDone = "Discovered ✓",
+    discoveredOn = "Discovered",
+    offlineNotes = "Offline Notes",
+    addOfflineNotes = "Add private scout note...",
+    saveNote = "Save Note",
+    noDiscoveredSpots = "No discovered gems yet",
+    noDiscoveredDesc = "Explore Lisbon and mark spots as discovered to build your offline traveler log.",
+    bookmarkedTab = "Saved (Offline)",
+    discoveredTab = "Discovered"
 )
 
 val FrenchStrings = AppStringsData(
@@ -295,7 +317,18 @@ val FrenchStrings = AppStringsData(
     changeLanguage = "Changer de langue",
     english = "English",
     french = "Français",
-    arabic = "العربية"
+    arabic = "العربية",
+    discoveredLocations = "Lieux découverts",
+    markAsDiscovered = "Marquer découvert",
+    markDiscoveredDone = "Découvert ✓",
+    discoveredOn = "Découvert",
+    offlineNotes = "Notes hors-ligne",
+    addOfflineNotes = "Ajouter une note d'éclaireur...",
+    saveNote = "Enregistrer la note",
+    noDiscoveredSpots = "Aucune pépite découverte pour l'instant",
+    noDiscoveredDesc = "Explorez Lisbonne et marquez les lieux découverts pour enrichir votre carnet hors-ligne.",
+    bookmarkedTab = "Enregistrés (Hors-ligne)",
+    discoveredTab = "Découverts"
 )
 
 val ArabicStrings = AppStringsData(
@@ -389,7 +422,18 @@ val ArabicStrings = AppStringsData(
     changeLanguage = "تغيير اللغة",
     english = "English",
     french = "Français",
-    arabic = "العربية"
+    arabic = "العربية",
+    discoveredLocations = "الأماكن المكتشفة",
+    markAsDiscovered = "تحديد كمكتشف",
+    markDiscoveredDone = "تم الاكتشاف ✓",
+    discoveredOn = "تم الاكتشاف",
+    offlineNotes = "ملاحظات بلا اتصال",
+    addOfflineNotes = "أضف ملاحظة خاصة...",
+    saveNote = "حفظ الملاحظة",
+    noDiscoveredSpots = "لا توجد جواهر مكتشفة بعد",
+    noDiscoveredDesc = "استكشف لشبونة وحدد الأماكن كمكتشفة لإنشاء سجل رحلتك بلا إنترنت.",
+    bookmarkedTab = "المحفوظات (بلا اتصال)",
+    discoveredTab = "المكتشفة"
 )
 
 val LocalAppLanguage = staticCompositionLocalOf { AppLanguage.ENGLISH }

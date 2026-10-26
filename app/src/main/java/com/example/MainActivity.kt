@@ -71,6 +71,7 @@ fun VividScoutApp(viewModel: ScoutViewModel) {
     val filteredSpots by viewModel.filteredSpots.collectAsState()
     val allSpots by viewModel.allSpots.collectAsState()
     val savedSpots by viewModel.savedSpots.collectAsState()
+    val discoveredSpots by viewModel.discoveredSpots.collectAsState()
     val offlineDrafts by viewModel.offlineDrafts.collectAsState()
     val selectedCategory by viewModel.selectedCategory.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
@@ -178,7 +179,9 @@ fun VividScoutApp(viewModel: ScoutViewModel) {
                                 MainTab.SAVED -> {
                                     SavedScreen(
                                         savedSpots = savedSpots,
+                                        discoveredSpots = discoveredSpots,
                                         onToggleSave = { spot -> viewModel.toggleSave(spot) },
+                                        onToggleDiscovered = { spot -> viewModel.toggleDiscovered(spot) },
                                         onSpotClick = { spot -> selectedSpotForDetail = spot }
                                     )
                                 }
@@ -186,6 +189,7 @@ fun VividScoutApp(viewModel: ScoutViewModel) {
                                 MainTab.PROFILE -> {
                                     ProfileScreen(
                                         userPoints = userPoints,
+                                        discoveredCount = discoveredSpots.size,
                                         offlineDraftCount = offlineDrafts.size,
                                         isOfflineBannerVisible = isOfflineBannerVisible,
                                         onToggleOfflineBanner = { viewModel.toggleOfflineBanner() },
@@ -207,6 +211,8 @@ fun VividScoutApp(viewModel: ScoutViewModel) {
                         isPlayingAudio = playingAudioId == spot.id,
                         onDismiss = { selectedSpotForDetail = null },
                         onToggleSave = { viewModel.toggleSave(spot) },
+                        onToggleDiscovered = { viewModel.toggleDiscovered(spot) },
+                        onSaveNote = { note -> viewModel.updateSpotNotes(spot.id, note) },
                         onUpvote = { viewModel.upvote(spot) },
                         onToggleAudio = { viewModel.toggleAudioLore(spot.id) }
                     )
@@ -216,8 +222,8 @@ fun VividScoutApp(viewModel: ScoutViewModel) {
                 if (showSubmitModal) {
                     SpotGemModal(
                         onDismiss = { viewModel.closeSubmitModal() },
-                        onSubmit = { name, category, photoUri ->
-                            viewModel.submitGem(name, category, photoUri) {
+                        onSubmit = { name, category, photoUri, notes ->
+                            viewModel.submitGem(name, category, photoUri, notes) {
                                 // On complete
                             }
                         },

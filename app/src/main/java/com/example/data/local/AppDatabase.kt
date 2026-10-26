@@ -10,10 +10,15 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
-@Database(entities = [ScoutSpotEntity::class], version = 1, exportSchema = false)
+@Database(
+    entities = [ScoutSpotEntity::class, DiscoveredGemEntity::class],
+    version = 2,
+    exportSchema = false
+)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun scoutDao(): ScoutDao
+    abstract fun discoveredGemDao(): DiscoveredGemDao
 
     companion object {
         @Volatile
@@ -64,6 +69,9 @@ abstract class AppDatabase : RoomDatabase() {
                     contributor = "@marco_lisbon",
                     upvotes = 142,
                     isSaved = true,
+                    isDiscovered = true,
+                    discoveredTimestamp = System.currentTimeMillis() - 86400000L * 2,
+                    userNotes = "Breathtaking view through the tiled archway at sunset. Peaceful spot to journal.",
                     locationName = "Alfama Balustrade",
                     latitude = 38.7118,
                     longitude = -9.1306
@@ -129,6 +137,9 @@ abstract class AppDatabase : RoomDatabase() {
                     contributorAvatar = "https://lh3.googleusercontent.com/aida-public/AB6AXuDjhSwx8_tEIeIp1FmafMomZgm7wK0L_DWQB3f28iVgrWWutERlumrWrcb9yhpS5Pd7brXb9Sz_EBjGE8OKZIvGP3lXrtOFTGQfWGUMfbyitWMg9fwxXyRb8bE-9x3XAsrWey9LaSoUpEZC-3V4qb3oXsEvmkUNcDJoPhr6abcNuPKMLzwvpdWe0T8GG9B_a3RZR_s7uScpEPtVFz63C3_3tBwf1GO5wSLEoMPYs0n4KJZLCLcwnUNU",
                     upvotes = 88,
                     isSaved = false,
+                    isDiscovered = true,
+                    discoveredTimestamp = System.currentTimeMillis() - 3600000L * 6,
+                    userNotes = "Shaved 12 minutes off the walk uphill to Portas do Sol. Ancient tiles still intact.",
                     locationName = "Portas do Sol Passage",
                     latitude = 38.7126,
                     longitude = -9.1301

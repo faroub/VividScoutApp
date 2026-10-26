@@ -67,6 +67,7 @@ import com.example.ui.theme.Tertiary
 @Composable
 fun ProfileScreen(
     userPoints: Int,
+    discoveredCount: Int = 0,
     offlineDraftCount: Int,
     isOfflineBannerVisible: Boolean,
     onToggleOfflineBanner: () -> Unit,
@@ -150,8 +151,8 @@ fun ProfileScreen(
                         horizontalArrangement = Arrangement.SpaceEvenly
                     ) {
                         ProfileStatItem(title = strings.scoutPoints, value = "$userPoints", highlightColor = PrimaryContainer)
-                        ProfileStatItem(title = strings.upvotes, value = "88", highlightColor = Secondary)
-                        ProfileStatItem(title = strings.spotsMapped, value = "12", highlightColor = Tertiary)
+                        ProfileStatItem(title = strings.discoveredTab, value = "$discoveredCount", highlightColor = Secondary)
+                        ProfileStatItem(title = strings.upvotes, value = "88", highlightColor = Tertiary)
                     }
                 }
             }

@@ -237,12 +237,13 @@ fun OfflineAlertBanner(
 @Composable
 fun SpotGemModal(
     onDismiss: () -> Unit,
-    onSubmit: (name: String, category: String, photoUri: String?) -> Unit,
+    onSubmit: (name: String, category: String, photoUri: String?, notes: String) -> Unit,
     draftCount: Int = 1
 ) {
     val strings = LocalAppStrings.current
 
     var spotName by remember { mutableStateOf("Miradouro Secreto do Beco do Forno") }
+    var spotNotes by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf("eats") }
     var photoSelected by remember { mutableStateOf(false) }
     var isSubmittedSuccess by remember { mutableStateOf(false) }
@@ -572,6 +573,25 @@ fun SpotGemModal(
                         }
                     }
 
+                    // Optional Offline Notes Field
+                    OutlinedTextField(
+                        value = spotNotes,
+                        onValueChange = { spotNotes = it },
+                        label = { Text(strings.offlineNotes) },
+                        placeholder = { Text(strings.addOfflineNotes) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("gem_field_notes_input"),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = SurfaceContainerLow,
+                            unfocusedContainerColor = SurfaceContainerLow,
+                            focusedBorderColor = Secondary,
+                            unfocusedBorderColor = Color.Transparent
+                        ),
+                        maxLines = 3
+                    )
+
                     // Action Button: Save Offline & Submit
                     Button(
                         onClick = {
@@ -579,7 +599,8 @@ fun SpotGemModal(
                             onSubmit(
                                 spotName,
                                 selectedCategory,
-                                if (photoSelected) "https://lh3.googleusercontent.com/aida-public/AB6AXuB7xEP9h28BmLIl7Blc9HlVd6pFvRCzWVE0iDC6Ca1oPEDNOlydMy8IbMDvHPNp5_0uUlGCZu5Cw6Bm39F_KkbvLPOmcgrXHSU-a4h7PVnRNgle66SM05K7w8EOWeQ5yG6-5OzUUMA-vVU40aqUdOAWyXH1crmx9Vp2tTTAQ1QTNNEvtbnoukMI4v0qHyR2ad0mL70ALOBm16NlvPATzNielDDSV7Rp-pzWtZzzWv8pTeMZBuNBXfjY" else null
+                                if (photoSelected) "https://lh3.googleusercontent.com/aida-public/AB6AXuB7xEP9h28BmLIl7Blc9HlVd6pFvRCzWVE0iDC6Ca1oPEDNOlydMy8IbMDvHPNp5_0uUlGCZu5Cw6Bm39F_KkbvLPOmcgrXHSU-a4h7PVnRNgle66SM05K7w8EOWeQ5yG6-5OzUUMA-vVU40aqUdOAWyXH1crmx9Vp2tTTAQ1QTNNEvtbnoukMI4v0qHyR2ad0mL70ALOBm16NlvPATzNielDDSV7Rp-pzWtZzzWv8pTeMZBuNBXfjY" else null,
+                                spotNotes
                             )
                         },
                         modifier = Modifier

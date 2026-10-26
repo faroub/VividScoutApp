@@ -33,7 +33,7 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         val db = AppDatabase.getDatabase(application)
-        repository = ScoutRepository(db.scoutDao())
+        repository = ScoutRepository(db.scoutDao(), db.discoveredGemDao())
         viewModelScope.launch {
             repository.initializeIfEmpty()
         }
@@ -82,6 +82,9 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val savedSpots: StateFlow<List<ScoutSpotEntity>> = repository.savedSpots
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val discoveredSpots: StateFlow<List<ScoutSpotEntity>> = repository.discoveredSpots
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val offlineDrafts: StateFlow<List<ScoutSpotEntity>> = repository.offlineDrafts
@@ -172,6 +175,27 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun toggleDiscovered(spot: ScoutSpotEntity) {
+        viewModelScope.launch {
+            repository.toggleDiscovered(spot.id, spot.isDiscovered)
+            if (!spot.isDiscovered) {
+                _userPoints.value += 20
+            }
+        }
+    }
+
+    fun updateSpotNotes(spotId: String, notes: String) {
+        viewModelScope.launch {
+            repository.updateSpotNotes(spotId, notes)
+        }
+    }
+
+    fun deleteSpot(spot: ScoutSpotEntity) {
+        viewModelScope.launch {
+            repository.deleteSpot(spot)
+        }
+    }
+
     fun upvote(spot: ScoutSpotEntity) {
         viewModelScope.launch {
             repository.upvote(spot.id)
@@ -186,12 +210,13 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun submitGem(name: String, category: String, photoUri: String?, onComplete: () -> Unit) {
+    fun submitGem(name: String, category: String, photoUri: String?, notes: String = "", onComplete: () -> Unit) {
         viewModelScope.launch {
             repository.submitSpotDraft(
                 name = if (name.isNotBlank()) name else "Miradouro Secreto do Beco do Forno",
                 category = category,
-                photoUri = photoUri
+                photoUri = photoUri,
+                notes = notes
             )
             _userPoints.value += 15
             delay(400)
