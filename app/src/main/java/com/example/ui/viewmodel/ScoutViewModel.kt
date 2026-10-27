@@ -34,21 +34,10 @@ sealed class AppScreen {
 
 class ScoutViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val repository: ScoutRepository
-    val gemRepository: ScoutGemRepository
-    val locationTracker = LocationTracker(application)
-
-    init {
-        val db = AppDatabase.getDatabase(application)
-        repository = ScoutRepository(db.scoutDao(), db.discoveredGemDao())
-        gemRepository = ScoutGemRepository(db.scoutDao(), db.discoveredGemDao())
-        viewModelScope.launch {
-            repository.initializeIfEmpty()
-        }
-        if (locationTracker.checkHasPermission()) {
-            locationTracker.startTracking()
-        }
-    }
+    private val db = AppDatabase.getDatabase(application)
+    private val repository: ScoutRepository = ScoutRepository(db.scoutDao(), db.discoveredGemDao())
+    val gemRepository: ScoutGemRepository = ScoutGemRepository(db.scoutDao(), db.discoveredGemDao())
+    val locationTracker: LocationTracker = LocationTracker(application)
 
     val userLocation: StateFlow<Location?> = locationTracker.currentLocation
     val hasLocationPermission: StateFlow<Boolean> = locationTracker.hasPermission
@@ -123,6 +112,8 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
     private val _lastOsmSyncedCount = MutableStateFlow(0)
     val lastOsmSyncedCount: StateFlow<Int> = _lastOsmSyncedCount.asStateFlow()
 
+    private val _hasAutoScrapedForLocation = MutableStateFlow(false)
+
     val allSpots: StateFlow<List<ScoutSpotEntity>> = repository.allSpots
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -152,6 +143,31 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
         SharingStarted.WhileSubscribed(5000),
         com.example.ui.components.OfflineSyncStatus()
     )
+
+    init {
+        viewModelScope.launch {
+            repository.initializeIfEmpty()
+        }
+        if (locationTracker.checkHasPermission()) {
+            locationTracker.startTracking()
+        }
+
+        // Auto-discover local spots via OpenStreetMap Overpass when user GPS is outside seeded region
+        viewModelScope.launch {
+            userLocation.collect { loc ->
+                if (loc != null) {
+                    val currentSpots = allSpots.value
+                    val nearbyCount = currentSpots.count { spot ->
+                        spot.computedDistanceMeters(loc.latitude, loc.longitude) <= 10000f
+                    }
+                    if (nearbyCount == 0 && !_hasAutoScrapedForLocation.value && !_isScrapingOsm.value) {
+                        _hasAutoScrapedForLocation.value = true
+                        scrapeOsmGems(loc.latitude, loc.longitude, radiusMeters = 3000)
+                    }
+                }
+            }
+        }
+    }
 
     val filteredSpots: StateFlow<List<ScoutSpotEntity>> = combine(
         allSpots,

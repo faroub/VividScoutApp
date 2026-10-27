@@ -202,7 +202,7 @@ class OverpassRetrofitClient(
                 else -> "Geographic node fetched via Retrofit Overpass API client."
             }
 
-            val street = tags["addr:street"] ?: "Lisbon Historic District"
+            val street = tags["addr:street"] ?: tags["addr:city"] ?: tags["addr:suburb"] ?: "Local Historic District"
             val randomRating = 4.5 + (Random.nextDouble() * 0.4)
             val formattedRating = String.format(Locale.US, "%.1f", randomRating).toDoubleOrNull() ?: 4.8
 
