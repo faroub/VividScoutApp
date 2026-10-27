@@ -118,7 +118,25 @@ data class AppStringsData(
     val noDiscoveredSpots: String,
     val noDiscoveredDesc: String,
     val bookmarkedTab: String,
-    val discoveredTab: String
+    val discoveredTab: String,
+    val locationPermissionTitle: String,
+    val locationPermissionDesc: String,
+    val locationFeatureRadar: String,
+    val locationFeatureDistances: String,
+    val locationFeatureBakeries: String,
+    val locationPrivacyNote: String,
+    val allowLocation: String,
+    val keepDefaultGps: String,
+    val locationDeniedTitle: String,
+    val locationDeniedDesc: String,
+    val openAppSettings: String,
+    val notNow: String,
+    val preciseGpsActive: String,
+    val approximateGpsActive: String,
+    val gpsDisabled: String,
+    val gpsInactiveTap: String,
+    val locationSettingsCardTitle: String,
+    val locationSettingsCardDesc: String
 )
 
 val EnglishStrings = AppStringsData(
@@ -223,7 +241,25 @@ val EnglishStrings = AppStringsData(
     noDiscoveredSpots = "No discovered gems yet",
     noDiscoveredDesc = "Explore Lisbon and mark spots as discovered to build your offline traveler log.",
     bookmarkedTab = "Saved (Offline)",
-    discoveredTab = "Discovered"
+    discoveredTab = "Discovered",
+    locationPermissionTitle = "Real-Time Scout GPS",
+    locationPermissionDesc = "Enable GPS location to discover hidden spots, check live walking distances, and track on-foot radar.",
+    locationFeatureRadar = "Live 360° On-Foot Radar tracking nearby gems",
+    locationFeatureDistances = "Real-time walking distance and estimated minutes",
+    locationFeatureBakeries = "Instant alerts when hot pastry batches come out of the oven",
+    locationPrivacyNote = "Zero Cloud Tracking: Your GPS coordinates are processed exclusively on your device.",
+    allowLocation = "Allow GPS Access",
+    keepDefaultGps = "Keep Default Lisbon GPS",
+    locationDeniedTitle = "Location Permission Needed",
+    locationDeniedDesc = "Location access was denied. To scan hidden spots with live GPS, please enable Location in Android App Settings.",
+    openAppSettings = "Open App Settings",
+    notNow = "Not Now",
+    preciseGpsActive = "Precise GPS Active",
+    approximateGpsActive = "Approximate GPS Active",
+    gpsDisabled = "GPS Disabled (Lisbon Fallback)",
+    gpsInactiveTap = "GPS Inactive • Tap to Enable",
+    locationSettingsCardTitle = "GPS Telemetry & Permissions",
+    locationSettingsCardDesc = "High-precision FusedLocationProvider tracking"
 )
 
 val FrenchStrings = AppStringsData(
@@ -328,7 +364,25 @@ val FrenchStrings = AppStringsData(
     noDiscoveredSpots = "Aucune pépite découverte pour l'instant",
     noDiscoveredDesc = "Explorez Lisbonne et marquez les lieux découverts pour enrichir votre carnet hors-ligne.",
     bookmarkedTab = "Enregistrés (Hors-ligne)",
-    discoveredTab = "Découverts"
+    discoveredTab = "Découverts",
+    locationPermissionTitle = "GPS de Découverte en Direct",
+    locationPermissionDesc = "Activez la localisation pour repérer les lieux secrets, calculer les temps de marche et utiliser le radar piéton.",
+    locationFeatureRadar = "Radar piéton 360° pour repérer les pépites autour de vous",
+    locationFeatureDistances = "Calcul des distances et minutes de marche en temps réel",
+    locationFeatureBakeries = "Alertes instantanées dès qu'une fournée sort du four",
+    locationPrivacyNote = "Confidentialité totale : vos coordonnées GPS restent exclusivement sur votre appareil.",
+    allowLocation = "Autoriser l'accès GPS",
+    keepDefaultGps = "Conserver le GPS par défaut (Lisbonne)",
+    locationDeniedTitle = "Autorisation de localisation requise",
+    locationDeniedDesc = "L'accès à la localisation a été refusé. Pour scanner les pépites avec le GPS en direct, activez la localisation dans les Paramètres de l'application.",
+    openAppSettings = "Ouvrir les Paramètres",
+    notNow = "Pas maintenant",
+    preciseGpsActive = "GPS Précis Actif",
+    approximateGpsActive = "GPS Approximatif Actif",
+    gpsDisabled = "GPS Désactivé (Lisbonne par défaut)",
+    gpsInactiveTap = "GPS Inactif • Toucher pour activer",
+    locationSettingsCardTitle = "Télémétrie GPS & Autorisations",
+    locationSettingsCardDesc = "Suivi FusedLocationProvider haute précision"
 )
 
 val ArabicStrings = AppStringsData(
@@ -433,7 +487,25 @@ val ArabicStrings = AppStringsData(
     noDiscoveredSpots = "لا توجد جواهر مكتشفة بعد",
     noDiscoveredDesc = "استكشف لشبونة وحدد الأماكن كمكتشفة لإنشاء سجل رحلتك بلا إنترنت.",
     bookmarkedTab = "المحفوظات (بلا اتصال)",
-    discoveredTab = "المكتشفة"
+    discoveredTab = "المكتشفة",
+    locationPermissionTitle = "نظام GPS الاستكشافي المباشر",
+    locationPermissionDesc = "فعّل إذن الموقع لاكتشاف الأماكن السرية، وحساب مسافات المشي المباشرة، واستخدام رادار الاستكشاف.",
+    locationFeatureRadar = "رادار مشي 360 درجة لرصد الجواهر القريبة منك",
+    locationFeatureDistances = "حساب فوري للمسافات ومدة المشي التقريبية",
+    locationFeatureBakeries = "تنبيهات فورية عند خروج الفطائر الطازجة من الفرن",
+    locationPrivacyNote = "خصوصية تامة: تتم معالجة بيانات الموقع على جهازك فقط ولا تُرسل لأي خادم.",
+    allowLocation = "السماح بالوصول إلى الموقع",
+    keepDefaultGps = "الإبقاء على موقع لشبونة الافتراضي",
+    locationDeniedTitle = "إذن الموقع مطلوب",
+    locationDeniedDesc = "تم رفض إذن الوصول إلى الموقع. لاستكشاف الأماكن المخفية بنظام GPS المباشر، يرجى تفعيل الموقع من إعدادات التطبيق.",
+    openAppSettings = "فتح إعدادات التطبيق",
+    notNow = "ليس الآن",
+    preciseGpsActive = "GPS دقيق نشط",
+    approximateGpsActive = "GPS تقريبي نشط",
+    gpsDisabled = "GPS غير مفعّل (الافتراضي لشبونة)",
+    gpsInactiveTap = "GPS غير نشط • انقر للتفعيل",
+    locationSettingsCardTitle = "بيانات GPS والأذونات",
+    locationSettingsCardDesc = "تتبع FusedLocationProvider عالي الدقة"
 )
 
 val LocalAppLanguage = staticCompositionLocalOf { AppLanguage.ENGLISH }

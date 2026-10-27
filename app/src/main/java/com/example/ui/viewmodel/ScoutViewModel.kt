@@ -49,7 +49,17 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
 
     val userLocation: StateFlow<Location?> = locationTracker.currentLocation
     val hasLocationPermission: StateFlow<Boolean> = locationTracker.hasPermission
+    val isPreciseLocation: StateFlow<Boolean> = locationTracker.isPrecise
     val isGpsTracking: StateFlow<Boolean> = locationTracker.isTracking
+
+    private val _showLocationRationaleDialog = MutableStateFlow(false)
+    val showLocationRationaleDialog: StateFlow<Boolean> = _showLocationRationaleDialog.asStateFlow()
+
+    private val _showLocationSettingsDialog = MutableStateFlow(false)
+    val showLocationSettingsDialog: StateFlow<Boolean> = _showLocationSettingsDialog.asStateFlow()
+
+    private val _locationDeniedCount = MutableStateFlow(0)
+    val locationDeniedCount: StateFlow<Int> = _locationDeniedCount.asStateFlow()
 
     val userCoordinates: StateFlow<Pair<Double, Double>> = combine(
         userLocation
@@ -233,8 +243,48 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun openLocationRationaleDialog() {
+        _showLocationRationaleDialog.value = true
+    }
+
+    fun dismissLocationRationaleDialog() {
+        _showLocationRationaleDialog.value = false
+    }
+
+    fun openLocationSettingsDialog() {
+        _showLocationSettingsDialog.value = true
+    }
+
+    fun dismissLocationSettingsDialog() {
+        _showLocationSettingsDialog.value = false
+    }
+
+    fun onLocationPermissionResult(fineGranted: Boolean, coarseGranted: Boolean) {
+        locationTracker.onPermissionResult(fineGranted, coarseGranted)
+        _showLocationRationaleDialog.value = false
+        if (!fineGranted && !coarseGranted) {
+            _locationDeniedCount.value += 1
+            if (_locationDeniedCount.value >= 2) {
+                _showLocationSettingsDialog.value = true
+            }
+        } else {
+            _showLocationSettingsDialog.value = false
+        }
+    }
+
     fun onLocationPermissionResult(granted: Boolean) {
-        locationTracker.onPermissionResult(granted)
+        onLocationPermissionResult(fineGranted = granted, coarseGranted = granted)
+    }
+
+    fun onLocationPermissionDenied() {
+        _locationDeniedCount.value += 1
+        if (_locationDeniedCount.value >= 2) {
+            _showLocationSettingsDialog.value = true
+        }
+    }
+
+    fun refreshLocationPermissions() {
+        locationTracker.refreshPermissionState()
     }
 
     fun requestStartTracking() {

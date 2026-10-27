@@ -111,6 +111,7 @@ fun RadarScreen(
     spots: List<ScoutSpotEntity>,
     userLocation: Location? = null,
     hasLocationPermission: Boolean = true,
+    isPreciseLocation: Boolean = true,
     onRequestLocationPermission: () -> Unit = {},
     onSpotClick: (ScoutSpotEntity) -> Unit,
     modifier: Modifier = Modifier
@@ -208,12 +209,12 @@ fun RadarScreen(
                             Spacer(modifier = Modifier.width(10.dp))
                             Column {
                                 Text(
-                                    text = "Enable Real-Time GPS Tracking",
+                                    text = strings.locationPermissionTitle,
                                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Text(
-                                    text = "Track your live position and detect hidden spots around Lisbon",
+                                    text = strings.locationPermissionDesc,
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -231,6 +232,68 @@ fun RadarScreen(
                             modifier = Modifier.testTag("grant_location_permission_button")
                         ) {
                             Text("Enable", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
+                        }
+                    }
+                }
+            }
+        } else if (!isPreciseLocation) {
+            // Approximate GPS Active - Offer upgrade to Precise
+            item {
+                Surface(
+                    shape = RoundedCornerShape(18.dp),
+                    color = BrandTeal.copy(alpha = 0.12f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, BrandTeal.copy(alpha = 0.35f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(34.dp)
+                                    .clip(CircleShape)
+                                    .background(BrandTeal),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.GpsFixed,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = strings.approximateGpsActive,
+                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = "Enable Precise Location for 1m walking accuracy",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        Button(
+                            onClick = onRequestLocationPermission,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Secondary,
+                                contentColor = Color.White
+                            ),
+                            shape = RoundedCornerShape(999.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                            modifier = Modifier.testTag("upgrade_precise_location_button")
+                        ) {
+                            Text("Precise", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
                         }
                     }
                 }

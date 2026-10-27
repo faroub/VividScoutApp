@@ -64,6 +64,8 @@ fun VividScoutTopBar(
     onProfileClick: () -> Unit,
     onToggleHeaderStyle: () -> Unit,
     onLanguageClick: () -> Unit,
+    onGpsClick: () -> Unit = {},
+    hasLocationPermission: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val strings = LocalAppStrings.current
@@ -149,22 +151,28 @@ fun VividScoutTopBar(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
                                 .clip(RoundedCornerShape(999.dp))
-                                .background(SecondaryContainer.copy(alpha = 0.45f))
+                                .background(
+                                    if (hasLocationPermission) SecondaryContainer.copy(alpha = 0.45f)
+                                    else BrandCoral.copy(alpha = 0.15f)
+                                )
+                                .clickable { onGpsClick() }
                                 .padding(horizontal = 6.dp, vertical = 2.dp)
+                                .testTag("topbar_gps_pill")
                         ) {
                             Box(
                                 modifier = Modifier
                                     .size(5.dp)
                                     .scale(pulseScale)
                                     .clip(CircleShape)
-                                    .background(Secondary)
+                                    .background(if (hasLocationPermission) Secondary else BrandCoral)
                             )
                             Spacer(modifier = Modifier.width(3.dp))
                             Text(
-                                text = strings.liveGpsStatus,
+                                text = if (hasLocationPermission) strings.liveGpsStatus else "GPS Off",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                fontSize = 9.sp
+                                color = if (hasLocationPermission) MaterialTheme.colorScheme.onSecondaryContainer else BrandCoral,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold
                             )
                         }
                     }

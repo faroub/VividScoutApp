@@ -101,4 +101,22 @@
     <string name="no_discovered_desc">Explorez Lisbonne et marquez les lieux découverts pour enrichir votre carnet hors-ligne.</string>
     <string name="bookmarked_tab">Enregistrés (Hors-ligne)</string>
     <string name="discovered_tab">Découverts</string>
+    <string name="location_permission_title">GPS de Découverte en Direct</string>
+    <string name="location_permission_desc">Activez la localisation pour repérer les lieux secrets, calculer les temps de marche et utiliser le radar piéton.</string>
+    <string name="location_feature_radar">Radar piéton 360° pour repérer les pépites autour de vous</string>
+    <string name="location_feature_distances">Calcul des distances et minutes de marche en temps réel</string>
+    <string name="location_feature_bakeries">Alertes instantanées dès qu\'une fournée sort du four</string>
+    <string name="location_privacy_note">Confidentialité totale : vos coordonnées GPS restent exclusivement sur votre appareil.</string>
+    <string name="allow_location">Autoriser l\'accès GPS</string>
+    <string name="keep_default_gps">Conserver le GPS par défaut (Lisbonne)</string>
+    <string name="location_denied_title">Autorisation de localisation requise</string>
+    <string name="location_denied_desc">L\'accès à la localisation a été refusé. Pour scanner les pépites avec le GPS en direct, activez la localisation dans les Paramètres de l\'application.</string>
+    <string name="open_app_settings">Ouvrir les Paramètres</string>
+    <string name="not_now">Pas maintenant</string>
+    <string name="precise_gps_active">GPS Précis Actif</string>
+    <string name="approximate_gps_active">GPS Approximatif Actif</string>
+    <string name="gps_disabled">GPS Désactivé (Lisbonne par défaut)</string>
+    <string name="gps_inactive_tap">GPS Inactif • Toucher pour activer</string>
+    <string name="location_settings_card_title">Télémétrie GPS &amp; Autorisations</string>
+    <string name="location_settings_card_desc">Suivi FusedLocationProvider haute précision</string>
 </resources>

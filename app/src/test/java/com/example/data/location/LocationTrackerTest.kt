@@ -91,4 +91,26 @@ class LocationTrackerTest {
         assertEquals(38.7112, tracker.defaultLocation.latitude, 0.0001)
         assertEquals(-9.1423, tracker.defaultLocation.longitude, 0.0001)
     }
+
+    @Test
+    fun testPermissionResultUpdatesState() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val tracker = LocationTracker(context)
+
+        // When both granted
+        tracker.onPermissionResult(fineGranted = true, coarseGranted = true)
+        assertTrue(tracker.hasPermission.value)
+        assertTrue(tracker.isPrecise.value)
+
+        // When coarse only granted (approximate)
+        tracker.onPermissionResult(fineGranted = false, coarseGranted = true)
+        assertTrue(tracker.hasPermission.value)
+        org.junit.Assert.assertFalse(tracker.isPrecise.value)
+
+        // When denied
+        tracker.onPermissionResult(fineGranted = false, coarseGranted = false)
+        org.junit.Assert.assertFalse(tracker.hasPermission.value)
+        org.junit.Assert.assertFalse(tracker.isPrecise.value)
+    }
 }
+

@@ -43,6 +43,9 @@ class LocationTracker(private val context: Context) {
     private val _hasPermission = MutableStateFlow(hasPermissionInitially())
     val hasPermission: StateFlow<Boolean> = _hasPermission.asStateFlow()
 
+    private val _isPrecise = MutableStateFlow(hasFinePermissionInitially())
+    val isPrecise: StateFlow<Boolean> = _isPrecise.asStateFlow()
+
     private val locationCallback = object : LocationCallback() {
         override fun onLocationResult(result: LocationResult) {
             result.lastLocation?.let { loc ->
@@ -51,26 +54,51 @@ class LocationTracker(private val context: Context) {
         }
     }
 
-    private fun hasPermissionInitially(): Boolean {
-        val fine = ContextCompat.checkSelfPermission(
+    private fun hasFinePermissionInitially(): Boolean {
+        return ContextCompat.checkSelfPermission(
             context,
             Manifest.permission.ACCESS_FINE_LOCATION
         ) == PackageManager.PERMISSION_GRANTED
-        val coarse = ContextCompat.checkSelfPermission(
+    }
+
+    private fun hasCoarsePermissionInitially(): Boolean {
+        return ContextCompat.checkSelfPermission(
             context,
             Manifest.permission.ACCESS_COARSE_LOCATION
         ) == PackageManager.PERMISSION_GRANTED
-        return fine || coarse
     }
 
+    private fun hasPermissionInitially(): Boolean {
+        return hasFinePermissionInitially() || hasCoarsePermissionInitially()
+    }
+
+    fun hasFinePermission(): Boolean = hasFinePermissionInitially()
+
+    fun hasCoarsePermission(): Boolean = hasCoarsePermissionInitially()
+
     fun checkHasPermission(): Boolean {
-        val granted = hasPermissionInitially()
+        val fine = hasFinePermissionInitially()
+        val coarse = hasCoarsePermissionInitially()
+        val granted = fine || coarse
         _hasPermission.value = granted
+        _isPrecise.value = fine
         return granted
     }
 
-    fun onPermissionResult(granted: Boolean) {
+    fun refreshPermissionState(): Boolean {
+        val granted = checkHasPermission()
+        if (granted && !_isTracking.value) {
+            startTracking()
+        } else if (!granted && _isTracking.value) {
+            stopTracking()
+        }
+        return granted
+    }
+
+    fun onPermissionResult(fineGranted: Boolean, coarseGranted: Boolean) {
+        val granted = fineGranted || coarseGranted
         _hasPermission.value = granted
+        _isPrecise.value = fineGranted
         if (granted) {
             startTracking()
         } else {
@@ -78,8 +106,12 @@ class LocationTracker(private val context: Context) {
         }
     }
 
+    fun onPermissionResult(granted: Boolean) {
+        onPermissionResult(fineGranted = granted, coarseGranted = granted)
+    }
+
     fun startTracking() {
-        if (!checkHasPermission()) {
+        if (!_hasPermission.value && !checkHasPermission()) {
             return
         }
 

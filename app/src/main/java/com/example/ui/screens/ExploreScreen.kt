@@ -88,6 +88,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.data.local.ScoutSpotEntity
+import com.example.ui.theme.BrandCoral
 import com.example.ui.theme.EatsAmber
 import com.example.ui.theme.EatsAmberBg
 import com.example.ui.theme.HistoryPurple
@@ -130,6 +131,8 @@ fun ExploreScreen(
     onOpenQueueDialog: () -> Unit,
     userLocation: Location? = null,
     userCoordinates: Pair<Double, Double> = Pair(38.7112, -9.1423),
+    hasLocationPermission: Boolean = true,
+    onRequestLocationPermission: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val strings = LocalAppStrings.current
@@ -305,25 +308,36 @@ fun ExploreScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable {
+                                if (!hasLocationPermission) {
+                                    onRequestLocationPermission()
+                                }
+                            }
+                            .testTag("explore_gps_status_bar"),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Box(
                             modifier = Modifier
                                 .size(8.dp)
                                 .clip(CircleShape)
-                                .background(Secondary)
+                                .background(if (hasLocationPermission) Secondary else BrandCoral)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
-                        val gpsText = if (userLocation != null) {
-                            "GPS Active • Lisbon (±${userLocation.accuracy.toInt()}m)"
+                        val gpsText = if (hasLocationPermission) {
+                            if (userLocation != null) {
+                                "GPS Active • Lisbon (±${userLocation.accuracy.toInt()}m)"
+                            } else {
+                                strings.gpsActive
+                            }
                         } else {
-                            strings.gpsActive
+                            strings.gpsInactiveTap
                         }
                         Text(
                             text = gpsText,
                             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                            color = MaterialTheme.colorScheme.onSurface,
+                            color = if (hasLocationPermission) MaterialTheme.colorScheme.onSurface else BrandCoral,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )

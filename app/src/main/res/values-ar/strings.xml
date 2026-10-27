@@ -101,4 +101,22 @@
     <string name="no_discovered_desc">استكشف لشبونة وحدد الأماكن كمكتشفة لإنشاء سجل رحلتك بلا إنترنت.</string>
     <string name="bookmarked_tab">المحفوظات (بلا اتصال)</string>
     <string name="discovered_tab">المكتشفة</string>
+    <string name="location_permission_title">نظام GPS الاستكشافي المباشر</string>
+    <string name="location_permission_desc">فعّل إذن الموقع لاكتشاف الأماكن السرية، وحساب مسافات المشي المباشرة، واستخدام رادار الاستكشاف.</string>
+    <string name="location_feature_radar">رادار مشي 360 درجة لرصد الجواهر القريبة منك</string>
+    <string name="location_feature_distances">حساب فوري للمسافات ومدة المشي التقريبية</string>
+    <string name="location_feature_bakeries">تنبيهات فورية عند خروج الفطائر الطازجة من الفرن</string>
+    <string name="location_privacy_note">خصوصية تامة: تتم معالجة بيانات الموقع على جهازك فقط ولا تُرسل لأي خادم.</string>
+    <string name="allow_location">السماح بالوصول إلى الموقع</string>
+    <string name="keep_default_gps">الإبقاء على موقع لشبونة الافتراضي</string>
+    <string name="location_denied_title">إذن الموقع مطلوب</string>
+    <string name="location_denied_desc">تم رفض إذن الوصول إلى الموقع. لاستكشاف الأماكن المخفية بنظام GPS المباشر، يرجى تفعيل الموقع من إعدادات التطبيق.</string>
+    <string name="open_app_settings">فتح إعدادات التطبيق</string>
+    <string name="not_now">ليس الآن</string>
+    <string name="precise_gps_active">GPS دقيق نشط</string>
+    <string name="approximate_gps_active">GPS تقريبي نشط</string>
+    <string name="gps_disabled">GPS غير مفعّل (الافتراضي لشبونة)</string>
+    <string name="gps_inactive_tap">GPS غير نشط • انقر للتفعيل</string>
+    <string name="location_settings_card_title">بيانات GPS والأذونات</string>
+    <string name="location_settings_card_desc">تتبع FusedLocationProvider عالي الدقة</string>
 </resources>
