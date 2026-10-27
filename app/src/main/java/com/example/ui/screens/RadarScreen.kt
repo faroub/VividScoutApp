@@ -127,6 +127,7 @@ fun RadarScreen(
     osmScrapeMessage: String? = null,
     onScrapeOsm: () -> Unit = {},
     onDismissOsmMessage: () -> Unit = {},
+    syncStatus: com.example.ui.components.OfflineSyncStatus = com.example.ui.components.OfflineSyncStatus(),
     modifier: Modifier = Modifier
 ) {
     var viewMode by remember { mutableStateOf(RadarViewMode.MAP) }
@@ -409,6 +410,7 @@ fun RadarScreen(
                             osmScrapeMessage = osmScrapeMessage,
                             onScrapeOsm = onScrapeOsm,
                             onDismissOsmMessage = onDismissOsmMessage,
+                            syncStatus = syncStatus,
                             modifier = Modifier.fillMaxSize()
                         )
                     } else {

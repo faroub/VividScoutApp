@@ -120,6 +120,9 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
     private val _osmScrapeMessage = MutableStateFlow<String?>(null)
     val osmScrapeMessage: StateFlow<String?> = _osmScrapeMessage.asStateFlow()
 
+    private val _lastOsmSyncedCount = MutableStateFlow(0)
+    val lastOsmSyncedCount: StateFlow<Int> = _lastOsmSyncedCount.asStateFlow()
+
     val allSpots: StateFlow<List<ScoutSpotEntity>> = repository.allSpots
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -131,6 +134,24 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
 
     val offlineDrafts: StateFlow<List<ScoutSpotEntity>> = repository.offlineDrafts
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val syncStatus: StateFlow<com.example.ui.components.OfflineSyncStatus> = combine(
+        allSpots,
+        offlineDrafts,
+        _lastOsmSyncedCount,
+        _isScrapingOsm
+    ) { spots, drafts, osmCount, isSyncing ->
+        com.example.ui.components.OfflineSyncStatus(
+            totalLocalGems = spots.size,
+            pendingDraftsCount = drafts.size,
+            lastOsmSyncedCount = osmCount,
+            isSyncing = isSyncing
+        )
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        com.example.ui.components.OfflineSyncStatus()
+    )
 
     val filteredSpots: StateFlow<List<ScoutSpotEntity>> = combine(
         allSpots,
@@ -338,6 +359,7 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
             val result = gemRepository.syncLiveOsmGems(lat, lng, radiusMeters)
             result.fold(
                 onSuccess = { count ->
+                    _lastOsmSyncedCount.value = count
                     _osmScrapeMessage.value = if (count > 0) {
                         "✨ $count real gems scraped from OpenStreetMap into Room DB!"
                     } else {

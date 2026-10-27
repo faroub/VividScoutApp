@@ -75,6 +75,12 @@ fun ScoutMapLifecycleHost(
                 mapViewModel.selectSpot(spot)
                 onSpotSelect(spot)
             },
+            zoomScale = mapUiState.zoomScale,
+            zoomPreset = mapUiState.zoomPreset,
+            onZoomIn = { mapViewModel.zoomIn() },
+            onZoomOut = { mapViewModel.zoomOut() },
+            onSetZoomPreset = { preset -> mapViewModel.setZoomPreset(preset) },
+            onResetZoom = { mapViewModel.resetZoom() },
             modifier = Modifier.fillMaxSize()
         )
     }

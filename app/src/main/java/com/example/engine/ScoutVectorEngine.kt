@@ -18,6 +18,16 @@ object ScoutVectorEngine {
     // Around Lisbon (38.71° N, 9.14° W): 0.01° lat ~ 1110m; 0.01° lng ~ 870m
     const val DEFAULT_BASE_SCALE = 26000f
 
+    // Min and Max Zoom limits
+    const val MIN_ZOOM_SCALE = 0.4f
+    const val MAX_ZOOM_SCALE = 4.0f
+
+    // Standard Zoom Presets
+    const val PRESET_CITY_SCALE = 0.6f
+    const val PRESET_NEIGHBORHOOD_SCALE = 1.2f
+    const val PRESET_STREET_SCALE = 2.5f
+    const val PRESET_CLOSEUP_SCALE = 4.0f
+
     // Reference center (Lisbon Chiado)
     const val DEFAULT_LISBON_LAT = 38.7112
     const val DEFAULT_LISBON_LNG = -9.1423
@@ -80,5 +90,25 @@ object ScoutVectorEngine {
         val pinY = canvasCenter.y - (dLat * baseScale * zoomScale)
 
         return Offset(pinX, pinY)
+    }
+
+    /**
+     * Calculates the pan offset required to center the vector canvas on a specific gem coordinate.
+     */
+    fun calculatePanToCenterGem(
+        spotLat: Double,
+        spotLng: Double,
+        userLat: Double,
+        userLng: Double,
+        zoomScale: Float,
+        baseScale: Float = DEFAULT_BASE_SCALE
+    ): Offset {
+        val dLng = (spotLng - userLng).toFloat()
+        val dLat = (spotLat - userLat).toFloat()
+
+        val panX = - (dLng * baseScale * zoomScale)
+        val panY = (dLat * baseScale * zoomScale)
+
+        return Offset(panX, panY)
     }
 }

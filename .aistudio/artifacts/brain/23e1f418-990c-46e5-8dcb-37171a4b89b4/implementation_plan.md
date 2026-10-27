@@ -1,67 +1,40 @@
-# ScoutGemRepository Offline-First Architecture
+# Implementation Plan - Offline Database Sync Status Visual Indicator
 
-Design and implementation plan for `ScoutGemRepository`, providing offline-first data orchestration with Room as the single source of truth and background OpenStreetMap Overpass API sync.
+Implement a floating visual status indicator in the UI that displays real-time offline database sync metrics: local Room DB gems count, pending offline drafts count, and last Overpass OSM sync results.
 
-## User Review & Critical Decisions
-
-> [!IMPORTANT]
-> **Confirmed Decision**: **Room is the single source of truth**. `ScoutGemRepository` exposes a reactive `Flow<List<ScoutGem>>` directly backed by Room database queries (`ScoutDao`). Live OpenStreetMap Overpass web scraping executes asynchronously in the background, mapping OSM nodes into `ScoutSpotEntity` rows and inserting them into Room. The app remains 100% functional offline even without network connectivity.
-
----
-
-## 1. Overview & Core Concept
-
-- **Goal**: Implement `ScoutGemRepository` to manage offline-first reads, live web scraping from Overpass API mirrors, and local user bookmarking / spot discovery persistence.
-- **Key Value**: Guarantees zero UI freezing or missing map pins during network outages or slow API responses. As soon as live OSM nodes are scraped, Room emits updated `ScoutGem` lists automatically to the UI.
+## User Requirements & Clarifications
+- **Placement:** Floating sync status badge displayed at the top of the map view (`RadarScreen`/`ScoutMapView`) and the `ExploreScreen` feed.
+- **Metrics Displayed:** Total local gems stored in Room DB, number of queued offline drafts pending upload, and the count of newly synced nodes from the latest Overpass API query.
 
 ---
 
-## 2. User Experience & Visual Design
+## Technical Architecture & Design
 
-- **Offline-First Flow**:
-  1. On launch or screen load, `ScoutGemRepository.observeGems(userLat, userLng)` emits pre-seeded or cached Room database gems immediately.
-  2. The user can view, search, filter, and bookmark gems offline.
-  3. When online, invoking `syncLiveOsmGems(userLat, userLng)` triggers an asynchronous Overpass API query fetching viewpoints, bakeries, shortcuts, and historic ruins around current GPS coordinates.
-  4. Scraped OSM items are inserted into Room with `isOfflineCached = true`, automatically updating the vector map canvas and list views.
+### 1. `OfflineSyncStatus` State Representation (`ScoutViewModel.kt` & `ScoutMapViewModel.kt`)
+- Create data model:
+  ```kotlin
+  data class OfflineSyncStatus(
+      val totalLocalGems: Int = 0,
+      val pendingDraftsCount: Int = 0,
+      val lastOsmSyncedCount: Int = 0,
+      val isSyncing: Boolean = false
+  )
+  ```
+- Expose `syncStatus: StateFlow<OfflineSyncStatus>` in `ScoutViewModel` by combining `allSpots`, `offlineDrafts`, `isScrapingOsm`, and last Overpass sync count.
+
+### 2. Visual Component (`OfflineSyncStatusBadge.kt`)
+- Create a Jetpack Compose `OfflineSyncStatusBadge` in `com.example.ui.components`:
+  - **Status Pill:** Dark surface (`#F2080B1E`) with vibrant border (`BrandTeal`/`BrandCoral`).
+  - **Live Indicator Dot:** Pulsing green LED when Room DB is synced, amber when drafts are queued, and spinning loader when Overpass scraping is active.
+  - **Status Text:** e.g., `💾 24 Local Gems • 📝 2 Queued • 🌐 +12 Live OSM`
+  - **Quick Action:** Tapping the badge opens the offline queue or triggers an instant Overpass refresh scan around current GPS coordinates.
+
+### 3. Screen Integration
+- Integrate `OfflineSyncStatusBadge` into `ScoutMapView` (floating top banner) and `ExploreScreen` (top header section).
+- Connect tap callbacks to trigger `ScoutViewModel.syncAllDrafts()` or `ScoutViewModel.scrapeOsmGems()`.
 
 ---
 
-## 3. Key Product Decisions & Trade-Offs
-
-- **Chosen Approach**:
-  - **`ScoutGemRepository.kt`**:
-    - `observeGems(userLat, userLng): Flow<List<ScoutGem>>`: Subscribes to `ScoutDao.getAllSpotsFlow()`, transforming `ScoutSpotEntity` items into `ScoutGem` instances.
-    - `syncLiveOsmGems(userLat, userLng): Result<Int>`: Fetches nodes via `OverpassRetrofitClient.fetchNearbyNodes()`, maps nodes to `ScoutSpotEntity`, and upserts into `ScoutDao`.
-    - `toggleBookmark(gemId: String)`: Toggles `isSaved` in Room.
-    - `markDiscovered(gemId: String)`: Sets `isDiscovered = true` in Room.
-- **Why**: Keeps UI reactive, ensures seamless offline persistence, and eliminates race conditions.
-
----
-
-## 4. Technical Architecture & Data Strategy
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                      ScoutMapViewModel                      │
-│   • Subscribes to ScoutGemRepository.observeGems()          │
-└──────────────────────────────┬──────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    ScoutGemRepository                       │
-│   • Source of Truth: Room ScoutDao.getAllSpotsFlow()         │
-│   • Background Sync: OverpassRetrofitClient                 │
-└──────────────┬──────────────────────────────┬───────────────┘
-               │                              │
-     Read/Write│                              │Background Sync
-               ▼                              ▼
-┌──────────────────────────────┐┌─────────────────────────────┐
-│      Room Database           ││   Overpass API (OSM)        │
-│  (scout_spots Table)         ││   (Live Viewpoints/Shops)   │
-└──────────────────────────────┘└─────────────────────────────┘
-```
-
-### Implementation Checklist
-1. **`ScoutGemRepository.kt`**: Create repository class in `com.example.data.repository`.
-2. **`ScoutViewModel.kt` & `ScoutMapViewModel.kt`**: Wire `ScoutGemRepository` for reactive updates.
-3. **Verify Build**: Run `compile_applet` and unit tests.
+## Verification Plan
+1. **Compilation Check:** Run `compile_applet` to confirm clean compilation across all Compose UI files.
+2. **Unit & Robolectric Tests:** Run `gradle :app:testDebugUnitTest` to verify state flow emission and repository integration.

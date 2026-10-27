@@ -133,6 +133,7 @@ fun ExploreScreen(
     userCoordinates: Pair<Double, Double> = Pair(38.7112, -9.1423),
     hasLocationPermission: Boolean = true,
     onRequestLocationPermission: () -> Unit = {},
+    syncStatus: com.example.ui.components.OfflineSyncStatus = com.example.ui.components.OfflineSyncStatus(),
     modifier: Modifier = Modifier
 ) {
     val strings = LocalAppStrings.current
@@ -172,6 +173,13 @@ fun ExploreScreen(
                         FloatingPillSearchBar(
                             searchQuery = searchQuery,
                             onSearchQueryChange = onSearchQueryChange
+                        )
+
+                        // Offline Database Sync Status Badge
+                        com.example.ui.components.OfflineSyncStatusBadge(
+                            status = syncStatus,
+                            onClick = onOpenQueueDialog,
+                            modifier = Modifier.fillMaxWidth()
                         )
 
                         // Live Scrape Pulse Ticker

@@ -101,6 +101,7 @@ fun ScoutMapView(
     osmScrapeMessage: String? = null,
     onScrapeOsm: () -> Unit = {},
     onDismissOsmMessage: () -> Unit = {},
+    syncStatus: OfflineSyncStatus = OfflineSyncStatus(totalLocalGems = spots.size),
     mapViewModel: ScoutMapViewModel = viewModel(),
     modifier: Modifier = Modifier
 ) {
@@ -188,6 +189,13 @@ fun ScoutMapView(
                 .padding(horizontal = 10.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
+            // Floating Offline Database Sync Status Badge
+            OfflineSyncStatusBadge(
+                status = syncStatus,
+                onClick = onScrapeOsm,
+                modifier = Modifier.fillMaxWidth()
+            )
+
             Surface(
                 shape = RoundedCornerShape(16.dp),
                 color = Color(0xF2080B1E),
@@ -764,6 +772,7 @@ fun GoogleMapView(
     osmScrapeMessage: String? = null,
     onScrapeOsm: () -> Unit = {},
     onDismissOsmMessage: () -> Unit = {},
+    syncStatus: OfflineSyncStatus = OfflineSyncStatus(totalLocalGems = spots.size),
     modifier: Modifier = Modifier
 ) {
     ScoutMapView(
@@ -781,6 +790,7 @@ fun GoogleMapView(
         osmScrapeMessage = osmScrapeMessage,
         onScrapeOsm = onScrapeOsm,
         onDismissOsmMessage = onDismissOsmMessage,
+        syncStatus = syncStatus,
         modifier = modifier
     )
 }

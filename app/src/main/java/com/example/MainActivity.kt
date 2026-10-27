@@ -112,6 +112,7 @@ fun VividScoutApp(viewModel: ScoutViewModel) {
     val locationDeniedCount by viewModel.locationDeniedCount.collectAsState()
     val isScrapingOsm by viewModel.isScrapingOsm.collectAsState()
     val osmScrapeMessage by viewModel.osmScrapeMessage.collectAsState()
+    val syncStatus by viewModel.syncStatus.collectAsState()
 
     // Automatically refresh permission state when returning to the app from System Settings
     DisposableEffect(lifecycleOwner) {
@@ -249,7 +250,8 @@ fun VividScoutApp(viewModel: ScoutViewModel) {
                                         onAddSpotClick = { viewModel.openSubmitModal() },
                                         onRadarClick = { viewModel.selectTab(MainTab.RADAR) },
                                         onDismissOfflineBanner = { viewModel.dismissOfflineBanner() },
-                                        onOpenQueueDialog = { viewModel.openQueueDialog() }
+                                        onOpenQueueDialog = { viewModel.openQueueDialog() },
+                                        syncStatus = syncStatus
                                     )
                                 }
 
@@ -265,7 +267,8 @@ fun VividScoutApp(viewModel: ScoutViewModel) {
                                         isScrapingOsm = isScrapingOsm,
                                         osmScrapeMessage = osmScrapeMessage,
                                         onScrapeOsm = { viewModel.scrapeOsmGems(userCoordinates.first, userCoordinates.second) },
-                                        onDismissOsmMessage = { viewModel.dismissOsmMessage() }
+                                        onDismissOsmMessage = { viewModel.dismissOsmMessage() },
+                                        syncStatus = syncStatus
                                     )
                                 }
 

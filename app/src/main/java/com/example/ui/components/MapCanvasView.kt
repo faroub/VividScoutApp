@@ -6,6 +6,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -49,6 +50,21 @@ import com.example.ui.theme.BrandCoral
 import com.example.ui.theme.BrandTeal
 import kotlin.math.hypot
 
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.filled.CenterFocusStrong
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.ZoomIn
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+import com.example.ui.viewmodel.ZoomPreset
+
 /**
  * Interactive Offline Vector Map Canvas for ScoutGem locations.
  * Renders fluid vector geometry of Lisbon with:
@@ -56,7 +72,7 @@ import kotlin.math.hypot
  * - Tagus River (Rio Tejo) water contour
  * - Street network grid
  * - Interactive ScoutGem pins with category badges, saved hearts, and tap gesture selection
- * - Smooth pan, pinch-zoom, and floating zoom/center controls
+ * - Manual zoom controls, preset zoom level chips, live zoom badge, and smooth pinch/pan gestures
  */
 @Composable
 fun MapCanvasView(
@@ -66,10 +82,19 @@ fun MapCanvasView(
     userAccuracy: Float,
     selectedGem: ScoutGem?,
     onGemSelect: (ScoutGem) -> Unit,
+    zoomScale: Float = 1.0f,
+    zoomPreset: ZoomPreset? = null,
+    onZoomIn: () -> Unit = {},
+    onZoomOut: () -> Unit = {},
+    onSetZoomPreset: (ZoomPreset) -> Unit = {},
+    onResetZoom: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var panOffset by remember { mutableStateOf(Offset.Zero) }
-    var zoomScale by remember { mutableFloatStateOf(1.0f) }
+    var internalZoomScale by remember { mutableFloatStateOf(zoomScale) }
+
+    // Sync internal zoom scale with external parameter when provided
+    val activeZoomScale = if (zoomScale != 1.0f || internalZoomScale == 1.0f) zoomScale else internalZoomScale
 
     // Pulsing beacon animation for live GPS signal
     val infiniteTransition = rememberInfiniteTransition(label = "vectorPulse")
@@ -92,10 +117,13 @@ fun MapCanvasView(
             .pointerInput(Unit) {
                 detectTransformGestures { _, pan, zoomChange, _ ->
                     panOffset += pan
-                    zoomScale = (zoomScale * zoomChange).coerceIn(0.4f, 4.0f)
+                    internalZoomScale = (internalZoomScale * zoomChange).coerceIn(
+                        ScoutVectorEngine.MIN_ZOOM_SCALE,
+                        ScoutVectorEngine.MAX_ZOOM_SCALE
+                    )
                 }
             }
-            .pointerInput(gems, panOffset, zoomScale, userLat, userLng) {
+            .pointerInput(gems, panOffset, activeZoomScale, userLat, userLng) {
                 detectTapGestures { tapPos ->
                     // Calculate pin screen positions and find tapped gem
                     val currentCenter = Offset(
@@ -112,7 +140,7 @@ fun MapCanvasView(
                             userLat = userLat,
                             userLng = userLng,
                             canvasCenter = currentCenter,
-                            zoomScale = zoomScale,
+                            zoomScale = activeZoomScale,
                             baseScale = baseScale
                         )
 
@@ -137,7 +165,7 @@ fun MapCanvasView(
             drawRect(color = Color(0xFF080C1E))
 
             // 2. City Grid & Street Lines
-            val gridStep = 45f * zoomScale
+            val gridStep = 45f * activeZoomScale
             var gx = (panOffset.x % gridStep)
             while (gx < size.width) {
                 drawLine(
@@ -164,9 +192,9 @@ fun MapCanvasView(
             val riverPath = Path().apply {
                 moveTo(-200f, riverY)
                 cubicTo(
-                    size.width * 0.28f, riverY - 35f * zoomScale,
-                    size.width * 0.65f, riverY + 25f * zoomScale,
-                    size.width + 200f, riverY - 15f * zoomScale
+                    size.width * 0.28f, riverY - 35f * activeZoomScale,
+                    size.width * 0.65f, riverY + 25f * activeZoomScale,
+                    size.width + 200f, riverY - 15f * activeZoomScale
                 )
                 lineTo(size.width + 200f, size.height + 300f)
                 lineTo(-200f, size.height + 300f)
@@ -181,28 +209,28 @@ fun MapCanvasView(
 
             // 4. Major Lisbon Arteries (Avenida da Liberdade & Rua Augusta corridors)
             val avenuePath = Path().apply {
-                moveTo(center.x - 30f * zoomScale, center.y - 300f * zoomScale)
-                lineTo(center.x - 10f * zoomScale, center.y + 120f * zoomScale)
-                lineTo(center.x + 40f * zoomScale, center.y + 240f * zoomScale)
+                moveTo(center.x - 30f * activeZoomScale, center.y - 300f * activeZoomScale)
+                lineTo(center.x - 10f * activeZoomScale, center.y + 120f * activeZoomScale)
+                lineTo(center.x + 40f * activeZoomScale, center.y + 240f * activeZoomScale)
             }
             drawPath(
                 path = avenuePath,
                 color = Color(0xFF2A3655),
-                style = Stroke(width = 4f * zoomScale)
+                style = Stroke(width = 4f * activeZoomScale)
             )
 
             val eastWestPath = Path().apply {
-                moveTo(center.x - 320f * zoomScale, center.y + 40f * zoomScale)
-                lineTo(center.x + 320f * zoomScale, center.y + 10f * zoomScale)
+                moveTo(center.x - 320f * activeZoomScale, center.y + 40f * activeZoomScale)
+                lineTo(center.x + 320f * activeZoomScale, center.y + 10f * activeZoomScale)
             }
             drawPath(
                 path = eastWestPath,
                 color = Color(0xFF1E2842),
-                style = Stroke(width = 3f * zoomScale)
+                style = Stroke(width = 3f * activeZoomScale)
             )
 
             // 5. User GPS Accuracy Ring & Beacon
-            val accuracyRadius = (userAccuracy * 2.2f * zoomScale).coerceIn(18f, 100f)
+            val accuracyRadius = (userAccuracy * 2.2f * activeZoomScale).coerceIn(18f, 100f)
             drawCircle(
                 color = BrandTeal.copy(alpha = 0.12f),
                 radius = accuracyRadius * beaconPulse,
@@ -218,18 +246,18 @@ fun MapCanvasView(
             // GPS Beacon Core
             drawCircle(
                 color = Color.White,
-                radius = 8f * zoomScale.coerceIn(0.8f, 1.4f),
+                radius = 8f * activeZoomScale.coerceIn(0.8f, 1.4f),
                 center = center
             )
             drawCircle(
                 color = BrandTeal,
-                radius = 6f * zoomScale.coerceIn(0.8f, 1.4f),
+                radius = 6f * activeZoomScale.coerceIn(0.8f, 1.4f),
                 center = center
             )
 
             // Directional Heading Indicator
             val headingPath = Path().apply {
-                moveTo(center.x, center.y - 18f * zoomScale.coerceIn(0.8f, 1.4f))
+                moveTo(center.x, center.y - 18f * activeZoomScale.coerceIn(0.8f, 1.4f))
                 lineTo(center.x - 5f, center.y - 7f)
                 lineTo(center.x + 5f, center.y - 7f)
                 close()
@@ -244,7 +272,7 @@ fun MapCanvasView(
                     userLat = userLat,
                     userLng = userLng,
                     canvasCenter = center,
-                    zoomScale = zoomScale,
+                    zoomScale = activeZoomScale,
                     baseScale = baseScale
                 )
                 val pinX = pinPos.x
@@ -264,12 +292,12 @@ fun MapCanvasView(
                 if (isSelected) {
                     drawCircle(
                         color = pinColor.copy(alpha = 0.35f),
-                        radius = 26f * zoomScale.coerceIn(0.8f, 1.3f),
+                        radius = 26f * activeZoomScale.coerceIn(0.8f, 1.3f),
                         center = Offset(pinX, pinY)
                     )
                     drawCircle(
                         color = Color.White,
-                        radius = 26f * zoomScale.coerceIn(0.8f, 1.3f),
+                        radius = 26f * activeZoomScale.coerceIn(0.8f, 1.3f),
                         center = Offset(pinX, pinY),
                         style = Stroke(width = 2f)
                     )
@@ -279,21 +307,21 @@ fun MapCanvasView(
                 drawLine(
                     color = pinColor,
                     start = Offset(pinX, pinY),
-                    end = Offset(pinX, pinY + 12f * zoomScale.coerceIn(0.8f, 1.2f)),
+                    end = Offset(pinX, pinY + 12f * activeZoomScale.coerceIn(0.8f, 1.2f)),
                     strokeWidth = 2.5f
                 )
 
                 // Outer Pin White Rim
                 drawCircle(
                     color = Color.White,
-                    radius = 12f * zoomScale.coerceIn(0.8f, 1.2f),
+                    radius = 12f * activeZoomScale.coerceIn(0.8f, 1.2f),
                     center = Offset(pinX, pinY)
                 )
 
                 // Inner Pin Category Color
                 drawCircle(
                     color = pinColor,
-                    radius = 9f * zoomScale.coerceIn(0.8f, 1.2f),
+                    radius = 9f * activeZoomScale.coerceIn(0.8f, 1.2f),
                     center = Offset(pinX, pinY)
                 )
 
@@ -301,14 +329,87 @@ fun MapCanvasView(
                 if (gem.isSaved || gem.isDiscovered) {
                     drawCircle(
                         color = Color.White,
-                        radius = 3.5f * zoomScale.coerceIn(0.8f, 1.2f),
+                        radius = 3.5f * activeZoomScale.coerceIn(0.8f, 1.2f),
                         center = Offset(pinX, pinY)
                     )
                 }
             }
         }
 
-        // Floating On-Canvas Controls for Pan/Zoom Reset
+        // Live Zoom Percentage & Preset Badge (Top Floating on Canvas)
+        val zoomPct = (activeZoomScale * 100).toInt()
+        val presetText = zoomPreset?.label ?: when {
+            activeZoomScale <= 0.8f -> "City View"
+            activeZoomScale <= 1.8f -> "Neighborhood"
+            activeZoomScale <= 3.0f -> "Street Level"
+            else -> "Close-Up Gem"
+        }
+
+        Surface(
+            shape = RoundedCornerShape(999.dp),
+            color = Color(0xF2080B1E),
+            border = BorderStroke(1.dp, BrandTeal.copy(alpha = 0.5f)),
+            shadowElevation = 6.dp,
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(start = 12.dp, top = 12.dp)
+                .testTag("vector_zoom_scale_badge")
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.ZoomIn,
+                    contentDescription = null,
+                    tint = BrandTeal,
+                    modifier = Modifier.size(14.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = "$zoomPct% • $presetText",
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                    color = Color.White,
+                    fontSize = 11.sp
+                )
+            }
+        }
+
+        // Preset Zoom Level Selector Chips (Bottom Floating above controls)
+        Row(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(start = 12.dp, bottom = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            ZoomPreset.entries.forEach { preset ->
+                val isSelected = (zoomPreset == preset) || Math.abs(preset.scale - activeZoomScale) < 0.1f
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(if (isSelected) BrandTeal else Color(0xF2080B1E))
+                        .border(
+                            1.dp,
+                            if (isSelected) BrandTeal else Color.White.copy(alpha = 0.2f),
+                            RoundedCornerShape(999.dp)
+                        )
+                        .clickable { onSetZoomPreset(preset) }
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                        .testTag("zoom_preset_chip_${preset.name.lowercase()}"),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = preset.label,
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        color = if (isSelected) Color.White else Color.White.copy(alpha = 0.85f),
+                        fontSize = 10.sp
+                    )
+                }
+            }
+        }
+
+        // Floating On-Canvas Controls for Step Zoom (+/-) and GPS Pan Reset
         Column(
             modifier = Modifier
                 .align(Alignment.CenterEnd)
@@ -334,14 +435,17 @@ fun MapCanvasView(
                 )
             }
 
-            // Zoom In
+            // Step Zoom In (+)
             Box(
                 modifier = Modifier
                     .size(36.dp)
                     .clip(CircleShape)
                     .background(Color(0xFF080B1E).copy(alpha = 0.9f))
-                    .border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape)
-                    .clickable { zoomScale = (zoomScale * 1.3f).coerceAtMost(4.0f) }
+                    .border(1.dp, Color.White.copy(alpha = 0.25f), CircleShape)
+                    .clickable {
+                        onZoomIn()
+                        internalZoomScale = (internalZoomScale + 0.35f).coerceAtMost(ScoutVectorEngine.MAX_ZOOM_SCALE)
+                    }
                     .testTag("vector_zoom_in"),
                 contentAlignment = Alignment.Center
             ) {
@@ -353,14 +457,17 @@ fun MapCanvasView(
                 )
             }
 
-            // Zoom Out
+            // Step Zoom Out (-)
             Box(
                 modifier = Modifier
                     .size(36.dp)
                     .clip(CircleShape)
                     .background(Color(0xFF080B1E).copy(alpha = 0.9f))
-                    .border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape)
-                    .clickable { zoomScale = (zoomScale / 1.3f).coerceAtLeast(0.4f) }
+                    .border(1.dp, Color.White.copy(alpha = 0.25f), CircleShape)
+                    .clickable {
+                        onZoomOut()
+                        internalZoomScale = (internalZoomScale - 0.35f).coerceAtLeast(ScoutVectorEngine.MIN_ZOOM_SCALE)
+                    }
                     .testTag("vector_zoom_out"),
                 contentAlignment = Alignment.Center
             ) {
@@ -376,7 +483,7 @@ fun MapCanvasView(
 }
 
 /**
- * Backward-compatible overload for ScoutSpotEntity list.
+ * Backward-compatible overload for ScoutSpotEntity list with manual zoom integration.
  */
 @Composable
 fun MapCanvasView(
@@ -386,6 +493,12 @@ fun MapCanvasView(
     userAccuracy: Float,
     selectedSpot: ScoutSpotEntity?,
     onSpotSelect: (ScoutSpotEntity) -> Unit,
+    zoomScale: Float = 1.0f,
+    zoomPreset: ZoomPreset? = null,
+    onZoomIn: () -> Unit = {},
+    onZoomOut: () -> Unit = {},
+    onSetZoomPreset: (ZoomPreset) -> Unit = {},
+    onResetZoom: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val gems = remember(spots, userLat, userLng) {
@@ -404,6 +517,12 @@ fun MapCanvasView(
         onGemSelect = { gem ->
             onSpotSelect(gem.toEntity())
         },
+        zoomScale = zoomScale,
+        zoomPreset = zoomPreset,
+        onZoomIn = onZoomIn,
+        onZoomOut = onZoomOut,
+        onSetZoomPreset = onSetZoomPreset,
+        onResetZoom = onResetZoom,
         modifier = modifier
     )
 }
