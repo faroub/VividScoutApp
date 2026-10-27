@@ -136,7 +136,18 @@ data class AppStringsData(
     val gpsDisabled: String,
     val gpsInactiveTap: String,
     val locationSettingsCardTitle: String,
-    val locationSettingsCardDesc: String
+    val locationSettingsCardDesc: String,
+    val searchMapPlaceholder: String,
+    val filterDiscoveredOnlyLabel: String,
+    val allGemsLabel: String,
+    val filterByCategory: String,
+    val filterByDistance: String,
+    val noGemsFoundMessage: String,
+    val bookmarkGem: String,
+    val bookmarkedLabel: String,
+    val scrapeOsmButton: String,
+    val scrapingOsmProgress: String,
+    val osmScrapeSuccess: String
 )
 
 val EnglishStrings = AppStringsData(
@@ -259,7 +270,18 @@ val EnglishStrings = AppStringsData(
     gpsDisabled = "GPS Disabled (Lisbon Fallback)",
     gpsInactiveTap = "GPS Inactive • Tap to Enable",
     locationSettingsCardTitle = "GPS Telemetry & Permissions",
-    locationSettingsCardDesc = "High-precision FusedLocationProvider tracking"
+    locationSettingsCardDesc = "High-precision FusedLocationProvider tracking",
+    searchMapPlaceholder = "Search gems by name, tag, or lore...",
+    filterDiscoveredOnlyLabel = "Discovered Only",
+    allGemsLabel = "All Gems",
+    filterByCategory = "Category",
+    filterByDistance = "Distance",
+    noGemsFoundMessage = "No gems match your filters",
+    bookmarkGem = "Bookmark",
+    bookmarkedLabel = "Bookmarked",
+    scrapeOsmButton = "Scrape Live OSM Web Gems",
+    scrapingOsmProgress = "Scraping OpenStreetMap for viewpoints, bakeries & shortcuts...",
+    osmScrapeSuccess = "real gems scraped from OpenStreetMap into Room!"
 )
 
 val FrenchStrings = AppStringsData(
@@ -382,7 +404,18 @@ val FrenchStrings = AppStringsData(
     gpsDisabled = "GPS Désactivé (Lisbonne par défaut)",
     gpsInactiveTap = "GPS Inactif • Toucher pour activer",
     locationSettingsCardTitle = "Télémétrie GPS & Autorisations",
-    locationSettingsCardDesc = "Suivi FusedLocationProvider haute précision"
+    locationSettingsCardDesc = "Suivi FusedLocationProvider haute précision",
+    searchMapPlaceholder = "Rechercher par nom, tag ou histoire...",
+    filterDiscoveredOnlyLabel = "Découverts uniquement",
+    allGemsLabel = "Tous les lieux",
+    filterByCategory = "Catégorie",
+    filterByDistance = "Distance",
+    noGemsFoundMessage = "Aucun lieu ne correspond aux filtres",
+    bookmarkGem = "Enregistrer",
+    bookmarkedLabel = "Enregistré",
+    scrapeOsmButton = "Extraire les pépites web OSM",
+    scrapingOsmProgress = "Extraction OpenStreetMap des points de vue et boulangeries...",
+    osmScrapeSuccess = "pépites extraites depuis OpenStreetMap dans Room !"
 )
 
 val ArabicStrings = AppStringsData(
@@ -505,7 +538,18 @@ val ArabicStrings = AppStringsData(
     gpsDisabled = "GPS غير مفعّل (الافتراضي لشبونة)",
     gpsInactiveTap = "GPS غير نشط • انقر للتفعيل",
     locationSettingsCardTitle = "بيانات GPS والأذونات",
-    locationSettingsCardDesc = "تتبع FusedLocationProvider عالي الدقة"
+    locationSettingsCardDesc = "تتبع FusedLocationProvider عالي الدقة",
+    searchMapPlaceholder = "ابحث بالاسم، الوسم، أو الوصف...",
+    filterDiscoveredOnlyLabel = "المكتشفة فقط",
+    allGemsLabel = "كل الجواهر",
+    filterByCategory = "الفئة",
+    filterByDistance = "المسافة",
+    noGemsFoundMessage = "لا توجد جواهر مطابقة للبحث",
+    bookmarkGem = "حفظ",
+    bookmarkedLabel = "محفوظ",
+    scrapeOsmButton = "جلب الأماكن الحية من خريطة الشارع المفتوحة",
+    scrapingOsmProgress = "جارٍ جلب المعالم والمخابز والممرات من OpenStreetMap...",
+    osmScrapeSuccess = "أماكن حقيقية تم جلبها وحفظها في قاعدة البيانات!"
 )
 
 val LocalAppLanguage = staticCompositionLocalOf { AppLanguage.ENGLISH }

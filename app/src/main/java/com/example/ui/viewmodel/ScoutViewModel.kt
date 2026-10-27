@@ -111,6 +111,12 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
     private val _showLanguageDialog = MutableStateFlow(false)
     val showLanguageDialog: StateFlow<Boolean> = _showLanguageDialog.asStateFlow()
 
+    private val _isScrapingOsm = MutableStateFlow(false)
+    val isScrapingOsm: StateFlow<Boolean> = _isScrapingOsm.asStateFlow()
+
+    private val _osmScrapeMessage = MutableStateFlow<String?>(null)
+    val osmScrapeMessage: StateFlow<String?> = _osmScrapeMessage.asStateFlow()
+
     val allSpots: StateFlow<List<ScoutSpotEntity>> = repository.allSpots
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -319,6 +325,35 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
             }
             _showQueueDialog.value = false
         }
+    }
+
+    fun scrapeOsmGems(lat: Double, lng: Double, radiusMeters: Int = 1500) {
+        if (_isScrapingOsm.value) return
+        viewModelScope.launch {
+            _isScrapingOsm.value = true
+            _osmScrapeMessage.value = "Scraping viewpoints, bakeries & shortcuts from OpenStreetMap..."
+            val result = repository.scrapeAndSaveOsmGems(lat, lng, radiusMeters)
+            result.fold(
+                onSuccess = { count ->
+                    _osmScrapeMessage.value = if (count > 0) {
+                        "✨ $count real gems scraped from OpenStreetMap into Room DB!"
+                    } else {
+                        "OSM scan complete. All available spots up-to-date."
+                    }
+                    if (count > 0) {
+                        _userPoints.value += count * 5
+                    }
+                },
+                onFailure = { err ->
+                    _osmScrapeMessage.value = "OSM Overpass query: ${err.message ?: "Network error"}. Tap to retry."
+                }
+            )
+            _isScrapingOsm.value = false
+        }
+    }
+
+    fun dismissOsmMessage() {
+        _osmScrapeMessage.value = null
     }
 
     override fun onCleared() {

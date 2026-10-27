@@ -112,6 +112,27 @@ class ScoutRepository(
         discoveredGemDao?.markAsSynced(spot.id)
     }
 
+    private val overpassScraper = com.example.data.network.OverpassScraperService()
+
+    suspend fun scrapeAndSaveOsmGems(
+        lat: Double,
+        lng: Double,
+        radiusMeters: Int = 1500
+    ): Result<Int> = withContext(Dispatchers.IO) {
+        val result = overpassScraper.scrapeNearbyGems(lat, lng, radiusMeters)
+        result.fold(
+            onSuccess = { spots ->
+                if (spots.isNotEmpty()) {
+                    scoutDao.insertSpots(spots)
+                }
+                Result.success(spots.size)
+            },
+            onFailure = { error ->
+                Result.failure(error)
+            }
+        )
+    }
+
     suspend fun initializeIfEmpty() = withContext(Dispatchers.IO) {
         if (scoutDao.getCount() == 0) {
             com.example.data.local.AppDatabase.populateInitialSpots(scoutDao)

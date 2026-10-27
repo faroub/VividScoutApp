@@ -36,19 +36,26 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.GpsFixed
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Navigation
+import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Radar
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -115,6 +122,11 @@ fun RadarScreen(
     isPreciseLocation: Boolean = true,
     onRequestLocationPermission: () -> Unit = {},
     onSpotClick: (ScoutSpotEntity) -> Unit,
+    onToggleSave: (ScoutSpotEntity) -> Unit = {},
+    isScrapingOsm: Boolean = false,
+    osmScrapeMessage: String? = null,
+    onScrapeOsm: () -> Unit = {},
+    onDismissOsmMessage: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var viewMode by remember { mutableStateOf(RadarViewMode.MAP) }
@@ -377,7 +389,7 @@ fun RadarScreen(
                 shadowElevation = 10.dp,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(380.dp)
+                    .height(if (viewMode == RadarViewMode.MAP) 480.dp else 380.dp)
             ) {
                 Box(modifier = Modifier.fillMaxSize()) {
                     if (viewMode == RadarViewMode.MAP) {
@@ -392,6 +404,11 @@ fun RadarScreen(
                             selectedSpot = selectedSpot,
                             onSpotSelect = { selectedSpot = it },
                             onSpotClick = onSpotClick,
+                            onToggleSave = onToggleSave,
+                            isScrapingOsm = isScrapingOsm,
+                            osmScrapeMessage = osmScrapeMessage,
+                            onScrapeOsm = onScrapeOsm,
+                            onDismissOsmMessage = onDismissOsmMessage,
                             modifier = Modifier.fillMaxSize()
                         )
                     } else {
@@ -404,6 +421,128 @@ fun RadarScreen(
                             selectedRadius = selectedRadius,
                             onSpotSelect = { selectedSpot = it }
                         )
+                    }
+                }
+            }
+        }
+
+        // 3b. OpenStreetMap Web Scraper Action Card
+        item {
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = SurfaceContainerLowest,
+                border = BorderStroke(1.dp, BrandTeal.copy(alpha = 0.35f)),
+                shadowElevation = 3.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("radar_scrape_osm_card")
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(CircleShape)
+                                    .background(BrandTeal.copy(alpha = 0.15f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Public,
+                                    contentDescription = null,
+                                    tint = BrandTeal,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = "Live OSM Web Scraper",
+                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = "Scrape viewpoints, bakeries & shortcuts from OpenStreetMap into Room",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        Button(
+                            onClick = onScrapeOsm,
+                            enabled = !isScrapingOsm,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = PrimaryContainer,
+                                contentColor = Color.White
+                            ),
+                            shape = RoundedCornerShape(999.dp),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                            modifier = Modifier.testTag("radar_scrape_osm_button")
+                        ) {
+                            if (isScrapingOsm) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(13.dp),
+                                    strokeWidth = 2.dp,
+                                    color = Color.White
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    "Scraping...",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold)
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Default.CloudDownload,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    "Scrape",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold)
+                                )
+                            }
+                        }
+                    }
+
+                    if (osmScrapeMessage != null) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = BrandTeal.copy(alpha = 0.1f),
+                            border = BorderStroke(1.dp, BrandTeal.copy(alpha = 0.35f)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onDismissOsmMessage() }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = osmScrapeMessage.orEmpty(),
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Dismiss",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -534,17 +673,35 @@ fun RadarScreen(
                         }
                     }
 
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(999.dp))
-                            .background(SecondaryContainer.copy(alpha = 0.6f))
-                            .padding(horizontal = 12.dp, vertical = 6.dp)
-                    ) {
-                        Text(
-                            text = strings.track,
-                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.onSecondaryContainer
-                        )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(
+                            onClick = { onToggleSave(spot) },
+                            modifier = Modifier
+                                .size(36.dp)
+                                .testTag("radar_bookmark_button_${spot.id}")
+                        ) {
+                            Icon(
+                                imageVector = if (spot.isSaved) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                                contentDescription = if (spot.isSaved) "Remove bookmark" else "Bookmark",
+                                tint = if (spot.isSaved) BrandCoral else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(4.dp))
+
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(999.dp))
+                                .background(SecondaryContainer.copy(alpha = 0.6f))
+                                .padding(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Text(
+                                text = strings.track,
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                        }
                     }
                 }
             }

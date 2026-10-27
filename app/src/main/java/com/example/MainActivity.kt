@@ -106,6 +106,8 @@ fun VividScoutApp(viewModel: ScoutViewModel) {
     val showLocationRationaleDialog by viewModel.showLocationRationaleDialog.collectAsState()
     val showLocationSettingsDialog by viewModel.showLocationSettingsDialog.collectAsState()
     val locationDeniedCount by viewModel.locationDeniedCount.collectAsState()
+    val isScrapingOsm by viewModel.isScrapingOsm.collectAsState()
+    val osmScrapeMessage by viewModel.osmScrapeMessage.collectAsState()
 
     // Automatically refresh permission state when returning to the app from System Settings
     DisposableEffect(lifecycleOwner) {
@@ -254,7 +256,12 @@ fun VividScoutApp(viewModel: ScoutViewModel) {
                                         hasLocationPermission = hasLocationPermission,
                                         isPreciseLocation = isPreciseLocation,
                                         onRequestLocationPermission = { requestLocationPermission() },
-                                        onSpotClick = { spot -> selectedSpotForDetail = spot }
+                                        onSpotClick = { spot -> selectedSpotForDetail = spot },
+                                        onToggleSave = { spot -> viewModel.toggleSave(spot) },
+                                        isScrapingOsm = isScrapingOsm,
+                                        osmScrapeMessage = osmScrapeMessage,
+                                        onScrapeOsm = { viewModel.scrapeOsmGems(userCoordinates.first, userCoordinates.second) },
+                                        onDismissOsmMessage = { viewModel.dismissOsmMessage() }
                                     )
                                 }
 
