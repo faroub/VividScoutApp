@@ -1,6 +1,6 @@
 {
-  "summary":  "Implementation plan for offline database sync status indicator showing local gems count, queued drafts, and last Overpass sync results.",
-  "updatedAt":  "2026-10-27T20:13:12.409712706Z",
+  "summary":  "Implementation plan for offline vector map packs feature in settings, including preset and custom GPS city downloads, internal storage persistence, progress UI, file size indicators, and deletion options.",
+  "updatedAt":  "2026-10-27T20:37:53.167151515Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

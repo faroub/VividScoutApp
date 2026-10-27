@@ -78,27 +78,29 @@ class OverpassRetrofitClient(
     )
 
     /**
-     * Builds the Overpass QL query targeting nodes for viewpoints, bakeries, and shortcuts near coordinates.
+     * Builds the Overpass QL query targeting viewpoints, attractions, bakeries, cafes, historic sites & ways near coordinates.
      */
     fun buildQuery(lat: Double, lng: Double, radiusMeters: Int): String {
         return """
-            [out:json][timeout:20];
+            [out:json][timeout:25];
             (
               node["tourism"="viewpoint"](around:$radiusMeters,$lat,$lng);
+              node["tourism"](around:$radiusMeters,$lat,$lng);
+              way["tourism"](around:$radiusMeters,$lat,$lng);
               node["shop"="bakery"](around:$radiusMeters,$lat,$lng);
-              node["highway"="steps"](around:$radiusMeters,$lat,$lng);
-              node["highway"="footway"](around:$radiusMeters,$lat,$lng);
+              node["amenity"="cafe"](around:$radiusMeters,$lat,$lng);
+              node["amenity"="restaurant"](around:$radiusMeters,$lat,$lng);
               node["historic"](around:$radiusMeters,$lat,$lng);
-              way["highway"="steps"]["name"](around:$radiusMeters,$lat,$lng);
-              node["amenity"="cafe"]["name"](around:$radiusMeters,$lat,$lng);
+              way["historic"](around:$radiusMeters,$lat,$lng);
+              node["highway"="steps"](around:$radiusMeters,$lat,$lng);
+              way["highway"="pedestrian"]["name"](around:$radiusMeters,$lat,$lng);
             );
-            out body center qt 30;
+            out body center qt 50;
         """.trimIndent()
     }
 
     /**
-     * Fetches nodes representing viewpoints, bakeries, and shortcuts near user coordinates
-     * using the Retrofit Overpass API.
+     * Fetches nodes and ways representing tourism spots, bakeries, cafes, and historic sites near user coordinates.
      */
     suspend fun fetchNearbyNodes(
         lat: Double,
@@ -106,21 +108,24 @@ class OverpassRetrofitClient(
         radiusMeters: Int = 1500
     ): Result<List<ScoutSpotEntity>> = withContext(Dispatchers.IO) {
         val qlQuery = buildQuery(lat, lng, radiusMeters)
+        Log.i("OverpassRetrofit", "Executing Overpass QL query for GPS ($lat, $lng) radius ${radiusMeters}m")
         var lastError: Exception? = null
 
         // Try primary client first, then fallback to mirrors if needed
         for (mirror in mirrorBaseUrls) {
             try {
+                Log.d("OverpassRetrofit", "Querying Overpass mirror: $mirror")
                 val client = if (mirror == "https://overpass-api.de/") this@OverpassRetrofitClient else OverpassRetrofitClient(mirror)
                 val response: OverpassResponse = client.api.queryOverpass(qlQuery)
                 val elements = response.elements
+                Log.i("OverpassRetrofit", "Mirror $mirror returned ${elements.size} raw elements.")
                 if (elements.isNotEmpty()) {
                     val entities = mapElementsToEntities(elements, lat, lng)
-                    Log.i("OverpassRetrofit", "Retrofit successfully parsed ${entities.size} spots from $mirror")
+                    Log.i("OverpassRetrofit", "Retrofit successfully parsed ${entities.size} valid spots from $mirror")
                     return@withContext Result.success(entities)
                 }
             } catch (e: Exception) {
-                Log.w("OverpassRetrofit", "Mirror $mirror failed: ${e.message}")
+                Log.w("OverpassRetrofit", "Mirror $mirror query failed: ${e.javaClass.simpleName} - ${e.message}")
                 lastError = e
             }
         }

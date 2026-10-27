@@ -80,6 +80,11 @@ fun ProfileScreen(
     isPreciseLocation: Boolean = true,
     userCoordinates: Pair<Double, Double> = Pair(38.7112, -9.1423),
     onRequestLocationPermission: () -> Unit = {},
+    offlineMapPacks: List<com.example.data.offline.OfflineMapPack> = emptyList(),
+    totalOfflineStorageBytes: Long = 0L,
+    onDownloadOfflinePack: (String) -> Unit = {},
+    onDeleteOfflinePack: (String) -> Unit = {},
+    onDownloadCurrentGpsPack: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val strings = LocalAppStrings.current
@@ -369,6 +374,17 @@ fun ProfileScreen(
                     }
                 }
             }
+        }
+
+        // Offline Vector Map Packs Section
+        item {
+            com.example.ui.components.OfflineMapPacksSection(
+                packs = offlineMapPacks,
+                totalStorageBytes = totalOfflineStorageBytes,
+                onDownloadPack = onDownloadOfflinePack,
+                onDeletePack = onDeleteOfflinePack,
+                onDownloadCurrentGpsPack = onDownloadCurrentGpsPack
+            )
         }
 
         // Settings / Mode Toggle

@@ -38,6 +38,10 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
     private val repository: ScoutRepository = ScoutRepository(db.scoutDao(), db.discoveredGemDao())
     val gemRepository: ScoutGemRepository = ScoutGemRepository(db.scoutDao(), db.discoveredGemDao())
     val locationTracker: LocationTracker = LocationTracker(application)
+    val offlineMapManager: com.example.data.offline.OfflineMapManager = com.example.data.offline.OfflineMapManager(application, gemRepository)
+
+    val offlineMapPacks: StateFlow<List<com.example.data.offline.OfflineMapPack>> = offlineMapManager.packsState
+    val offlineStorageBytes: StateFlow<Long> = offlineMapManager.totalStorageBytes
 
     val userLocation: StateFlow<Location?> = locationTracker.currentLocation
     val hasLocationPermission: StateFlow<Boolean> = locationTracker.hasPermission
@@ -156,6 +160,7 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             userLocation.collect { loc ->
                 if (loc != null) {
+                    offlineMapManager.refreshPacksState(loc.latitude, loc.longitude)
                     val currentSpots = allSpots.value
                     val nearbyCount = currentSpots.count { spot ->
                         spot.computedDistanceMeters(loc.latitude, loc.longitude) <= 10000f
@@ -391,6 +396,24 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
             )
             _isScrapingOsm.value = false
         }
+    }
+
+    fun downloadOfflineMapPack(packId: String) {
+        viewModelScope.launch {
+            val coords = userCoordinates.value
+            offlineMapManager.downloadPack(packId, coords.first, coords.second)
+        }
+    }
+
+    fun deleteOfflineMapPack(packId: String) {
+        viewModelScope.launch {
+            val coords = userCoordinates.value
+            offlineMapManager.deletePack(packId, coords.first, coords.second)
+        }
+    }
+
+    fun downloadCurrentGpsMapPack() {
+        downloadOfflineMapPack("custom_gps_pack")
     }
 
     fun dismissOsmMessage() {
