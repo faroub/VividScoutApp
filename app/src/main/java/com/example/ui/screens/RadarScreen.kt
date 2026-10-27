@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import android.location.Location
+import com.example.ui.components.GoogleMapView
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -119,9 +120,6 @@ fun RadarScreen(
     var viewMode by remember { mutableStateOf(RadarViewMode.MAP) }
     var selectedRadius by remember { mutableStateOf("1km") }
     var selectedSpot by remember { mutableStateOf<ScoutSpotEntity?>(spots.firstOrNull()) }
-
-    var mapZoom by remember { mutableFloatStateOf(1.0f) }
-    var mapOffset by remember { mutableStateOf(Offset.Zero) }
 
     val userLat = userLocation?.latitude ?: 38.7112
     val userLng = userLocation?.longitude ?: -9.1423
@@ -383,193 +381,19 @@ fun RadarScreen(
             ) {
                 Box(modifier = Modifier.fillMaxSize()) {
                     if (viewMode == RadarViewMode.MAP) {
-                        // Vector Map Canvas with Live User Beacon and Pins
-                        MapCanvasView(
+                        // Google Maps Compose interactive view with user location and Room gems
+                        GoogleMapView(
                             spots = sortedSpots,
                             userLat = userLat,
                             userLng = userLng,
                             userAccuracy = userAccuracy,
-                            beaconPulse = beaconPulse,
-                            zoom = mapZoom,
-                            offset = mapOffset,
+                            hasLocationPermission = hasLocationPermission,
+                            selectedRadius = selectedRadius,
                             selectedSpot = selectedSpot,
-                            onOffsetChange = { mapOffset += it },
-                            onSpotSelect = { selectedSpot = it }
+                            onSpotSelect = { selectedSpot = it },
+                            onSpotClick = onSpotClick,
+                            modifier = Modifier.fillMaxSize()
                         )
-
-                        // Top GPS Telemetry Pill
-                        Row(
-                            modifier = Modifier
-                                .align(Alignment.TopStart)
-                                .padding(12.dp)
-                                .clip(RoundedCornerShape(999.dp))
-                                .background(Color(0xFF080B1E).copy(alpha = 0.85f))
-                                .border(1.dp, BrandTeal.copy(alpha = 0.35f), RoundedCornerShape(999.dp))
-                                .padding(horizontal = 10.dp, vertical = 5.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(7.dp)
-                                    .clip(CircleShape)
-                                    .background(if (isLiveGps) BrandTeal else Color(0xFFFBBF24))
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = if (isLiveGps) {
-                                    String.format(Locale.US, "GPS: %.4f° N, %.4f° W (±%dm)", userLat, userLng, userAccuracy.toInt())
-                                } else {
-                                    "Lisbon GPS • Alfama Fixed Center"
-                                },
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                color = Color.White,
-                                fontSize = 11.sp
-                            )
-                        }
-
-                        // Map Control Floating Buttons (Center on Me, Zoom In, Zoom Out)
-                        Column(
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            // Center on Me
-                            Box(
-                                modifier = Modifier
-                                    .size(38.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(0xFF080B1E).copy(alpha = 0.85f))
-                                    .border(1.dp, BrandTeal.copy(alpha = 0.4f), CircleShape)
-                                    .clickable {
-                                        mapOffset = Offset.Zero
-                                        mapZoom = 1.0f
-                                    }
-                                    .testTag("center_on_me_button"),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.MyLocation,
-                                    contentDescription = "Center on Me",
-                                    tint = BrandTeal,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-
-                            // Zoom In
-                            Box(
-                                modifier = Modifier
-                                    .size(38.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(0xFF080B1E).copy(alpha = 0.85f))
-                                    .border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape)
-                                    .clickable { mapZoom = (mapZoom * 1.25f).coerceAtMost(3.0f) }
-                                    .testTag("zoom_in_button"),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Add,
-                                    contentDescription = "Zoom In",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-
-                            // Zoom Out
-                            Box(
-                                modifier = Modifier
-                                    .size(38.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(0xFF080B1E).copy(alpha = 0.85f))
-                                    .border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape)
-                                    .clickable { mapZoom = (mapZoom / 1.25f).coerceAtLeast(0.6f) }
-                                    .testTag("zoom_out_button"),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Remove,
-                                    contentDescription = "Zoom Out",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                        }
-
-                        // Bottom Floating Preview of Selected Spot
-                        selectedSpot?.let { spot ->
-                            val distStr = spot.computedDistanceString(userLat, userLng)
-                            val walkMins = spot.computedWalkMinutes(userLat, userLng)
-
-                            Surface(
-                                shape = RoundedCornerShape(18.dp),
-                                color = SurfaceContainerLowest.copy(alpha = 0.96f),
-                                shadowElevation = 12.dp,
-                                modifier = Modifier
-                                    .align(Alignment.BottomCenter)
-                                    .padding(10.dp)
-                                    .fillMaxWidth()
-                                    .clickable { onSpotClick(spot) }
-                                    .testTag("selected_map_spot_card")
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(10.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    AsyncImage(
-                                        model = spot.imageUrl,
-                                        contentDescription = spot.title,
-                                        contentScale = ContentScale.Crop,
-                                        modifier = Modifier
-                                            .size(54.dp)
-                                            .clip(RoundedCornerShape(12.dp))
-                                    )
-
-                                    Spacer(modifier = Modifier.width(10.dp))
-
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = spot.title,
-                                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                            color = MaterialTheme.colorScheme.onSurface,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            modifier = Modifier.padding(top = 2.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.AutoMirrored.Filled.DirectionsWalk,
-                                                contentDescription = null,
-                                                tint = Secondary,
-                                                modifier = Modifier.size(13.dp)
-                                            )
-                                            Spacer(modifier = Modifier.width(3.dp))
-                                            Text(
-                                                text = "$distStr • $walkMins min walk",
-                                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                                color = Secondary
-                                            )
-                                        }
-                                    }
-
-                                    Spacer(modifier = Modifier.width(8.dp))
-
-                                    Button(
-                                        onClick = { onSpotClick(spot) },
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = PrimaryContainer,
-                                            contentColor = Color.White
-                                        ),
-                                        shape = RoundedCornerShape(999.dp),
-                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                                        modifier = Modifier.testTag("map_spot_scout_button")
-                                    ) {
-                                        Text("Scout", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
-                                    }
-                                }
-                            }
-                        }
                     } else {
                         // High-Tech Radar View
                         RadarSweepView(
