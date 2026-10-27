@@ -88,6 +88,8 @@ fun MapCanvasView(
     onZoomOut: () -> Unit = {},
     onSetZoomPreset: (ZoomPreset) -> Unit = {},
     onResetZoom: () -> Unit = {},
+    activeTrail: com.example.engine.OfflineWalkingTrail? = null,
+    onPlanTrailClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var panOffset by remember { mutableStateOf(Offset.Zero) }
@@ -228,6 +230,48 @@ fun MapCanvasView(
                 color = Color(0xFF1E2842),
                 style = Stroke(width = 3f * activeZoomScale)
             )
+
+            // 4b. Active Offline Walking Trail Polyline
+            activeTrail?.let { trail ->
+                if (trail.pathPoints.size >= 2) {
+                    val trailPath = Path()
+                    var first = true
+
+                    trail.pathPoints.forEach { pt ->
+                        val pos = ScoutVectorEngine.projectGpsToCanvasOffset(
+                            spotLat = pt.first,
+                            spotLng = pt.second,
+                            userLat = userLat,
+                            userLng = userLng,
+                            canvasCenter = center,
+                            zoomScale = activeZoomScale,
+                            baseScale = baseScale
+                        )
+                        if (first) {
+                            trailPath.moveTo(pos.x, pos.y)
+                            first = false
+                        } else {
+                            trailPath.lineTo(pos.x, pos.y)
+                        }
+                    }
+
+                    // Outer glowing path halo
+                    drawPath(
+                        path = trailPath,
+                        color = BrandCoral.copy(alpha = 0.45f),
+                        style = Stroke(width = 10f * activeZoomScale.coerceIn(0.8f, 1.5f))
+                    )
+                    // Inner dashed coral walking path line
+                    drawPath(
+                        path = trailPath,
+                        color = BrandCoral,
+                        style = Stroke(
+                            width = 4f * activeZoomScale.coerceIn(0.8f, 1.5f),
+                            pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(18f, 12f), 0f)
+                        )
+                    )
+                }
+            }
 
             // 5. User GPS Accuracy Ring & Beacon
             val accuracyRadius = (userAccuracy * 2.2f * activeZoomScale).coerceIn(18f, 100f)
@@ -499,6 +543,8 @@ fun MapCanvasView(
     onZoomOut: () -> Unit = {},
     onSetZoomPreset: (ZoomPreset) -> Unit = {},
     onResetZoom: () -> Unit = {},
+    activeTrail: com.example.engine.OfflineWalkingTrail? = null,
+    onPlanTrailClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val gems = remember(spots, userLat, userLng) {
@@ -523,6 +569,8 @@ fun MapCanvasView(
         onZoomOut = onZoomOut,
         onSetZoomPreset = onSetZoomPreset,
         onResetZoom = onResetZoom,
+        activeTrail = activeTrail,
+        onPlanTrailClick = onPlanTrailClick,
         modifier = modifier
     )
 }

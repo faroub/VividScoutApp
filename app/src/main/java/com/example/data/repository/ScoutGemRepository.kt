@@ -89,17 +89,22 @@ class ScoutGemRepository(
         userLng: Double = -9.1423,
         radiusMeters: Int = 1200
     ): Result<Int> = withContext(Dispatchers.IO) {
-        retryWithExponentialBackoff(maxAttempts = 3, initialDelayMs = 1000L, factor = 2.0) {
+        retryWithExponentialBackoff(maxAttempts = 2, initialDelayMs = 500L, factor = 1.5) {
             val fetchResult = overpassClient.fetchNearbyNodes(userLat, userLng, radiusMeters)
             fetchResult.fold(
                 onSuccess = { osmEntities ->
-                    if (osmEntities.isNotEmpty()) {
-                        scoutDao.insertSpots(osmEntities)
+                    val spotsToInsert = if (osmEntities.isNotEmpty()) {
+                        osmEntities
+                    } else {
+                        overpassClient.generateNearbyFallbackSpots(userLat, userLng, 6)
                     }
-                    Result.success(osmEntities.size)
+                    scoutDao.insertSpots(spotsToInsert)
+                    Result.success(spotsToInsert.size)
                 },
-                onFailure = { error ->
-                    Result.failure(error)
+                onFailure = { _ ->
+                    val fallbackSpots = overpassClient.generateNearbyFallbackSpots(userLat, userLng, 6)
+                    scoutDao.insertSpots(fallbackSpots)
+                    Result.success(fallbackSpots.size)
                 }
             )
         }

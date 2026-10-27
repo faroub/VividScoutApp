@@ -72,6 +72,7 @@ fun SavedScreen(
     onToggleSave: (ScoutSpotEntity) -> Unit,
     onToggleDiscovered: (ScoutSpotEntity) -> Unit = {},
     onSpotClick: (ScoutSpotEntity) -> Unit,
+    onPlanWalkingTrail: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val strings = LocalAppStrings.current
@@ -226,7 +227,7 @@ fun SavedScreen(
         if (selectedTab == 0 && savedSpots.isNotEmpty()) {
             item {
                 Button(
-                    onClick = {},
+                    onClick = onPlanWalkingTrail,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = Secondary,
                         contentColor = Color.White

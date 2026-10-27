@@ -1,6 +1,7 @@
 package com.example.data.offline
 
 import android.content.Context
+import android.content.Intent
 import android.util.Log
 import com.example.data.repository.ScoutGemRepository
 import kotlinx.coroutines.Dispatchers
@@ -210,8 +211,39 @@ class OfflineMapManager(
     }
 
     private fun updateProgress(packId: String, progress: Int) {
+        val pack = _packsState.value.find { it.id == packId }
         _packsState.value = _packsState.value.map {
             if (it.id == packId) it.copy(downloadProgress = progress) else it
+        }
+
+        // Post notification progress update if service is running
+        try {
+            val cityName = pack?.cityName ?: "Vector Map"
+            val intent = Intent(context, com.example.MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            val pendingIntent = android.app.PendingIntent.getActivity(
+                context,
+                0,
+                intent,
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+            )
+            val notification = androidx.core.app.NotificationCompat.Builder(
+                context,
+                OfflineMapDownloadService.CHANNEL_ID
+            )
+                .setContentTitle("Downloading $cityName Vector Map")
+                .setContentText("$progress% completed")
+                .setSmallIcon(com.example.R.mipmap.ic_launcher)
+                .setProgress(100, progress, false)
+                .setOngoing(true)
+                .setPriority(androidx.core.app.NotificationCompat.PRIORITY_LOW)
+                .setContentIntent(pendingIntent)
+                .build()
+
+            androidx.core.app.NotificationManagerCompat.from(context)
+                .notify(OfflineMapDownloadService.NOTIFICATION_ID, notification)
+        } catch (_: Exception) {
         }
     }
 }

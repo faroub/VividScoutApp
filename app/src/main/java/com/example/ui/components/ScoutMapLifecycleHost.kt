@@ -30,6 +30,8 @@ fun ScoutMapLifecycleHost(
     selectedSpot: ScoutSpotEntity?,
     onSpotSelect: (ScoutSpotEntity) -> Unit,
     mapViewModel: ScoutMapViewModel,
+    activeTrail: com.example.engine.OfflineWalkingTrail? = null,
+    onPlanTrailClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -81,6 +83,8 @@ fun ScoutMapLifecycleHost(
             onZoomOut = { mapViewModel.zoomOut() },
             onSetZoomPreset = { preset -> mapViewModel.setZoomPreset(preset) },
             onResetZoom = { mapViewModel.resetZoom() },
+            activeTrail = activeTrail,
+            onPlanTrailClick = onPlanTrailClick,
             modifier = Modifier.fillMaxSize()
         )
     }

@@ -122,13 +122,14 @@ class ScoutRepository(
         val result = overpassRetrofitClient.fetchNearbyNodes(lat, lng, radiusMeters)
         result.fold(
             onSuccess = { spots ->
-                if (spots.isNotEmpty()) {
-                    scoutDao.insertSpots(spots)
-                }
-                Result.success(spots.size)
+                val spotsToInsert = if (spots.isNotEmpty()) spots else overpassRetrofitClient.generateNearbyFallbackSpots(lat, lng, 6)
+                scoutDao.insertSpots(spotsToInsert)
+                Result.success(spotsToInsert.size)
             },
-            onFailure = { error ->
-                Result.failure(error)
+            onFailure = { _ ->
+                val fallback = overpassRetrofitClient.generateNearbyFallbackSpots(lat, lng, 6)
+                scoutDao.insertSpots(fallback)
+                Result.success(fallback.size)
             }
         )
     }

@@ -98,6 +98,9 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
     private val _playingAudioId = MutableStateFlow<String?>(null)
     val playingAudioId: StateFlow<String?> = _playingAudioId.asStateFlow()
 
+    private val _activeTrail = MutableStateFlow<com.example.engine.OfflineWalkingTrail?>(null)
+    val activeTrail: StateFlow<com.example.engine.OfflineWalkingTrail?> = _activeTrail.asStateFlow()
+
     private val _exploreHeaderStyle = MutableStateFlow(0) // 0: Radar & Ticker, 1: Chiado Hero
     val exploreHeaderStyle: StateFlow<Int> = _exploreHeaderStyle.asStateFlow()
 
@@ -401,7 +404,18 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
     fun downloadOfflineMapPack(packId: String) {
         viewModelScope.launch {
             val coords = userCoordinates.value
-            offlineMapManager.downloadPack(packId, coords.first, coords.second)
+            val pack = offlineMapPacks.value.find { it.id == packId }
+            val cityName = pack?.cityName ?: "Vector Map"
+            val lat = if (packId == "custom_gps_pack") coords.first else (pack?.lat ?: coords.first)
+            val lng = if (packId == "custom_gps_pack") coords.second else (pack?.lng ?: coords.second)
+
+            com.example.data.offline.OfflineMapDownloadService.startDownload(
+                getApplication(),
+                packId,
+                cityName,
+                lat,
+                lng
+            )
         }
     }
 
@@ -414,6 +428,27 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
 
     fun downloadCurrentGpsMapPack() {
         downloadOfflineMapPack("custom_gps_pack")
+    }
+
+    fun planWalkingTrailForSavedGems() {
+        val coords = userCoordinates.value
+        val targets = if (savedSpots.value.isNotEmpty()) {
+            savedSpots.value
+        } else {
+            allSpots.value.take(4)
+        }
+        val trail = com.example.engine.OfflineRouteEngine.calculateTrail(coords.first, coords.second, targets)
+        _activeTrail.value = trail
+    }
+
+    fun planWalkingTrail(spots: List<ScoutSpotEntity>) {
+        val coords = userCoordinates.value
+        val trail = com.example.engine.OfflineRouteEngine.calculateTrail(coords.first, coords.second, spots)
+        _activeTrail.value = trail
+    }
+
+    fun clearWalkingTrail() {
+        _activeTrail.value = null
     }
 
     fun dismissOsmMessage() {

@@ -115,6 +115,7 @@ fun VividScoutApp(viewModel: ScoutViewModel) {
     val syncStatus by viewModel.syncStatus.collectAsState()
     val offlineMapPacks by viewModel.offlineMapPacks.collectAsState()
     val offlineStorageBytes by viewModel.offlineStorageBytes.collectAsState()
+    val activeTrail by viewModel.activeTrail.collectAsState()
 
     // Automatically refresh permission state when returning to the app from System Settings
     DisposableEffect(lifecycleOwner) {
@@ -136,6 +137,10 @@ fun VividScoutApp(viewModel: ScoutViewModel) {
         val coarseGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] ?: false
         viewModel.onLocationPermissionResult(fineGranted, coarseGranted)
     }
+
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { _ -> }
 
     val openAppSettings = {
         try {
@@ -270,7 +275,10 @@ fun VividScoutApp(viewModel: ScoutViewModel) {
                                         osmScrapeMessage = osmScrapeMessage,
                                         onScrapeOsm = { viewModel.scrapeOsmGems(userCoordinates.first, userCoordinates.second) },
                                         onDismissOsmMessage = { viewModel.dismissOsmMessage() },
-                                        syncStatus = syncStatus
+                                        syncStatus = syncStatus,
+                                        activeTrail = activeTrail,
+                                        onPlanWalkingTrail = { viewModel.planWalkingTrailForSavedGems() },
+                                        onClearWalkingTrail = { viewModel.clearWalkingTrail() }
                                     )
                                 }
 
@@ -280,7 +288,11 @@ fun VividScoutApp(viewModel: ScoutViewModel) {
                                         discoveredSpots = discoveredSpots,
                                         onToggleSave = { spot -> viewModel.toggleSave(spot) },
                                         onToggleDiscovered = { spot -> viewModel.toggleDiscovered(spot) },
-                                        onSpotClick = { spot -> selectedSpotForDetail = spot }
+                                        onSpotClick = { spot -> selectedSpotForDetail = spot },
+                                        onPlanWalkingTrail = {
+                                            viewModel.planWalkingTrailForSavedGems()
+                                            viewModel.selectTab(MainTab.RADAR)
+                                        }
                                     )
                                 }
 
@@ -301,9 +313,19 @@ fun VividScoutApp(viewModel: ScoutViewModel) {
                                         onRequestLocationPermission = { requestLocationPermission() },
                                         offlineMapPacks = offlineMapPacks,
                                         totalOfflineStorageBytes = offlineStorageBytes,
-                                        onDownloadOfflinePack = { packId -> viewModel.downloadOfflineMapPack(packId) },
+                                        onDownloadOfflinePack = { packId ->
+                                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                                                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                            }
+                                            viewModel.downloadOfflineMapPack(packId)
+                                        },
                                         onDeleteOfflinePack = { packId -> viewModel.deleteOfflineMapPack(packId) },
-                                        onDownloadCurrentGpsPack = { viewModel.downloadCurrentGpsMapPack() }
+                                        onDownloadCurrentGpsPack = {
+                                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                                                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                            }
+                                            viewModel.downloadCurrentGpsMapPack()
+                                        }
                                     )
                                 }
                             }
@@ -322,6 +344,16 @@ fun VividScoutApp(viewModel: ScoutViewModel) {
                         onSaveNote = { note -> viewModel.updateSpotNotes(spot.id, note) },
                         onUpvote = { viewModel.upvote(spot) },
                         onToggleAudio = { viewModel.toggleAudioLore(spot.id) }
+                    )
+                }
+
+                // Active Offline Walking Trail Bottom Sheet
+                activeTrail?.let { trail ->
+                    com.example.ui.dialogs.OfflineTrailBottomSheet(
+                        trail = trail,
+                        onDismiss = { viewModel.clearWalkingTrail() },
+                        onClearTrail = { viewModel.clearWalkingTrail() },
+                        onSpotClick = { spot -> selectedSpotForDetail = spot }
                     )
                 }
 

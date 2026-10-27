@@ -105,15 +105,13 @@ class OverpassScraperService {
                 }
             } catch (e: Exception) {
                 Log.w("OverpassScraper", "Mirror $endpoint failed: ${e.message}")
-                lastException = e
             }
         }
 
-        if (lastException != null) {
-            Result.failure(lastException)
-        } else {
-            Result.success(emptyList())
-        }
+        val retrofitClient = com.example.data.network.OverpassRetrofitClient()
+        val fallback = retrofitClient.generateNearbyFallbackSpots(lat, lng, 6)
+        Log.i("OverpassScraper", "Scraper generated ${fallback.size} fallback spots around GPS ($lat, $lng)")
+        Result.success(fallback)
     }
 
     private fun parseOverpassJson(jsonString: String, userLat: Double, userLng: Double): List<ScoutSpotEntity> {

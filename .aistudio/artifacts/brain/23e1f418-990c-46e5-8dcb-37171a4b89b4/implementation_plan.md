@@ -1,46 +1,45 @@
-# Implementation Plan - Offline Vector Map Packs in Settings
+# Implementation Plan - Overpass API Diagnostic Mode & JSON Inspector
 
-Allow users to download vector map packs for specific cities or custom GPS regions into internal storage (`context.filesDir`), displaying progress bars, storage size indicators, and pack management options in settings.
+Add a diagnostic inspection tool to analyze Overpass QL query results, view raw JSON responses from OSM mirrors, examine entity mapping success rates, copy raw logs, and manually test query execution.
 
-## User Requirements & Clarifications
-- **Available Regions:** Preset popular cities (Lisbon & Cascais, Dresden & Saxony, Berlin, Paris) plus a custom "Current GPS City" download option.
-- **UI Components:** Offline map packs manager in Settings showing download progress bar (`0-100%`), formatted file size indicator (e.g., `4.2 MB`), and a delete pack action.
-- **Storage & Engine:** Offline map packs saved in internal storage (`context.filesDir/offline_map_packs/`), supplying vector geometry and offline gems to `ScoutVectorEngine` and `ScoutGemRepository` without requiring internet connectivity.
+## Proposed Changes
 
----
+### Data & Network Layer
+- **`OverpassRetrofitClient.kt`**:
+  - Add `OverpassDiagnosticLog` data class holding:
+    - Mirror URL used
+    - HTTP status code & execution duration (ms)
+    - Full raw JSON response payload string
+    - Total raw `elements` array count
+    - Count of parsed `ScoutSpotEntity` objects mapped to Room DB
+    - Mapping error details (if any)
+  - Retain the latest diagnostic log state in `OverpassRetrofitClient` so UI can inspect the exact payload returned by OpenStreetMap.
+  - Add `fetchDiagnosticLog(lat, lng, radiusMeters)` to capture raw JSON string and telemetry without mutating main app state.
 
-## Technical Architecture & Design
+### Repository & ViewModel Layer
+- **`ScoutGemRepository.kt`**:
+  - Expose `lastDiagnosticLog: StateFlow<OverpassDiagnosticLog?>` and `runDiagnosticQuery(lat, lng)`.
+- **`ScoutViewModel.kt`**:
+  - Add `_showDiagnosticDialog: MutableStateFlow<Boolean>` and `_diagnosticLog: MutableStateFlow<OverpassDiagnosticLog?>`.
+  - Expose `openDiagnosticDialog()`, `closeDiagnosticDialog()`, `copyDiagnosticLogToClipboard()`, and `executeDiagnosticQuery()`.
 
-### 1. Data Model & Storage (`com.example.data.offline`)
-- **`OfflineMapPack` Model:**
-  - `id: String` (e.g. `dresden_saxony`, `current_gps`)
-  - `cityName: String`
-  - `country: String`
-  - `lat: Double`, `lng: Double`
-  - `radiusMeters: Double`
-  - `fileSizeBytes: Long`
-  - `isDownloaded: Boolean`
-  - `downloadProgress: Int` (0..100)
-  - `downloadedAt: Long`
-- **`OfflineMapManager`:**
-  - Singleton/Repository managing local pack files in `context.filesDir/offline_map_packs/`.
-  - Downloads vector map geometry and OSM gems via Overpass QL with chunked progress callbacks.
-  - Exposes `packs: StateFlow<List<OfflineMapPack>>` and total storage usage helper.
-  - Delete function removes pack files from `context.filesDir` and resets pack state.
-
-### 2. Settings UI (`com.example.ui.settings`)
-- **`OfflineMapPacksSection` Composable:**
-  - City selection list with preset cards and "Current GPS City".
-  - Status indicators: Downloaded badge, file size (e.g., `3.5 MB`), download progress bar (`LinearProgressIndicator`), and download/delete action buttons.
-  - Integrates smoothly into the main settings menu/dialog.
-
-### 3. Vector Engine & Repository Integration
-- **`ScoutGemRepository` & `ScoutVectorEngine` Integration:**
-  - When offline or panning over an offline region, automatically load cached vector features and gems from saved JSON files in `context.filesDir/offline_map_packs/`.
-
----
+### UI Layer
+- **`OverpassDiagnosticDialog.kt`** (New Composable):
+  - Material 3 Dialog styled with dark code surface for raw JSON payload.
+  - Displays mirror endpoint URL, response timing (ms), raw elements count vs mapped Room spots.
+  - Includes a "Copy Raw JSON" button using Android `ClipboardManager`.
+  - Includes a "Run Test Query" action button to execute real-time Overpass diagnostic fetch for user's current GPS coordinates.
+- **UI Triggers**:
+  - Add "Overpass API Diagnostics" button in `Settings` screen.
+  - Add diagnostic trigger icon on `OfflineSyncStatus` card in Explore tab.
 
 ## Verification Plan
 
-1. **Compilation Verification:** Run `compile_applet` to ensure zero compilation errors.
-2. **Unit & Integration Testing:** Run `gradle :app:testDebugUnitTest` to test pack file creation, size calculation, progress callbacks, and deletion.
+### Automated Tests
+- Add unit test to `OverpassRetrofitClientTest.kt` verifying `OverpassDiagnosticLog` accurately counts elements and captures raw JSON string.
+- Execute unit test suite: `gradle :app:testDebugUnitTest`.
+
+### Manual Verification
+- Compile app via `compile_applet`.
+- Open settings or sync status badge to trigger Diagnostic Mode.
+- Verify raw JSON is displayed with copy action and manual re-query works cleanly.

@@ -128,6 +128,9 @@ fun RadarScreen(
     onScrapeOsm: () -> Unit = {},
     onDismissOsmMessage: () -> Unit = {},
     syncStatus: com.example.ui.components.OfflineSyncStatus = com.example.ui.components.OfflineSyncStatus(),
+    activeTrail: com.example.engine.OfflineWalkingTrail? = null,
+    onPlanWalkingTrail: () -> Unit = {},
+    onClearWalkingTrail: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var viewMode by remember { mutableStateOf(RadarViewMode.MAP) }
@@ -411,6 +414,8 @@ fun RadarScreen(
                             onScrapeOsm = onScrapeOsm,
                             onDismissOsmMessage = onDismissOsmMessage,
                             syncStatus = syncStatus,
+                            activeTrail = activeTrail,
+                            onPlanTrailClick = onPlanWalkingTrail,
                             modifier = Modifier.fillMaxSize()
                         )
                     } else {

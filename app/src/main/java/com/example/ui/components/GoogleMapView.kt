@@ -103,6 +103,8 @@ fun ScoutMapView(
     onDismissOsmMessage: () -> Unit = {},
     syncStatus: OfflineSyncStatus = OfflineSyncStatus(totalLocalGems = spots.size),
     mapViewModel: ScoutMapViewModel = viewModel(),
+    activeTrail: com.example.engine.OfflineWalkingTrail? = null,
+    onPlanTrailClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val strings = LocalAppStrings.current
@@ -178,6 +180,8 @@ fun ScoutMapView(
             selectedSpot = selectedSpot,
             onSpotSelect = onSpotSelect,
             mapViewModel = mapViewModel,
+            activeTrail = activeTrail,
+            onPlanTrailClick = onPlanTrailClick,
             modifier = Modifier.fillMaxSize()
         )
 
