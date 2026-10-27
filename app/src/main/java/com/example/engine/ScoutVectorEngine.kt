@@ -41,6 +41,27 @@ object ScoutVectorEngine {
     }
 
     /**
+     * Called when the map canvas lifecycle enters ON_START.
+     */
+    fun onStart() {
+        Log.i(TAG, "Scout Vector Engine started: telemetry rendering active.")
+    }
+
+    /**
+     * Called when the map canvas lifecycle enters ON_STOP.
+     */
+    fun onStop() {
+        Log.i(TAG, "Scout Vector Engine stopped: telemetry rendering paused.")
+    }
+
+    /**
+     * Called when the map canvas lifecycle enters ON_DESTROY.
+     */
+    fun onDestroy() {
+        Log.i(TAG, "Scout Vector Engine destroyed: resources released.")
+    }
+
+    /**
      * Projects GPS coordinates (lat, lng) relative to user coordinates into vector canvas screen offset.
      */
     fun projectGpsToCanvasOffset(

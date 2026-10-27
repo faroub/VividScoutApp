@@ -57,6 +57,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.ui.viewmodel.ScoutMapViewModel
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
@@ -99,6 +101,7 @@ fun ScoutMapView(
     osmScrapeMessage: String? = null,
     onScrapeOsm: () -> Unit = {},
     onDismissOsmMessage: () -> Unit = {},
+    mapViewModel: ScoutMapViewModel = viewModel(),
     modifier: Modifier = Modifier
 ) {
     val strings = LocalAppStrings.current
@@ -165,14 +168,15 @@ fun ScoutMapView(
             .fillMaxSize()
             .testTag("scout_vector_map_container")
     ) {
-        // 1. Interactive Offline Vector Map Canvas (Lisbon grid, Tagus river, GPS beacon, Room pins)
-        MapCanvasView(
+        // 1. Dedicated Lifecycle-Aware Scout Vector Map Host
+        ScoutMapLifecycleHost(
             spots = displayedSpots,
             userLat = userLat,
             userLng = userLng,
             userAccuracy = userAccuracy,
             selectedSpot = selectedSpot,
             onSpotSelect = onSpotSelect,
+            mapViewModel = mapViewModel,
             modifier = Modifier.fillMaxSize()
         )
 

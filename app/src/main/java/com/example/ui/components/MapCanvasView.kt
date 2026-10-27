@@ -41,28 +41,31 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.example.data.local.ScoutSpotEntity
+import com.example.data.model.ScoutGem
+import com.example.data.model.toEntity
+import com.example.data.model.toScoutGem
 import com.example.engine.ScoutVectorEngine
 import com.example.ui.theme.BrandCoral
 import com.example.ui.theme.BrandTeal
 import kotlin.math.hypot
 
 /**
- * Interactive Offline Vector Map Canvas.
- * Provides a fluid, zero-dependency stylized vector map of Lisbon with:
+ * Interactive Offline Vector Map Canvas for ScoutGem locations.
+ * Renders fluid vector geometry of Lisbon with:
  * - Real GPS user beacon with pulsing accuracy halo
  * - Tagus River (Rio Tejo) water contour
  * - Street network grid
- * - Interactive gem pins with category coloring, saved hearts, and tap detection
+ * - Interactive ScoutGem pins with category badges, saved hearts, and tap gesture selection
  * - Smooth pan, pinch-zoom, and floating zoom/center controls
  */
 @Composable
 fun MapCanvasView(
-    spots: List<ScoutSpotEntity>,
+    gems: List<ScoutGem>,
     userLat: Double,
     userLng: Double,
     userAccuracy: Float,
-    selectedSpot: ScoutSpotEntity?,
-    onSpotSelect: (ScoutSpotEntity) -> Unit,
+    selectedGem: ScoutGem?,
+    onGemSelect: (ScoutGem) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var panOffset by remember { mutableStateOf(Offset.Zero) }
@@ -92,20 +95,20 @@ fun MapCanvasView(
                     zoomScale = (zoomScale * zoomChange).coerceIn(0.4f, 4.0f)
                 }
             }
-            .pointerInput(spots, panOffset, zoomScale, userLat, userLng) {
+            .pointerInput(gems, panOffset, zoomScale, userLat, userLng) {
                 detectTapGestures { tapPos ->
                     // Calculate pin screen positions and find tapped gem
                     val currentCenter = Offset(
                         size.width / 2f + panOffset.x,
                         size.height / 2f + panOffset.y
                     )
-                    var closestSpot: ScoutSpotEntity? = null
+                    var closestGem: ScoutGem? = null
                     var minDistance = Float.MAX_VALUE
 
-                    spots.forEach { spot ->
+                    gems.forEach { gem ->
                         val pinPos = ScoutVectorEngine.projectGpsToCanvasOffset(
-                            spotLat = spot.latitude,
-                            spotLng = spot.longitude,
+                            spotLat = gem.latitude,
+                            spotLng = gem.longitude,
                             userLat = userLat,
                             userLng = userLng,
                             canvasCenter = currentCenter,
@@ -116,11 +119,11 @@ fun MapCanvasView(
                         val dist = hypot(tapPos.x - pinPos.x, tapPos.y - pinPos.y)
                         if (dist < 48f && dist < minDistance) {
                             minDistance = dist
-                            closestSpot = spot
+                            closestGem = gem
                         }
                     }
 
-                    closestSpot?.let { onSpotSelect(it) }
+                    closestGem?.let { onGemSelect(it) }
                 }
             }
     ) {
@@ -234,10 +237,10 @@ fun MapCanvasView(
             drawPath(path = headingPath, color = BrandTeal)
 
             // 6. Draw Hidden Gem Pins
-            spots.forEach { spot ->
+            gems.forEach { gem ->
                 val pinPos = ScoutVectorEngine.projectGpsToCanvasOffset(
-                    spotLat = spot.latitude,
-                    spotLng = spot.longitude,
+                    spotLat = gem.latitude,
+                    spotLng = gem.longitude,
                     userLat = userLat,
                     userLng = userLng,
                     canvasCenter = center,
@@ -247,13 +250,13 @@ fun MapCanvasView(
                 val pinX = pinPos.x
                 val pinY = pinPos.y
 
-                val isSelected = selectedSpot?.id == spot.id
+                val isSelected = selectedGem?.id == gem.id
                 val pinColor = when {
-                    spot.isSaved -> BrandCoral
-                    spot.isDiscovered -> Color(0xFFEAB308) // Discovered gold
-                    spot.category == "eats" -> Color(0xFFFB7185)
-                    spot.category == "history" -> Color(0xFFA855F7)
-                    spot.category == "sights" -> Color(0xFF2DD4BF)
+                    gem.isSaved -> BrandCoral
+                    gem.isDiscovered -> Color(0xFFEAB308) // Discovered gold
+                    gem.category == "eats" -> Color(0xFFFB7185)
+                    gem.category == "history" -> Color(0xFFA855F7)
+                    gem.category == "sights" -> Color(0xFF2DD4BF)
                     else -> Color(0xFF38BDF8)
                 }
 
@@ -295,7 +298,7 @@ fun MapCanvasView(
                 )
 
                 // Center Dot (White for saved/discovered)
-                if (spot.isSaved || spot.isDiscovered) {
+                if (gem.isSaved || gem.isDiscovered) {
                     drawCircle(
                         color = Color.White,
                         radius = 3.5f * zoomScale.coerceIn(0.8f, 1.2f),
@@ -370,4 +373,37 @@ fun MapCanvasView(
             }
         }
     }
+}
+
+/**
+ * Backward-compatible overload for ScoutSpotEntity list.
+ */
+@Composable
+fun MapCanvasView(
+    spots: List<ScoutSpotEntity>,
+    userLat: Double,
+    userLng: Double,
+    userAccuracy: Float,
+    selectedSpot: ScoutSpotEntity?,
+    onSpotSelect: (ScoutSpotEntity) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val gems = remember(spots, userLat, userLng) {
+        spots.map { it.toScoutGem(userLat, userLng) }
+    }
+    val selectedGem = remember(selectedSpot, userLat, userLng) {
+        selectedSpot?.toScoutGem(userLat, userLng)
+    }
+
+    MapCanvasView(
+        gems = gems,
+        userLat = userLat,
+        userLng = userLng,
+        userAccuracy = userAccuracy,
+        selectedGem = selectedGem,
+        onGemSelect = { gem ->
+            onSpotSelect(gem.toEntity())
+        },
+        modifier = modifier
+    )
 }

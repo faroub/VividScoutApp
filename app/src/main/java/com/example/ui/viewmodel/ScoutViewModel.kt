@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.data.local.AppDatabase
 import com.example.data.local.ScoutSpotEntity
 import com.example.data.repository.ScoutRepository
+import com.example.data.repository.ScoutGemRepository
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -34,11 +35,13 @@ sealed class AppScreen {
 class ScoutViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository: ScoutRepository
+    val gemRepository: ScoutGemRepository
     val locationTracker = LocationTracker(application)
 
     init {
         val db = AppDatabase.getDatabase(application)
         repository = ScoutRepository(db.scoutDao(), db.discoveredGemDao())
+        gemRepository = ScoutGemRepository(db.scoutDao(), db.discoveredGemDao())
         viewModelScope.launch {
             repository.initializeIfEmpty()
         }
@@ -332,7 +335,7 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _isScrapingOsm.value = true
             _osmScrapeMessage.value = "Scraping viewpoints, bakeries & shortcuts from OpenStreetMap..."
-            val result = repository.scrapeAndSaveOsmGems(lat, lng, radiusMeters)
+            val result = gemRepository.syncLiveOsmGems(lat, lng, radiusMeters)
             result.fold(
                 onSuccess = { count ->
                     _osmScrapeMessage.value = if (count > 0) {
