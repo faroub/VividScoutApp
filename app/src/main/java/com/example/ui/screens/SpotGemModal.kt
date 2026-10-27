@@ -28,11 +28,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.AddAPhoto
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudOff
-import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.PinDrop
 import androidx.compose.material.icons.filled.RamenDining
 import androidx.compose.material.icons.filled.Route
@@ -428,7 +428,7 @@ fun SpotGemModal(
                             CategoryModalChip(
                                 title = strings.history,
                                 subtitle = "Ruins, Old Fado",
-                                icon = Icons.Default.MenuBook,
+                                icon = Icons.AutoMirrored.Filled.MenuBook,
                                 selected = selectedCategory == "history",
                                 selectedColor = Color(0xFF7C3AED),
                                 iconBgColor = Color(0xFFF3E8FF),

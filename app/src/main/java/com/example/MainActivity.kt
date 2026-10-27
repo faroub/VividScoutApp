@@ -52,6 +52,7 @@ import com.example.ui.screens.RadarScreen
 import com.example.ui.screens.SavedScreen
 import com.example.ui.screens.SpotGemModal
 import com.example.ui.theme.AppStrings
+import com.example.engine.ScoutVectorEngine
 import com.example.ui.theme.LocalAppLanguage
 import com.example.ui.theme.LocalAppStrings
 import com.example.ui.theme.VividScoutTheme
@@ -65,6 +66,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        // Initialize the Scout Vector Map Engine on app startup
+        ScoutVectorEngine.initialize(applicationContext)
 
         setContent {
             val currentScreen by viewModel.currentScreen.collectAsState()

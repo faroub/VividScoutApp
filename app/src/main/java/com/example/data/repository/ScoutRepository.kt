@@ -112,14 +112,14 @@ class ScoutRepository(
         discoveredGemDao?.markAsSynced(spot.id)
     }
 
-    private val overpassScraper = com.example.data.network.OverpassScraperService()
+    private val overpassRetrofitClient = com.example.data.network.OverpassRetrofitClient()
 
     suspend fun scrapeAndSaveOsmGems(
         lat: Double,
         lng: Double,
         radiusMeters: Int = 1500
     ): Result<Int> = withContext(Dispatchers.IO) {
-        val result = overpassScraper.scrapeNearbyGems(lat, lng, radiusMeters)
+        val result = overpassRetrofitClient.fetchNearbyNodes(lat, lng, radiusMeters)
         result.fold(
             onSuccess = { spots ->
                 if (spots.isNotEmpty()) {

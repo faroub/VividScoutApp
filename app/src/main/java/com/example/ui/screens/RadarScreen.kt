@@ -1,7 +1,7 @@
 package com.example.ui.screens
 
 import android.location.Location
-import com.example.ui.components.GoogleMapView
+import com.example.ui.components.ScoutMapView
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -393,8 +393,8 @@ fun RadarScreen(
             ) {
                 Box(modifier = Modifier.fillMaxSize()) {
                     if (viewMode == RadarViewMode.MAP) {
-                        // Google Maps Compose interactive view with user location and Room gems
-                        GoogleMapView(
+                        // Scout Vector Map interactive view with user location and Room gems
+                        ScoutMapView(
                             spots = sortedSpots,
                             userLat = userLat,
                             userLng = userLng,
@@ -709,163 +709,6 @@ fun RadarScreen(
     }
 }
 
-/**
- * Interactive Vector Map Canvas for Lisbon
- */
-@Composable
-fun MapCanvasView(
-    spots: List<ScoutSpotEntity>,
-    userLat: Double,
-    userLng: Double,
-    userAccuracy: Float,
-    beaconPulse: Float,
-    zoom: Float,
-    offset: Offset,
-    selectedSpot: ScoutSpotEntity?,
-    onOffsetChange: (Offset) -> Unit,
-    onSpotSelect: (ScoutSpotEntity) -> Unit
-) {
-    // Conversion factor from GPS lat/lng offset to canvas dp
-    // Around Lisbon (lat 38.7), 0.01 deg lat ~ 1110 meters; 0.01 deg lon ~ 870 meters.
-    val baseScale = 25000f
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .pointerInput(Unit) {
-                detectTransformGestures { _, pan, _, _ ->
-                    onOffsetChange(pan)
-                }
-            }
-            .testTag("map_canvas_container")
-    ) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val center = Offset(size.width / 2 + offset.x, size.height / 2 + offset.y)
-
-            // 1. Map Base / Dark Background Grid
-            drawRect(color = Color(0xFF0A0F24))
-
-            // Grid lines
-            val step = 40f * zoom
-            var x = (offset.x % step)
-            while (x < size.width) {
-                drawLine(
-                    color = Color.White.copy(alpha = 0.04f),
-                    start = Offset(x, 0f),
-                    end = Offset(x, size.height),
-                    strokeWidth = 1f
-                )
-                x += step
-            }
-            var y = (offset.y % step)
-            while (y < size.height) {
-                drawLine(
-                    color = Color.White.copy(alpha = 0.04f),
-                    start = Offset(0f, y),
-                    end = Offset(size.width, y),
-                    strokeWidth = 1f
-                )
-                y += step
-            }
-
-            // 2. Tagus River (Tejo) stylized blue water contour at South
-            val riverPath = Path().apply {
-                moveTo(-200f, size.height * 0.85f + offset.y * 0.3f)
-                cubicTo(
-                    size.width * 0.3f, size.height * 0.78f + offset.y * 0.3f,
-                    size.width * 0.7f, size.height * 0.88f + offset.y * 0.3f,
-                    size.width + 200f, size.height * 0.80f + offset.y * 0.3f
-                )
-                lineTo(size.width + 200f, size.height + 200f)
-                lineTo(-200f, size.height + 200f)
-                close()
-            }
-            drawPath(path = riverPath, color = Color(0xFF0F3254))
-
-            // 3. User Accuracy Halo Ring
-            val accuracyRadius = (userAccuracy * 2.5f * zoom).coerceIn(16f, 90f)
-            drawCircle(
-                color = BrandTeal.copy(alpha = 0.15f),
-                radius = accuracyRadius * beaconPulse,
-                center = center
-            )
-            drawCircle(
-                color = BrandTeal.copy(alpha = 0.35f),
-                radius = accuracyRadius,
-                center = center,
-                style = Stroke(width = 1.5f)
-            )
-
-            // 4. User GPS Marker (Center Blue/Teal Beacon)
-            drawCircle(
-                color = Color.White,
-                radius = 9f,
-                center = center
-            )
-            drawCircle(
-                color = BrandTeal,
-                radius = 7f,
-                center = center
-            )
-            // Heading indicator cone pointing north-northeast
-            drawPath(
-                path = Path().apply {
-                    moveTo(center.x, center.y - 18f)
-                    lineTo(center.x - 6f, center.y - 7f)
-                    lineTo(center.x + 6f, center.y - 7f)
-                    close()
-                },
-                color = BrandTeal
-            )
-
-            // 5. Plot Gem Pins
-            spots.forEach { spot ->
-                val dLng = (spot.longitude - userLng).toFloat()
-                val dLat = (spot.latitude - userLat).toFloat()
-
-                val pinX = center.x + (dLng * baseScale * zoom)
-                val pinY = center.y - (dLat * baseScale * zoom)
-
-                val isSelected = selectedSpot?.id == spot.id
-                val pinColor = when (spot.category) {
-                    "eats" -> BrandCoral
-                    "history" -> Color(0xFFC084FC)
-                    "sights" -> Color(0xFF10B981)
-                    else -> BrandTeal
-                }
-
-                // Selection glow if selected
-                if (isSelected) {
-                    drawCircle(
-                        color = pinColor.copy(alpha = 0.4f),
-                        radius = 24f,
-                        center = Offset(pinX, pinY)
-                    )
-                }
-
-                // Pin connector stem
-                drawLine(
-                    color = pinColor,
-                    start = Offset(pinX, pinY),
-                    end = Offset(pinX, pinY + 12f),
-                    strokeWidth = 2.5f
-                )
-
-                // Pin Head
-                drawCircle(
-                    color = Color.White,
-                    radius = 12f,
-                    center = Offset(pinX, pinY)
-                )
-                drawCircle(
-                    color = pinColor,
-                    radius = 9.5f,
-                    center = Offset(pinX, pinY)
-                )
-            }
-        }
-    }
-}
 
 /**
  * High-Tech Radar Sweep View
