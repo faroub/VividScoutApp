@@ -65,6 +65,8 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
+
 @Composable
 fun SavedScreen(
     savedSpots: List<ScoutSpotEntity>,
@@ -73,6 +75,7 @@ fun SavedScreen(
     onToggleDiscovered: (ScoutSpotEntity) -> Unit = {},
     onSpotClick: (ScoutSpotEntity) -> Unit,
     onPlanWalkingTrail: () -> Unit = {},
+    onPlanRouteToSpot: ((ScoutSpotEntity) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val strings = LocalAppStrings.current
@@ -360,6 +363,19 @@ fun SavedScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1
                             )
+                        }
+
+                        if (onPlanRouteToSpot != null) {
+                            IconButton(
+                                onClick = { onPlanRouteToSpot(spot) },
+                                modifier = Modifier.testTag("plan_route_to_spot_${spot.id}")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.DirectionsWalk,
+                                    contentDescription = "Plan walking route",
+                                    tint = BrandCoral
+                                )
+                            }
                         }
 
                         if (selectedTab == 0) {

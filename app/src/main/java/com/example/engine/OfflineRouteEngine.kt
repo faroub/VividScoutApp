@@ -13,7 +13,10 @@ data class OfflineWalkingTrail(
     val waypoints: List<ScoutSpotEntity>,
     val pathPoints: List<Pair<Double, Double>>,
     val totalDistanceMeters: Double,
-    val estimatedWalkingMinutes: Int
+    val estimatedWalkingMinutes: Int,
+    val steps: List<RouteStep> = emptyList(),
+    val originTitle: String = "Starting Point",
+    val destinationTitle: String = "Destination"
 ) {
     val formattedDistance: String
         get() = if (totalDistanceMeters >= 1000) {
@@ -108,7 +111,47 @@ object OfflineRouteEngine {
             waypoints = orderedWaypoints,
             pathPoints = pathPoints,
             totalDistanceMeters = totalDist,
-            estimatedWalkingMinutes = minutes
+            estimatedWalkingMinutes = minutes,
+            originTitle = "My Location",
+            destinationTitle = orderedWaypoints.lastOrNull()?.name ?: "Saved Gems Trail"
+        )
+    }
+
+    /**
+     * Calculates the shortest A* walking route between two cached locations or GPS positions,
+     * snapped to the vector road and pedestrian network.
+     */
+    fun calculateShortestAStarRoute(
+        originLat: Double,
+        originLng: Double,
+        destLat: Double,
+        destLng: Double,
+        originName: String = "Starting Point",
+        destName: String = "Destination",
+        originEntity: ScoutSpotEntity? = null,
+        destEntity: ScoutSpotEntity? = null
+    ): OfflineWalkingTrail {
+        val result = AStarPathfinder.findShortestPath(
+            startLat = originLat,
+            startLng = originLng,
+            destLat = destLat,
+            destLng = destLng,
+            startName = originName,
+            destName = destName
+        )
+
+        val waypoints = mutableListOf<ScoutSpotEntity>()
+        originEntity?.let { waypoints.add(it) }
+        destEntity?.let { waypoints.add(it) }
+
+        return OfflineWalkingTrail(
+            waypoints = waypoints,
+            pathPoints = result.pathPoints,
+            totalDistanceMeters = result.totalDistanceMeters,
+            estimatedWalkingMinutes = result.estimatedWalkingMinutes,
+            steps = result.steps,
+            originTitle = result.originName,
+            destinationTitle = result.destinationName
         )
     }
 }

@@ -101,6 +101,21 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
     private val _activeTrail = MutableStateFlow<com.example.engine.OfflineWalkingTrail?>(null)
     val activeTrail: StateFlow<com.example.engine.OfflineWalkingTrail?> = _activeTrail.asStateFlow()
 
+    private val _isRoutePlannerOpen = MutableStateFlow(false)
+    val isRoutePlannerOpen: StateFlow<Boolean> = _isRoutePlannerOpen.asStateFlow()
+
+    private val _routePlannerOrigin = MutableStateFlow<ScoutSpotEntity?>(null)
+    val routePlannerOrigin: StateFlow<ScoutSpotEntity?> = _routePlannerOrigin.asStateFlow()
+
+    private val _routePlannerDestination = MutableStateFlow<ScoutSpotEntity?>(null)
+    val routePlannerDestination: StateFlow<ScoutSpotEntity?> = _routePlannerDestination.asStateFlow()
+
+    private val _plannedRoute = MutableStateFlow<com.example.engine.OfflineWalkingTrail?>(null)
+    val plannedRoute: StateFlow<com.example.engine.OfflineWalkingTrail?> = _plannedRoute.asStateFlow()
+
+    private val _isCalculatingRoute = MutableStateFlow(false)
+    val isCalculatingRoute: StateFlow<Boolean> = _isCalculatingRoute.asStateFlow()
+
     private val _exploreHeaderStyle = MutableStateFlow(0) // 0: Radar & Ticker, 1: Chiado Hero
     val exploreHeaderStyle: StateFlow<Int> = _exploreHeaderStyle.asStateFlow()
 
@@ -157,6 +172,36 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),
         com.example.ui.components.OfflineSyncStatus()
+    )
+
+    private val _showCacheHealthDialog = MutableStateFlow(false)
+    val showCacheHealthDialog: StateFlow<Boolean> = _showCacheHealthDialog.asStateFlow()
+
+    val vicinityCacheHealth: StateFlow<com.example.data.model.VicinityCacheHealth> = combine(
+        userCoordinates,
+        allSpots,
+        _lastOsmSyncedCount,
+        _isScrapingOsm
+    ) { coords, spots, osmCount, isSyncing ->
+        com.example.data.model.CacheHealthCalculator.calculate(
+            userLat = coords.first,
+            userLng = coords.second,
+            spots = spots,
+            radiusMeters = 1000,
+            targetCount = 12,
+            lastSyncedCount = osmCount,
+            isFetching = isSyncing
+        )
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        com.example.data.model.CacheHealthCalculator.calculate(
+            userLat = 38.7112,
+            userLng = -9.1423,
+            spots = emptyList(),
+            radiusMeters = 1000,
+            targetCount = 12
+        )
     )
 
     init {
@@ -409,6 +454,19 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun openCacheHealthDialog() {
+        _showCacheHealthDialog.value = true
+    }
+
+    fun closeCacheHealthDialog() {
+        _showCacheHealthDialog.value = false
+    }
+
+    fun prefetchVicinityCache() {
+        val coords = userCoordinates.value
+        scrapeOsmGems(coords.first, coords.second, radiusMeters = 1500)
+    }
+
     fun openDiagnosticDialog() {
         _showDiagnosticDialog.value = true
         if (diagnosticLog.value == null) {
@@ -476,8 +534,74 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
         _activeTrail.value = trail
     }
 
-    fun clearWalkingTrail() {
+    fun openRoutePlanner(origin: ScoutSpotEntity? = null, destination: ScoutSpotEntity? = null) {
+        _routePlannerOrigin.value = origin
+        if (destination != null) {
+            _routePlannerDestination.value = destination
+        } else if (_routePlannerDestination.value == null) {
+            _routePlannerDestination.value = savedSpots.value.firstOrNull() ?: allSpots.value.firstOrNull()
+        }
+        _isRoutePlannerOpen.value = true
+        calculateAStarRoute()
+    }
+
+    fun closeRoutePlanner() {
+        _isRoutePlannerOpen.value = false
+    }
+
+    fun setRouteOrigin(spot: ScoutSpotEntity?) {
+        _routePlannerOrigin.value = spot
+        calculateAStarRoute()
+    }
+
+    fun setRouteDestination(spot: ScoutSpotEntity?) {
+        _routePlannerDestination.value = spot
+        calculateAStarRoute()
+    }
+
+    fun swapRouteEndpoints() {
+        val oldOrigin = _routePlannerOrigin.value
+        val oldDest = _routePlannerDestination.value
+        _routePlannerOrigin.value = oldDest
+        _routePlannerDestination.value = oldOrigin
+        calculateAStarRoute()
+    }
+
+    fun calculateAStarRoute() {
+        val dest = _routePlannerDestination.value ?: return
+        val origin = _routePlannerOrigin.value
+        val (startLat, startLng, startName) = if (origin != null) {
+            Triple(origin.latitude, origin.longitude, origin.name)
+        } else {
+            val coords = userCoordinates.value
+            Triple(coords.first, coords.second, "My Location (GPS)")
+        }
+
+        viewModelScope.launch {
+            _isCalculatingRoute.value = true
+            val trail = com.example.engine.OfflineRouteEngine.calculateShortestAStarRoute(
+                originLat = startLat,
+                originLng = startLng,
+                destLat = dest.latitude,
+                destLng = dest.longitude,
+                originName = startName,
+                destName = dest.name,
+                originEntity = origin,
+                destEntity = dest
+            )
+            _plannedRoute.value = trail
+            _activeTrail.value = trail
+            _isCalculatingRoute.value = false
+        }
+    }
+
+    fun clearPlannedRoute() {
+        _plannedRoute.value = null
         _activeTrail.value = null
+    }
+
+    fun clearWalkingTrail() {
+        clearPlannedRoute()
     }
 
     fun dismissOsmMessage() {

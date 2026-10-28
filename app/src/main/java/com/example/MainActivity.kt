@@ -119,6 +119,13 @@ fun VividScoutApp(viewModel: ScoutViewModel) {
     val showDiagnosticDialog by viewModel.showDiagnosticDialog.collectAsState()
     val diagnosticLog by viewModel.diagnosticLog.collectAsState()
     val isDiagnosticRunning by viewModel.isDiagnosticRunning.collectAsState()
+    val vicinityCacheHealth by viewModel.vicinityCacheHealth.collectAsState()
+    val showCacheHealthDialog by viewModel.showCacheHealthDialog.collectAsState()
+    val isRoutePlannerOpen by viewModel.isRoutePlannerOpen.collectAsState()
+    val routePlannerOrigin by viewModel.routePlannerOrigin.collectAsState()
+    val routePlannerDestination by viewModel.routePlannerDestination.collectAsState()
+    val plannedRoute by viewModel.plannedRoute.collectAsState()
+    val isCalculatingRoute by viewModel.isCalculatingRoute.collectAsState()
 
     // Automatically refresh permission state when returning to the app from System Settings
     DisposableEffect(lifecycleOwner) {
@@ -262,7 +269,9 @@ fun VividScoutApp(viewModel: ScoutViewModel) {
                                         onDismissOfflineBanner = { viewModel.dismissOfflineBanner() },
                                         onOpenQueueDialog = { viewModel.openQueueDialog() },
                                         syncStatus = syncStatus,
-                                        onOpenDiagnostics = { viewModel.openDiagnosticDialog() }
+                                        onOpenDiagnostics = { viewModel.openDiagnosticDialog() },
+                                        cacheHealth = vicinityCacheHealth,
+                                        onOpenCacheHealth = { viewModel.openCacheHealthDialog() }
                                     )
                                 }
 
@@ -281,8 +290,10 @@ fun VividScoutApp(viewModel: ScoutViewModel) {
                                         onDismissOsmMessage = { viewModel.dismissOsmMessage() },
                                         syncStatus = syncStatus,
                                         activeTrail = activeTrail,
-                                        onPlanWalkingTrail = { viewModel.planWalkingTrailForSavedGems() },
-                                        onClearWalkingTrail = { viewModel.clearWalkingTrail() }
+                                        onPlanWalkingTrail = { viewModel.openRoutePlanner() },
+                                        onClearWalkingTrail = { viewModel.clearPlannedRoute() },
+                                        cacheHealth = vicinityCacheHealth,
+                                        onOpenCacheHealth = { viewModel.openCacheHealthDialog() }
                                     )
                                 }
 
@@ -294,7 +305,11 @@ fun VividScoutApp(viewModel: ScoutViewModel) {
                                         onToggleDiscovered = { spot -> viewModel.toggleDiscovered(spot) },
                                         onSpotClick = { spot -> selectedSpotForDetail = spot },
                                         onPlanWalkingTrail = {
-                                            viewModel.planWalkingTrailForSavedGems()
+                                            viewModel.openRoutePlanner()
+                                            viewModel.selectTab(MainTab.RADAR)
+                                        },
+                                        onPlanRouteToSpot = { spot ->
+                                            viewModel.openRoutePlanner(destination = spot)
                                             viewModel.selectTab(MainTab.RADAR)
                                         }
                                     )
@@ -348,9 +363,28 @@ fun VividScoutApp(viewModel: ScoutViewModel) {
                         onToggleDiscovered = { viewModel.toggleDiscovered(spot) },
                         onSaveNote = { note -> viewModel.updateSpotNotes(spot.id, note) },
                         onUpvote = { viewModel.upvote(spot) },
-                        onToggleAudio = { viewModel.toggleAudioLore(spot.id) }
+                        onToggleAudio = { viewModel.toggleAudioLore(spot.id) },
+                        onPlanRoute = {
+                            viewModel.openRoutePlanner(destination = spot)
+                            viewModel.selectTab(MainTab.RADAR)
+                        }
                     )
                 }
+
+                // Offline A* Walking Route Planner Sheet
+                com.example.ui.components.RoutePlannerSheet(
+                    isOpen = isRoutePlannerOpen,
+                    onDismiss = { viewModel.closeRoutePlanner() },
+                    origin = routePlannerOrigin,
+                    destination = routePlannerDestination,
+                    allSpots = allSpots,
+                    plannedRoute = plannedRoute,
+                    isCalculating = isCalculatingRoute,
+                    onSelectOrigin = { viewModel.setRouteOrigin(it) },
+                    onSelectDestination = { viewModel.setRouteDestination(it) },
+                    onSwapEndpoints = { viewModel.swapRouteEndpoints() },
+                    onClearRoute = { viewModel.clearPlannedRoute() }
+                )
 
                 // Active Offline Walking Trail Bottom Sheet
                 activeTrail?.let { trail ->
@@ -394,6 +428,19 @@ fun VividScoutApp(viewModel: ScoutViewModel) {
                         isRunning = isDiagnosticRunning,
                         onDismiss = { viewModel.closeDiagnosticDialog() },
                         onRerunQuery = { viewModel.runDiagnosticQuery() }
+                    )
+                }
+
+                // Cache Health & Vicinity Diagnostic Dialog
+                if (showCacheHealthDialog) {
+                    com.example.ui.dialogs.CacheHealthDialog(
+                        health = vicinityCacheHealth,
+                        onDismiss = { viewModel.closeCacheHealthDialog() },
+                        onPreCacheVicinity = { viewModel.prefetchVicinityCache() },
+                        onOpenDiagnostics = {
+                            viewModel.closeCacheHealthDialog()
+                            viewModel.openDiagnosticDialog()
+                        }
                     )
                 }
 

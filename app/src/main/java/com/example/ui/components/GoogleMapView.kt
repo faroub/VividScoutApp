@@ -105,6 +105,10 @@ fun ScoutMapView(
     mapViewModel: ScoutMapViewModel = viewModel(),
     activeTrail: com.example.engine.OfflineWalkingTrail? = null,
     onPlanTrailClick: (() -> Unit)? = null,
+    onPlanRouteToSpot: ((ScoutSpotEntity) -> Unit)? = null,
+    onClearTrailClick: (() -> Unit)? = null,
+    cacheHealth: com.example.data.model.VicinityCacheHealth? = null,
+    onOpenCacheHealth: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val strings = LocalAppStrings.current
@@ -182,6 +186,9 @@ fun ScoutMapView(
             mapViewModel = mapViewModel,
             activeTrail = activeTrail,
             onPlanTrailClick = onPlanTrailClick,
+            onClearTrailClick = onClearTrailClick,
+            cacheHealth = cacheHealth,
+            onOpenCacheHealth = onOpenCacheHealth,
             modifier = Modifier.fillMaxSize()
         )
 
@@ -541,6 +548,15 @@ fun ScoutMapView(
                     )
                 }
 
+                // Cache Health Score Badge (Compact)
+                if (cacheHealth != null) {
+                    CacheHealthBadge(
+                        health = cacheHealth,
+                        onClick = onOpenCacheHealth,
+                        isCompact = true
+                    )
+                }
+
                 // Match count pill / No results alert
                 val matchesText = when {
                     displayedSpots.isEmpty() -> strings.noGemsFoundMessage
@@ -739,6 +755,26 @@ fun ScoutMapView(
 
                     Spacer(modifier = Modifier.width(4.dp))
 
+                    if (onPlanRouteToSpot != null) {
+                        IconButton(
+                            onClick = { onPlanRouteToSpot(spot) },
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(BrandTeal.copy(alpha = 0.2f))
+                                .border(1.dp, BrandTeal.copy(alpha = 0.5f), CircleShape)
+                                .testTag("gmap_spot_directions_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.DirectionsWalk,
+                                contentDescription = "Walking directions to ${spot.name}",
+                                tint = BrandTeal,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(4.dp))
+                    }
+
                     Button(
                         onClick = { onSpotClick(spot) },
                         colors = ButtonDefaults.buttonColors(
@@ -777,6 +813,8 @@ fun GoogleMapView(
     onScrapeOsm: () -> Unit = {},
     onDismissOsmMessage: () -> Unit = {},
     syncStatus: OfflineSyncStatus = OfflineSyncStatus(totalLocalGems = spots.size),
+    cacheHealth: com.example.data.model.VicinityCacheHealth? = null,
+    onOpenCacheHealth: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     ScoutMapView(
@@ -795,6 +833,8 @@ fun GoogleMapView(
         onScrapeOsm = onScrapeOsm,
         onDismissOsmMessage = onDismissOsmMessage,
         syncStatus = syncStatus,
+        cacheHealth = cacheHealth,
+        onOpenCacheHealth = onOpenCacheHealth,
         modifier = modifier
     )
 }

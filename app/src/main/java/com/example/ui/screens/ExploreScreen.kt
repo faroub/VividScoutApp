@@ -135,6 +135,8 @@ fun ExploreScreen(
     onRequestLocationPermission: () -> Unit = {},
     syncStatus: com.example.ui.components.OfflineSyncStatus = com.example.ui.components.OfflineSyncStatus(),
     onOpenDiagnostics: () -> Unit = {},
+    cacheHealth: com.example.data.model.VicinityCacheHealth? = null,
+    onOpenCacheHealth: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val strings = LocalAppStrings.current
@@ -176,13 +178,27 @@ fun ExploreScreen(
                             onSearchQueryChange = onSearchQueryChange
                         )
 
-                        // Offline Database Sync Status Badge
-                        com.example.ui.components.OfflineSyncStatusBadge(
-                            status = syncStatus,
-                            onClick = onOpenQueueDialog,
-                            onOpenDiagnostics = onOpenDiagnostics,
-                            modifier = Modifier.fillMaxWidth()
-                        )
+                        // Offline Database Sync Status Badge & Cache Health Score Badge
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            com.example.ui.components.OfflineSyncStatusBadge(
+                                status = syncStatus,
+                                onClick = onOpenQueueDialog,
+                                onOpenDiagnostics = onOpenDiagnostics,
+                                modifier = Modifier.weight(1f)
+                            )
+
+                            if (cacheHealth != null) {
+                                com.example.ui.components.CacheHealthBadge(
+                                    health = cacheHealth,
+                                    onClick = onOpenCacheHealth,
+                                    isCompact = true
+                                )
+                            }
+                        }
 
                         // Live Scrape Pulse Ticker
                         LiveScrapePulseTicker()

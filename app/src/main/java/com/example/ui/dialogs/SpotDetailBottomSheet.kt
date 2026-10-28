@@ -77,7 +77,8 @@ fun SpotDetailBottomSheet(
     onSaveNote: (String) -> Unit = {},
     onUpvote: () -> Unit,
     onToggleAudio: () -> Unit,
-    isPlayingAudio: Boolean
+    isPlayingAudio: Boolean,
+    onPlanRoute: (() -> Unit)? = null
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val strings = LocalAppStrings.current
@@ -438,7 +439,10 @@ fun SpotDetailBottomSheet(
 
                     // Start Navigation CTA
                     Button(
-                        onClick = onDismiss,
+                        onClick = {
+                            onDismiss()
+                            onPlanRoute?.invoke()
+                        },
                         colors = ButtonDefaults.buttonColors(
                             containerColor = PrimaryContainer,
                             contentColor = Color.White
@@ -447,6 +451,7 @@ fun SpotDetailBottomSheet(
                         modifier = Modifier
                             .weight(1f)
                             .height(50.dp)
+                            .testTag("spot_detail_directions_cta")
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(

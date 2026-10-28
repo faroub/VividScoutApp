@@ -131,6 +131,8 @@ fun RadarScreen(
     activeTrail: com.example.engine.OfflineWalkingTrail? = null,
     onPlanWalkingTrail: () -> Unit = {},
     onClearWalkingTrail: () -> Unit = {},
+    cacheHealth: com.example.data.model.VicinityCacheHealth? = null,
+    onOpenCacheHealth: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var viewMode by remember { mutableStateOf(RadarViewMode.MAP) }
@@ -416,6 +418,8 @@ fun RadarScreen(
                             syncStatus = syncStatus,
                             activeTrail = activeTrail,
                             onPlanTrailClick = onPlanWalkingTrail,
+                            cacheHealth = cacheHealth,
+                            onOpenCacheHealth = onOpenCacheHealth,
                             modifier = Modifier.fillMaxSize()
                         )
                     } else {

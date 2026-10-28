@@ -32,6 +32,9 @@ fun ScoutMapLifecycleHost(
     mapViewModel: ScoutMapViewModel,
     activeTrail: com.example.engine.OfflineWalkingTrail? = null,
     onPlanTrailClick: (() -> Unit)? = null,
+    onClearTrailClick: (() -> Unit)? = null,
+    cacheHealth: com.example.data.model.VicinityCacheHealth? = null,
+    onOpenCacheHealth: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -85,6 +88,9 @@ fun ScoutMapLifecycleHost(
             onResetZoom = { mapViewModel.resetZoom() },
             activeTrail = activeTrail,
             onPlanTrailClick = onPlanTrailClick,
+            onClearTrailClick = onClearTrailClick,
+            cacheHealth = cacheHealth,
+            onOpenCacheHealth = onOpenCacheHealth,
             modifier = Modifier.fillMaxSize()
         )
     }

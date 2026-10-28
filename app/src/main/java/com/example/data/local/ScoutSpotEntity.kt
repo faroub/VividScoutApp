@@ -35,7 +35,13 @@ data class ScoutSpotEntity(
     val longitude: Double = -9.1423,
     val audioDuration: String? = null,
     val timestamp: Long = System.currentTimeMillis()
-)
+) {
+    val name: String
+        get() = title
+
+    val neighborhood: String
+        get() = locationName
+}
 
 class Converters {
     @TypeConverter

@@ -52,12 +52,17 @@ import kotlin.math.hypot
 
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.CenterFocusStrong
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Route
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.ZoomIn
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -90,6 +95,9 @@ fun MapCanvasView(
     onResetZoom: () -> Unit = {},
     activeTrail: com.example.engine.OfflineWalkingTrail? = null,
     onPlanTrailClick: (() -> Unit)? = null,
+    onClearTrailClick: (() -> Unit)? = null,
+    cacheHealth: com.example.data.model.VicinityCacheHealth? = null,
+    onOpenCacheHealth: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var panOffset by remember { mutableStateOf(Offset.Zero) }
@@ -108,6 +116,17 @@ fun MapCanvasView(
             repeatMode = RepeatMode.Reverse
         ),
         label = "beaconPulse"
+    )
+
+    // Marching phase for walking path dashed line and directional pulse markers
+    val directionalPulsePhase by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2200, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "directionalPulsePhase"
     )
 
     val baseScale = ScoutVectorEngine.DEFAULT_BASE_SCALE
@@ -231,14 +250,11 @@ fun MapCanvasView(
                 style = Stroke(width = 3f * activeZoomScale)
             )
 
-            // 4b. Active Offline Walking Trail Polyline
+            // 4b. Active Offline Walking Trail Polyline (Glowing dashed path with pulsing directional markers)
             activeTrail?.let { trail ->
                 if (trail.pathPoints.size >= 2) {
-                    val trailPath = Path()
-                    var first = true
-
-                    trail.pathPoints.forEach { pt ->
-                        val pos = ScoutVectorEngine.projectGpsToCanvasOffset(
+                    val projectedPoints = trail.pathPoints.map { pt ->
+                        ScoutVectorEngine.projectGpsToCanvasOffset(
                             spotLat = pt.first,
                             spotLng = pt.second,
                             userLat = userLat,
@@ -247,29 +263,109 @@ fun MapCanvasView(
                             zoomScale = activeZoomScale,
                             baseScale = baseScale
                         )
-                        if (first) {
-                            trailPath.moveTo(pos.x, pos.y)
-                            first = false
-                        } else {
-                            trailPath.lineTo(pos.x, pos.y)
+                    }
+
+                    val trailPath = Path()
+                    projectedPoints.forEachIndexed { index, pos ->
+                        if (index == 0) trailPath.moveTo(pos.x, pos.y)
+                        else trailPath.lineTo(pos.x, pos.y)
+                    }
+
+                    // 1. Wide ambient glowing path halo
+                    drawPath(
+                        path = trailPath,
+                        color = BrandCoral.copy(alpha = 0.20f),
+                        style = Stroke(width = 16f * activeZoomScale.coerceIn(0.8f, 1.5f))
+                    )
+                    // 2. Focused glowing corridor
+                    drawPath(
+                        path = trailPath,
+                        color = BrandCoral.copy(alpha = 0.55f),
+                        style = Stroke(width = 7f * activeZoomScale.coerceIn(0.8f, 1.5f))
+                    )
+                    // 3. Inner high-contrast marching dashed line
+                    val dashLength = 16f
+                    val gapLength = 10f
+                    val totalCycle = dashLength + gapLength
+                    drawPath(
+                        path = trailPath,
+                        color = Color.White,
+                        style = Stroke(
+                            width = 3f * activeZoomScale.coerceIn(0.8f, 1.5f),
+                            pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(
+                                intervals = floatArrayOf(dashLength, gapLength),
+                                phase = -directionalPulsePhase * totalCycle
+                            )
+                        )
+                    )
+
+                    // 4. Pulsing Directional Markers along the path
+                    val numPoints = projectedPoints.size
+                    if (numPoints >= 2) {
+                        val markerSpacing = (numPoints / 6).coerceAtLeast(1)
+                        for (i in 0 until numPoints - 1 step markerSpacing) {
+                            val p1 = projectedPoints[i]
+                            val p2 = projectedPoints[i + 1]
+                            val dx = p2.x - p1.x
+                            val dy = p2.y - p1.y
+                            val segLength = hypot(dx, dy)
+                            if (segLength > 6f) {
+                                val offsetFraction = ((i.toFloat() / numPoints) + directionalPulsePhase) % 1f
+                                val markerX = p1.x + dx * offsetFraction
+                                val markerY = p1.y + dy * offsetFraction
+                                val markerSize = 6f * activeZoomScale.coerceIn(0.8f, 1.4f)
+
+                                drawCircle(
+                                    color = BrandCoral.copy(alpha = 0.35f),
+                                    radius = markerSize * 1.8f,
+                                    center = Offset(markerX, markerY)
+                                )
+                                drawCircle(
+                                    color = Color.White,
+                                    radius = markerSize * 0.7f,
+                                    center = Offset(markerX, markerY)
+                                )
+                            }
                         }
                     }
 
-                    // Outer glowing path halo
-                    drawPath(
-                        path = trailPath,
-                        color = BrandCoral.copy(alpha = 0.45f),
-                        style = Stroke(width = 10f * activeZoomScale.coerceIn(0.8f, 1.5f))
-                    )
-                    // Inner dashed coral walking path line
-                    drawPath(
-                        path = trailPath,
-                        color = BrandCoral,
-                        style = Stroke(
-                            width = 4f * activeZoomScale.coerceIn(0.8f, 1.5f),
-                            pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(18f, 12f), 0f)
+                    // 5. Origin Beacon Node
+                    projectedPoints.firstOrNull()?.let { startPt ->
+                        drawCircle(
+                            color = BrandTeal.copy(alpha = 0.35f),
+                            radius = 12f * activeZoomScale.coerceIn(0.8f, 1.5f),
+                            center = startPt
                         )
-                    )
+                        drawCircle(
+                            color = BrandTeal,
+                            radius = 6f * activeZoomScale.coerceIn(0.8f, 1.5f),
+                            center = startPt
+                        )
+                        drawCircle(
+                            color = Color.White,
+                            radius = 2.5f * activeZoomScale.coerceIn(0.8f, 1.5f),
+                            center = startPt
+                        )
+                    }
+
+                    // 6. Destination Target Pin Node
+                    projectedPoints.lastOrNull()?.let { endPt ->
+                        drawCircle(
+                            color = BrandCoral.copy(alpha = 0.35f),
+                            radius = 14f * activeZoomScale.coerceIn(0.8f, 1.5f),
+                            center = endPt
+                        )
+                        drawCircle(
+                            color = BrandCoral,
+                            radius = 8f * activeZoomScale.coerceIn(0.8f, 1.5f),
+                            center = endPt
+                        )
+                        drawCircle(
+                            color = Color.White,
+                            radius = 3.5f * activeZoomScale.coerceIn(0.8f, 1.5f),
+                            center = endPt
+                        )
+                    }
                 }
             }
 
@@ -419,6 +515,21 @@ fun MapCanvasView(
             }
         }
 
+        // Cache Health Score Badge (Top End Floating on Canvas)
+        if (cacheHealth != null) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(end = 12.dp, top = 12.dp)
+            ) {
+                CacheHealthBadge(
+                    health = cacheHealth,
+                    onClick = { onOpenCacheHealth?.invoke() },
+                    isCompact = false
+                )
+            }
+        }
+
         // Preset Zoom Level Selector Chips (Bottom Floating above controls)
         Row(
             modifier = Modifier
@@ -453,13 +564,124 @@ fun MapCanvasView(
             }
         }
 
-        // Floating On-Canvas Controls for Step Zoom (+/-) and GPS Pan Reset
+        // Floating Active Route HUD Card
+        if (activeTrail != null) {
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = Color(0xF2080B1E),
+                border = BorderStroke(1.dp, BrandCoral.copy(alpha = 0.6f)),
+                shadowElevation = 8.dp,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(start = 12.dp, end = 12.dp, bottom = 44.dp)
+                    .fillMaxWidth()
+                    .testTag("vector_route_hud")
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(CircleShape)
+                            .background(BrandCoral.copy(alpha = 0.2f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.DirectionsWalk,
+                            contentDescription = null,
+                            tint = BrandCoral,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "${activeTrail.originTitle} → ${activeTrail.destinationTitle}",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                color = Color.White,
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                            )
+                        }
+                        Text(
+                            text = "${activeTrail.formattedDistance} • ${activeTrail.formattedDuration}" +
+                                    (activeTrail.steps.firstOrNull()?.let { " • ${it.instruction}" } ?: ""),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color(0xFF94A3B8),
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(6.dp))
+                    if (onPlanTrailClick != null) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(BrandTeal.copy(alpha = 0.25f))
+                                .border(1.dp, BrandTeal.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
+                                .clickable { onPlanTrailClick() }
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                                .testTag("vector_route_steps_btn"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Steps",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                color = Color.White
+                            )
+                        }
+                    }
+                    if (onClearTrailClick != null) {
+                        Spacer(modifier = Modifier.width(4.dp))
+                        IconButton(
+                            onClick = onClearTrailClick,
+                            modifier = Modifier
+                                .size(28.dp)
+                                .testTag("vector_route_clear_btn")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Clear Route",
+                                tint = Color(0xFFEF4444),
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // Floating On-Canvas Controls for Step Zoom (+/-), GPS Pan Reset, and Route Planner
         Column(
             modifier = Modifier
                 .align(Alignment.CenterEnd)
                 .padding(end = 12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            // Offline Walking Route Planner Button
+            if (onPlanTrailClick != null) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF080B1E).copy(alpha = 0.9f))
+                        .border(1.dp, BrandCoral.copy(alpha = 0.8f), CircleShape)
+                        .clickable { onPlanTrailClick() }
+                        .testTag("vector_route_planner_btn"),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Route,
+                        contentDescription = "Plan Route",
+                        tint = BrandCoral,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+
             // Center on GPS Beacon
             Box(
                 modifier = Modifier
@@ -545,6 +767,9 @@ fun MapCanvasView(
     onResetZoom: () -> Unit = {},
     activeTrail: com.example.engine.OfflineWalkingTrail? = null,
     onPlanTrailClick: (() -> Unit)? = null,
+    onClearTrailClick: (() -> Unit)? = null,
+    cacheHealth: com.example.data.model.VicinityCacheHealth? = null,
+    onOpenCacheHealth: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val gems = remember(spots, userLat, userLng) {
@@ -571,6 +796,9 @@ fun MapCanvasView(
         onResetZoom = onResetZoom,
         activeTrail = activeTrail,
         onPlanTrailClick = onPlanTrailClick,
+        onClearTrailClick = onClearTrailClick,
+        cacheHealth = cacheHealth,
+        onOpenCacheHealth = onOpenCacheHealth,
         modifier = modifier
     )
 }
