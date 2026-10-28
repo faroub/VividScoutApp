@@ -70,4 +70,50 @@ class OverpassRetrofitClientTest {
         assertEquals("Escadinhas da Bica", spots[2].title)
         assertEquals("shortcut", spots[2].category)
     }
+
+    @Test
+    fun mapElementsWithDiagnostics_capturesDroppedNodesAndReasons() {
+        val elements = listOf(
+            OverpassElement(
+                type = "node",
+                id = 201L,
+                lat = 38.7120,
+                lon = -9.1400,
+                tags = mapOf("tourism" to "viewpoint", "name" to "Valid Spot")
+            ),
+            OverpassElement(
+                type = "node",
+                id = 202L,
+                lat = null,
+                lon = null,
+                tags = mapOf("tourism" to "viewpoint", "name" to "Missing Coords Spot")
+            )
+        )
+
+        val (mapped, dropReasons) = client.mapElementsWithDiagnostics(elements, 38.7112, -9.1423)
+
+        assertEquals(1, mapped.size)
+        assertEquals("Valid Spot", mapped[0].title)
+        assertEquals(1, dropReasons.size)
+        assertTrue("Drop reason should indicate missing coordinates", dropReasons[0].contains("Missing latitude/longitude"))
+    }
+
+    @Test
+    fun overpassDiagnosticLog_calculatesMetricsCorrectly() {
+        val log = com.example.data.network.OverpassDiagnosticLog(
+            mirrorUrl = "https://overpass-api.de/",
+            httpStatusCode = 200,
+            durationMs = 245,
+            rawJson = """{"elements":[{"id":1}]}""",
+            rawElementsCount = 1,
+            mappedEntitiesCount = 1,
+            droppedElementsCount = 0,
+            isFallbackTriggered = false
+        )
+
+        assertTrue(log.isSuccess)
+        assertEquals(200, log.httpStatusCode)
+        assertEquals(245L, log.durationMs)
+        assertEquals(1, log.mappedEntitiesCount)
+    }
 }

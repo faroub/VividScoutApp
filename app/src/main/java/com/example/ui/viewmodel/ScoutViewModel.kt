@@ -119,6 +119,14 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
     private val _lastOsmSyncedCount = MutableStateFlow(0)
     val lastOsmSyncedCount: StateFlow<Int> = _lastOsmSyncedCount.asStateFlow()
 
+    val diagnosticLog: StateFlow<com.example.data.network.OverpassDiagnosticLog?> = gemRepository.lastDiagnosticLog
+
+    private val _showDiagnosticDialog = MutableStateFlow(false)
+    val showDiagnosticDialog: StateFlow<Boolean> = _showDiagnosticDialog.asStateFlow()
+
+    private val _isDiagnosticRunning = MutableStateFlow(false)
+    val isDiagnosticRunning: StateFlow<Boolean> = _isDiagnosticRunning.asStateFlow()
+
     private val _hasAutoScrapedForLocation = MutableStateFlow(false)
 
     val allSpots: StateFlow<List<ScoutSpotEntity>> = repository.allSpots
@@ -398,6 +406,27 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
                 }
             )
             _isScrapingOsm.value = false
+        }
+    }
+
+    fun openDiagnosticDialog() {
+        _showDiagnosticDialog.value = true
+        if (diagnosticLog.value == null) {
+            runDiagnosticQuery()
+        }
+    }
+
+    fun closeDiagnosticDialog() {
+        _showDiagnosticDialog.value = false
+    }
+
+    fun runDiagnosticQuery() {
+        if (_isDiagnosticRunning.value) return
+        val coords = userCoordinates.value
+        viewModelScope.launch {
+            _isDiagnosticRunning.value = true
+            gemRepository.runDiagnosticQuery(coords.first, coords.second, 1500)
+            _isDiagnosticRunning.value = false
         }
     }
 

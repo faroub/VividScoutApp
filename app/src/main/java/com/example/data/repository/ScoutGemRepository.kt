@@ -19,8 +19,14 @@ import kotlinx.coroutines.withContext
 class ScoutGemRepository(
     private val scoutDao: ScoutDao,
     private val discoveredGemDao: DiscoveredGemDao? = null,
-    private val overpassClient: OverpassRetrofitClient = OverpassRetrofitClient()
+    val overpassClient: OverpassRetrofitClient = OverpassRetrofitClient()
 ) {
+
+    /**
+     * Diagnostic telemetry log flow for the Overpass API inspector.
+     */
+    val lastDiagnosticLog: kotlinx.coroutines.flow.StateFlow<com.example.data.network.OverpassDiagnosticLog?> =
+        overpassClient.lastDiagnosticLog
 
     /**
      * Reactive stream of all ScoutGems directly backed by Room database.
@@ -124,5 +130,32 @@ class ScoutGemRepository(
         val newDiscovered = !currentlyDiscovered
         val timestamp = if (newDiscovered) System.currentTimeMillis() else 0L
         scoutDao.setDiscoveredStatus(gemId, newDiscovered, timestamp)
+    }
+
+    /**
+     * Executes an on-demand Overpass API diagnostic query and returns telemetry.
+     */
+    suspend fun runDiagnosticQuery(
+        userLat: Double = 38.7112,
+        userLng: Double = -9.1423,
+        radiusMeters: Int = 1500
+    ): com.example.data.network.OverpassDiagnosticLog = withContext(Dispatchers.IO) {
+        val log = overpassClient.fetchDiagnosticLog(userLat, userLng, radiusMeters)
+        if (!log.isFallbackTriggered && log.rawJson.isNotBlank()) {
+            val adapter = com.squareup.moshi.Moshi.Builder()
+                .add(com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory())
+                .build()
+                .adapter(com.example.data.network.model.OverpassResponse::class.java)
+            try {
+                val response = adapter.fromJson(log.rawJson)
+                if (response != null && response.elements.isNotEmpty()) {
+                    val entities = overpassClient.mapElementsToEntities(response.elements, userLat, userLng)
+                    if (entities.isNotEmpty()) {
+                        scoutDao.insertSpots(entities)
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+        log
     }
 }

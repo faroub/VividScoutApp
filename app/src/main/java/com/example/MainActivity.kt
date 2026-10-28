@@ -116,6 +116,9 @@ fun VividScoutApp(viewModel: ScoutViewModel) {
     val offlineMapPacks by viewModel.offlineMapPacks.collectAsState()
     val offlineStorageBytes by viewModel.offlineStorageBytes.collectAsState()
     val activeTrail by viewModel.activeTrail.collectAsState()
+    val showDiagnosticDialog by viewModel.showDiagnosticDialog.collectAsState()
+    val diagnosticLog by viewModel.diagnosticLog.collectAsState()
+    val isDiagnosticRunning by viewModel.isDiagnosticRunning.collectAsState()
 
     // Automatically refresh permission state when returning to the app from System Settings
     DisposableEffect(lifecycleOwner) {
@@ -258,7 +261,8 @@ fun VividScoutApp(viewModel: ScoutViewModel) {
                                         onRadarClick = { viewModel.selectTab(MainTab.RADAR) },
                                         onDismissOfflineBanner = { viewModel.dismissOfflineBanner() },
                                         onOpenQueueDialog = { viewModel.openQueueDialog() },
-                                        syncStatus = syncStatus
+                                        syncStatus = syncStatus,
+                                        onOpenDiagnostics = { viewModel.openDiagnosticDialog() }
                                     )
                                 }
 
@@ -325,7 +329,8 @@ fun VividScoutApp(viewModel: ScoutViewModel) {
                                                 notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                                             }
                                             viewModel.downloadCurrentGpsMapPack()
-                                        }
+                                        },
+                                        onOpenDiagnostics = { viewModel.openDiagnosticDialog() }
                                     )
                                 }
                             }
@@ -377,7 +382,18 @@ fun VividScoutApp(viewModel: ScoutViewModel) {
                     OfflineQueueDialog(
                         drafts = offlineDrafts,
                         onSyncAll = { viewModel.syncAllDrafts() },
-                        onDismiss = { viewModel.closeQueueDialog() }
+                        onDismiss = { viewModel.closeQueueDialog() },
+                        onOpenDiagnostics = { viewModel.openDiagnosticDialog() }
+                    )
+                }
+
+                // Overpass API Diagnostics Dialog
+                if (showDiagnosticDialog) {
+                    com.example.ui.dialogs.OverpassDiagnosticDialog(
+                        log = diagnosticLog,
+                        isRunning = isDiagnosticRunning,
+                        onDismiss = { viewModel.closeDiagnosticDialog() },
+                        onRerunQuery = { viewModel.runDiagnosticQuery() }
                     )
                 }
 

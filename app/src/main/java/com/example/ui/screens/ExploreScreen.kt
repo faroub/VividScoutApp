@@ -134,6 +134,7 @@ fun ExploreScreen(
     hasLocationPermission: Boolean = true,
     onRequestLocationPermission: () -> Unit = {},
     syncStatus: com.example.ui.components.OfflineSyncStatus = com.example.ui.components.OfflineSyncStatus(),
+    onOpenDiagnostics: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val strings = LocalAppStrings.current
@@ -179,6 +180,7 @@ fun ExploreScreen(
                         com.example.ui.components.OfflineSyncStatusBadge(
                             status = syncStatus,
                             onClick = onOpenQueueDialog,
+                            onOpenDiagnostics = onOpenDiagnostics,
                             modifier = Modifier.fillMaxWidth()
                         )
 

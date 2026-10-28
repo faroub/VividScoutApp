@@ -57,6 +57,7 @@ data class OfflineSyncStatus(
 fun OfflineSyncStatusBadge(
     status: OfflineSyncStatus,
     onClick: () -> Unit = {},
+    onOpenDiagnostics: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val borderColor = when {
@@ -125,6 +126,26 @@ fun OfflineSyncStatusBadge(
                     color = BrandTeal,
                     fontSize = 11.sp
                 )
+            }
+
+            if (onOpenDiagnostics != null) {
+                Spacer(modifier = Modifier.width(8.dp))
+                Box(
+                    modifier = Modifier
+                        .size(20.dp)
+                        .clip(CircleShape)
+                        .background(BrandTeal.copy(alpha = 0.25f))
+                        .clickable { onOpenDiagnostics() }
+                        .testTag("sync_badge_diagnostic_button"),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Storage,
+                        contentDescription = "Open Overpass Diagnostics",
+                        tint = BrandTeal,
+                        modifier = Modifier.size(12.dp)
+                    )
+                }
             }
         }
     }
