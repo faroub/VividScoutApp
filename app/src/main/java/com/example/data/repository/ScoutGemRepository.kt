@@ -93,26 +93,51 @@ class ScoutGemRepository(
     suspend fun syncLiveOsmGems(
         userLat: Double = 38.7112,
         userLng: Double = -9.1423,
-        radiusMeters: Int = 1200
+        radiusMeters: Int = 1200,
+        category: String = "all"
     ): Result<Int> = withContext(Dispatchers.IO) {
         retryWithExponentialBackoff(maxAttempts = 2, initialDelayMs = 500L, factor = 1.5) {
-            val fetchResult = overpassClient.fetchNearbyNodes(userLat, userLng, radiusMeters)
+            val fetchResult = overpassClient.fetchNearbyNodes(userLat, userLng, radiusMeters, category)
             fetchResult.fold(
                 onSuccess = { osmEntities ->
-                    val spotsToInsert = if (osmEntities.isNotEmpty()) {
+                    val rawSpots = if (osmEntities.isNotEmpty()) {
                         osmEntities
                     } else {
-                        overpassClient.generateNearbyFallbackSpots(userLat, userLng, 6)
+                        overpassClient.generateNearbyFallbackSpots(userLat, userLng, 6, category)
                     }
-                    scoutDao.insertSpots(spotsToInsert)
-                    Result.success(spotsToInsert.size)
+                    val spotsWithinRadius = if (userLat != 0.0 || userLng != 0.0) {
+                        rawSpots.filter { spot ->
+                            com.example.data.location.LocationTracker.distanceBetween(userLat, userLng, spot.latitude, spot.longitude) <= 50000f
+                        }
+                    } else {
+                        rawSpots
+                    }
+                    deduplicateAndInsert(spotsWithinRadius)
+                    Result.success(spotsWithinRadius.size)
                 },
                 onFailure = { _ ->
-                    val fallbackSpots = overpassClient.generateNearbyFallbackSpots(userLat, userLng, 6)
-                    scoutDao.insertSpots(fallbackSpots)
+                    val fallbackSpots = overpassClient.generateNearbyFallbackSpots(userLat, userLng, 6, category)
+                    deduplicateAndInsert(fallbackSpots)
                     Result.success(fallbackSpots.size)
                 }
             )
+        }
+    }
+
+    private suspend fun deduplicateAndInsert(spots: List<ScoutSpotEntity>) {
+        val existingSpots = scoutDao.getAllSpotsList()
+        val unique = spots.filter { newSpot ->
+            val duplicate = existingSpots.find { existing ->
+                existing.id == newSpot.id ||
+                (existing.title.equals(newSpot.title, ignoreCase = true) &&
+                 com.example.data.location.LocationTracker.distanceBetween(
+                     existing.latitude, existing.longitude, newSpot.latitude, newSpot.longitude
+                 ) < 20f)
+            }
+            duplicate == null
+        }
+        if (unique.isNotEmpty()) {
+            scoutDao.insertSpots(unique)
         }
     }
 

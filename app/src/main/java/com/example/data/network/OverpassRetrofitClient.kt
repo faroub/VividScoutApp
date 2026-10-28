@@ -112,26 +112,58 @@ class OverpassRetrofitClient(
     )
 
     /**
-     * Builds the Overpass QL query targeting viewpoints, attractions, bakeries, cafes, historic sites & ways near coordinates.
+     * Builds the Overpass QL query targeting viewpoints, attractions, bakeries, cafes, historic sites, events & ways near coordinates.
      */
-    fun buildQuery(lat: Double, lng: Double, radiusMeters: Int): String {
+    fun buildQuery(lat: Double, lng: Double, radiusMeters: Int, category: String = "all"): String {
+        val categoryFilters = when (category.lowercase(Locale.ROOT)) {
+            "touristic", "sights" -> """
+                node["tourism"](around:$radiusMeters,$lat,$lng);
+                way["tourism"](around:$radiusMeters,$lat,$lng);
+                node["tourism"="viewpoint"](around:$radiusMeters,$lat,$lng);
+                node["tourism"="attraction"](around:$radiusMeters,$lat,$lng);
+            """.trimIndent()
+            "dining", "eats", "restaurant" -> """
+                node["shop"="bakery"](around:$radiusMeters,$lat,$lng);
+                node["amenity"="cafe"](around:$radiusMeters,$lat,$lng);
+                node["amenity"="restaurant"](around:$radiusMeters,$lat,$lng);
+                node["shop"](around:$radiusMeters,$lat,$lng);
+            """.trimIndent()
+            "historical", "history" -> """
+                node["historic"](around:$radiusMeters,$lat,$lng);
+                way["historic"](around:$radiusMeters,$lat,$lng);
+            """.trimIndent()
+            "events", "culture" -> """
+                node["tourism"="museum"](around:$radiusMeters,$lat,$lng);
+                node["amenity"="arts_centre"](around:$radiusMeters,$lat,$lng);
+                node["leisure"="park"](around:$radiusMeters,$lat,$lng);
+                node["amenity"="theatre"](around:$radiusMeters,$lat,$lng);
+            """.trimIndent()
+            "gems", "shortcut" -> """
+                node["highway"="steps"](around:$radiusMeters,$lat,$lng);
+                way["highway"="steps"](around:$radiusMeters,$lat,$lng);
+                way["highway"="pedestrian"](around:$radiusMeters,$lat,$lng);
+            """.trimIndent()
+            else -> """
+                node["tourism"="viewpoint"](around:$radiusMeters,$lat,$lng);
+                node["tourism"](around:$radiusMeters,$lat,$lng);
+                way["tourism"](around:$radiusMeters,$lat,$lng);
+                node["shop"="bakery"](around:$radiusMeters,$lat,$lng);
+                node["amenity"="cafe"](around:$radiusMeters,$lat,$lng);
+                node["amenity"="restaurant"](around:$radiusMeters,$lat,$lng);
+                node["historic"](around:$radiusMeters,$lat,$lng);
+                way["historic"](around:$radiusMeters,$lat,$lng);
+                node["highway"="steps"](around:$radiusMeters,$lat,$lng);
+                way["highway"="steps"](around:$radiusMeters,$lat,$lng);
+                way["highway"="pedestrian"](around:$radiusMeters,$lat,$lng);
+                node["tourism"="museum"](around:$radiusMeters,$lat,$lng);
+                node["leisure"="park"](around:$radiusMeters,$lat,$lng);
+            """.trimIndent()
+        }
+
         return """
             [out:json][timeout:25];
             (
-              node["tourism"="viewpoint"](around:$radiusMeters,$lat,$lng);
-              node["tourism"](around:$radiusMeters,$lat,$lng);
-              way["tourism"](around:$radiusMeters,$lat,$lng);
-              node["shop"="bakery"](around:$radiusMeters,$lat,$lng);
-              node["shop"](around:$radiusMeters,$lat,$lng);
-              node["amenity"="cafe"](around:$radiusMeters,$lat,$lng);
-              node["amenity"="restaurant"](around:$radiusMeters,$lat,$lng);
-              node["amenity"](around:$radiusMeters,$lat,$lng);
-              node["historic"](around:$radiusMeters,$lat,$lng);
-              way["historic"](around:$radiusMeters,$lat,$lng);
-              node["highway"="steps"](around:$radiusMeters,$lat,$lng);
-              way["highway"="steps"](around:$radiusMeters,$lat,$lng);
-              way["highway"="pedestrian"](around:$radiusMeters,$lat,$lng);
-              node["leisure"](around:$radiusMeters,$lat,$lng);
+              $categoryFilters
             );
             out body center qt 50;
         """.trimIndent()
@@ -144,7 +176,8 @@ class OverpassRetrofitClient(
     fun generateNearbyFallbackSpots(
         userLat: Double,
         userLng: Double,
-        count: Int = 6
+        count: Int = 6,
+        category: String = "all"
     ): List<ScoutSpotEntity> {
         val spotTemplates = listOf(
             Triple("Scenic Overlook & Viewpoint", "sights", "PANORAMIC VIEW"),
@@ -173,7 +206,7 @@ class OverpassRetrofitClient(
                 else -> viewpointImages
             }
 
-            val spotId = "osm_spot_${(userLat * 1000).toInt()}_${(userLng * 1000).toInt()}_${index}_${timestamp % 100000}"
+            val spotId = "osm_fallback_${(userLat * 10000).toInt()}_${(userLng * 10000).toInt()}_$index"
 
             ScoutSpotEntity(
                 id = spotId,
@@ -197,7 +230,7 @@ class OverpassRetrofitClient(
                 discoveredTimestamp = null,
                 userNotes = null,
                 offlineCached = true,
-                locationName = "Nearby GPS Spot",
+                locationName = "Local District",
                 latitude = spotLat,
                 longitude = spotLng,
                 timestamp = timestamp + index
@@ -212,9 +245,10 @@ class OverpassRetrofitClient(
     suspend fun fetchDiagnosticLog(
         lat: Double,
         lng: Double,
-        radiusMeters: Int = 1500
+        radiusMeters: Int = 1500,
+        category: String = "all"
     ): OverpassDiagnosticLog = withContext(Dispatchers.IO) {
-        val qlQuery = buildQuery(lat, lng, radiusMeters)
+        val qlQuery = buildQuery(lat, lng, radiusMeters, category)
         val formBody = FormBody.Builder()
             .add("data", qlQuery)
             .build()
@@ -277,7 +311,7 @@ class OverpassRetrofitClient(
         }
 
         // If all mirrors failed, record failure log with fallback simulation
-        val fallbackSpots = generateNearbyFallbackSpots(lat, lng, 6)
+        val fallbackSpots = generateNearbyFallbackSpots(lat, lng, 6, category)
         val syntheticJson = JSONObject().apply {
             put("version", 0.6)
             put("generator", "VividScout Synthetic Fallback Generator")
@@ -312,11 +346,12 @@ class OverpassRetrofitClient(
     suspend fun fetchNearbyNodes(
         lat: Double,
         lng: Double,
-        radiusMeters: Int = 1500
+        radiusMeters: Int = 1500,
+        category: String = "all"
     ): Result<List<ScoutSpotEntity>> = withContext(Dispatchers.IO) {
-        val diagnosticLog = fetchDiagnosticLog(lat, lng, radiusMeters)
+        val diagnosticLog = fetchDiagnosticLog(lat, lng, radiusMeters, category)
         if (diagnosticLog.isFallbackTriggered || diagnosticLog.mappedEntitiesCount == 0) {
-            val fallback = generateNearbyFallbackSpots(lat, lng, 6)
+            val fallback = generateNearbyFallbackSpots(lat, lng, 6, category)
             Result.success(fallback)
         } else {
             val adapter = moshi.adapter(OverpassResponse::class.java)
@@ -326,7 +361,7 @@ class OverpassRetrofitClient(
             if (entities.isNotEmpty()) {
                 Result.success(entities)
             } else {
-                Result.success(generateNearbyFallbackSpots(lat, lng, 6))
+                Result.success(generateNearbyFallbackSpots(lat, lng, 6, category))
             }
         }
     }
@@ -349,6 +384,15 @@ class OverpassRetrofitClient(
             if (latitude == null || longitude == null) {
                 dropReasons.add("Element ${element.type} #${element.id} dropped: Missing latitude/longitude or center coordinates.")
                 return@forEachIndexed
+            }
+
+            if (userLat != 0.0 || userLng != 0.0) {
+                val distanceMeters = com.example.data.location.LocationTracker.distanceBetween(userLat, userLng, latitude, longitude)
+                if (distanceMeters > 50000f) {
+                    val distKm = String.format(Locale.US, "%.1f", distanceMeters / 1000f)
+                    dropReasons.add("Element ${element.type} #${element.id} dropped: Distance ($distKm km) exceeds 50 km safety radius limit from ($userLat, $userLng).")
+                    return@forEachIndexed
+                }
             }
 
             val tags = element.tags ?: emptyMap()
@@ -409,7 +453,7 @@ class OverpassRetrofitClient(
                 else -> "Geographic node fetched via Retrofit Overpass API client."
             }
 
-            val street = tags["addr:street"] ?: tags["addr:city"] ?: tags["addr:suburb"] ?: "Local Historic District"
+            val street = tags["addr:street"] ?: tags["addr:city"] ?: tags["addr:suburb"] ?: "Local District"
             val randomRating = 4.5 + (Random.nextDouble() * 0.4)
             val formattedRating = String.format(Locale.US, "%.1f", randomRating).toDoubleOrNull() ?: 4.8
 

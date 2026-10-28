@@ -1,80 +1,111 @@
-# Implementation Plan - Interactive Region Downloader for Offline Navigation
+# Category Filtering Extension & Map Screen Category Chips
 
-Implement a **Region Downloader** feature that allows users to define custom geographic areas via an interactive bounding box on the vector map canvas and save vector road segments, elevation points, and cached spots to their device, dynamically augmenting the offline A* pathfinding graph in remote areas.
+Extend `ScoutGemRepository` query logic to support category filtering across all major POI types (`all`, `touristic`, `dining`, `historical`, `events`, `gems`), update `OverpassRetrofitClient` to query category-specific OpenStreetMap nodes, and render a floating horizontal category chip ribbon on the main Radar map screen.
 
-## User Decisions & Architecture
-- **Area Selection**: Interactive bounding box rectangle rendered directly on the vector map canvas with adjustable bounds, real-time size estimation, and dimension indicators.
-- **Downloaded Data**: Vector road and pedestrian walkway segments (nodes, edges, street names), topographic elevation grid points, and cached gems within the selected bounding box.
-- **A\* Graph Integration**: Downloaded road segments are dynamically integrated into `VectorWalkGraph`, allowing offline shortest-path A* routing anywhere within the downloaded regions.
+## User Review & Critical Decisions
 
----
+> [!IMPORTANT]
+> The following decisions were confirmed in Phase 1:
 
-## Proposed Changes
-
-### 1. Data & Storage Layer
-#### `app/src/main/java/com/example/data/offline/DownloadedRegion.kt` (New File)
-- Data structures:
-  - `GeoBoundingBox(minLat: Double, minLng: Double, maxLat: Double, maxLng: Double)`: Geographic rectangle.
-  - `DownloadedRoadSegment(id: String, fromLat: Double, fromLng: Double, toLat: Double, toLng: Double, streetName: String, isPedestrian: Boolean, isStairs: Boolean)`
-  - `DownloadedRegionPack(id: String, name: String, bounds: GeoBoundingBox, roadSegments: List<DownloadedRoadSegment>, elevationAnchors: List<ElevationPoint>, spots: List<ScoutSpotEntity>, totalSizeBytes: Long, timestamp: Long)`
-- Region persistence:
-  - Save/load `DownloadedRegionPack` files to `filesDir/offline_regions/`.
-  - Expose `getDownloadedRegions(): List<DownloadedRegionPack>` and `deleteRegion(id)`.
-
-#### `app/src/main/java/com/example/engine/VectorWalkGraph.kt`
-- Add dynamic expansion API:
-  - `loadCustomRegionSegments(segments: List<DownloadedRoadSegment>)`: Inserts downloaded vertices and edges into the active routing network with collision deduplication.
-  - Automatically loads all saved region packs at startup and upon new download completion.
-
-#### `app/src/main/java/com/example/engine/LisbonElevationModel.kt`
-- Allow custom elevation anchors from downloaded regions to supplement the interpolation model.
+- **Confirmed Decision 1 (Category Types)**: Supported category filter chips: **All**, **Touristic** (sights & attractions), **Dining** (bakeries & restaurants), **Historical** (monuments & ruins), **Events** (cultural venues & parks), and **Gems** (secret spots & shortcuts).
+- **Confirmed Decision 2 (Map Screen Layout)**: Floating horizontal category chip ribbon positioned near the top of the Radar map view below the top bar.
+- **Confirmed Decision 3 (Overpass Fetch Integration)**: Selecting a category chip updates map markers immediately and triggers a category-specific Overpass QL fetch targeted at the user's active GPS coordinates.
 
 ---
 
-### 2. ViewModel & State Management
-#### `app/src/main/java/com/example/ui/viewmodel/ScoutViewModel.kt`
-- State flows:
-  - `isRegionDownloadMode: StateFlow<Boolean>`: Controls whether the interactive bounding box is active on the map.
-  - `activeSelectionBounds: StateFlow<GeoBoundingBox?>`: Current selected rectangle coordinates.
-  - `downloadedRegions: StateFlow<List<DownloadedRegionPack>>`: All active custom downloaded regions.
-  - `isDownloadingRegion: StateFlow<Boolean>`: Progress indicator state.
-- Methods:
-  - `enterRegionDownloadMode()`, `exitRegionDownloadMode()`
-  - `updateSelectionBounds(bounds: GeoBoundingBox)`
-  - `downloadCurrentRegion(regionName: String)`
-  - `deleteDownloadedRegion(regionId: String)`
+## 1. Overview & Core Concept
+
+- **What It Does**: Expands VividScout into a complete tourist guide by categorizing both hidden gems and major tourist attractions, historic monuments, dining venues, cultural event spaces, and secret passes. Users can tap floating category chips directly on the main Radar map screen to isolate specific venue types and fetch live OSM data for that exact category.
+- **Target Audience**: Tourists, visitors, and local explorers seeking immediate situational awareness of specific POI categories around their current location.
+- **Key Value**: Delivers instant category-driven filtering on both the map view and the explore feed while leveraging real-time OpenStreetMap Overpass queries.
 
 ---
 
-### 3. UI Layer
-#### `app/src/main/java/com/example/ui/components/MapCanvasView.kt`
-- **Interactive Bounding Box Overlay**:
-  - When `isRegionDownloadMode == true`, render an interactive translucent bounding box rectangle with corner sizing anchors.
-  - Display live telemetry badge on the box: estimated dimensions (e.g. `1.8 km × 1.4 km`), estimated storage size (`~2.8 MB`), and road segment count.
-  - Floating action pill: "Download Region" and "Cancel".
+## 2. User Experience & Visual Design
 
-#### `app/src/main/java/com/example/ui/dialogs/RegionDownloadDialog.kt` (New File)
-- Modal dialog confirming download:
-  - Custom region label input (defaults to detected neighborhood or "Custom Region").
-  - Breakdown of included data: road segments, elevation points, cached spots.
-  - "Download & Save Offline" primary CTA with progress bar.
-
-#### `app/src/main/java/com/example/ui/components/OfflineMapPacksSection.kt`
-- Add a "Custom Downloaded Regions" tab/section listing user-saved regions with their area size, road count, delete action, and "Focus on Map" button.
+- **Floating Category Chip Ribbon (Radar Screen)**:
+  - Horizontal scrollable row of styled M3 Filter Chips floating gracefully near the top of the Radar map screen.
+  - Active chip uses a vibrant container background with a high-contrast label and category icon; inactive chips use a semi-transparent surface container with subtle border elevation.
+  - Icons per category:
+    - **All**: `NearMe`
+    - **Touristic**: `PhotoCamera` / `Attractions`
+    - **Dining**: `Restaurant` / `Utensils`
+    - **Historical**: `Castle` / `Explore`
+    - **Events**: `Event` / `Celebration`
+    - **Gems**: `Verified` / `Sparkles`
+- **Dynamic Map Marker Filtering**:
+  - Selecting a category chip instantly filters pin markers rendered on `MapCanvasView` / `GoogleMapView`.
+  - Displays a brief pulse toast when scraping category-specific Overpass POIs (e.g., `"Scanning nearby Dining POIs on OpenStreetMap..."`).
 
 ---
 
-## Verification Plan
+## 3. Key Product Decisions & Trade-Offs
 
-### Automated Tests
-1. **`RegionDownloaderTest.kt`** (Robolectric / Unit Test):
-   - Test region pack serialization and persistence to disk.
-   - Verify road segments within a bounding box are generated and loaded into `VectorWalkGraph`.
-   - Test offline A* search routing successfully between two coordinates in a downloaded remote region that previously had no base graph coverage.
-2. Execute tests: `gradle :app:testDebugUnitTest`.
+- **Decision 1: Category Mapping & Room Query Parameters**:
+  - *Chosen Approach*: Add `category: String = "all"` parameter to `ScoutGemRepository.observeGems`, `ScoutRepository`, `ScoutDao.getSpotsByCategory`, and `OverpassRetrofitClient.buildCategoryQuery`.
+  - *Why*: Allows seamless reactive flow filtering directly from Room DB into `StateFlow<List<ScoutSpotEntity>>`.
 
-### Compilation & Manual Verification
-1. Run `compile_applet`.
-2. Activate Region Download mode on map canvas.
-3. Adjust bounding box rectangle, confirm size estimation, and save region.
-4. Verify downloaded region appears in list and A* pathfinding calculates walking routes across the downloaded segments.
+- **Decision 2: Overpass QL Category Query Expansion**:
+  - *Chosen Approach*: Map category types to specific Overpass QL key-value filters:
+    - `touristic`: `node["tourism"]`, `way["tourism"]`
+    - `dining`: `node["amenity"="restaurant"]`, `node["shop"="bakery"]`, `node["amenity"="cafe"]`
+    - `historical`: `node["historic"]`, `way["historic"]`
+    - `events`: `node["amenity"="arts_centre"]`, `node["leisure"="park"]`, `node["tourism"="museum"]`
+    - `gems`: `way["highway"="steps"]`, `node["tourism"="viewpoint"]`
+
+---
+
+## 4. Technical Architecture & Data Strategy
+
+### System Architecture & Data Flow
+
+```
+┌────────────────────────────────────────────────────────┐
+│           Radar Screen Category Chip Ribbon            │
+│   [ All ] [ Touristic ] [ Dining ] [ Historical ] ...  │
+└──────────────────────────┬─────────────────────────────┘
+                           │ Category Selected ("dining")
+                           ▼
+┌────────────────────────────────────────────────────────┐
+│                    ScoutViewModel                      │
+│  • Updates _selectedCategory = "dining"               │
+│  • Triggers scrapeOsmGems(lat, lng, category="dining") │
+└──────────────┬───────────────────────────┬─────────────┘
+               │                           │
+               ▼                           ▼
+┌──────────────────────────────┐ ┌───────────────────────┐
+│     ScoutGemRepository       │ │  OverpassRetrofit     │
+│   • DAO query filtering      │ │  • Category QL query  │
+│   • 50km radius validation   │ │  • Map DTO -> Entities│
+└──────────────┬───────────────┘ └───────────┬───────────┘
+               │                            │
+               └───────────────┬────────────┘
+                               ▼
+┌────────────────────────────────────────────────────────┐
+│                Room DB (scout_spots)                   │
+│        Filtered StateFlow -> Radar Map Pins            │
+└────────────────────────────────────────────────────────┘
+```
+
+### File Modification Checklist
+
+1. **`ScoutDao.kt`**:
+   - Add `@Query("SELECT * FROM scout_spots WHERE category = :category ORDER BY timestamp DESC")`
+     `fun getSpotsByCategory(category: String): Flow<List<ScoutSpotEntity>>`
+
+2. **`OverpassRetrofitClient.kt`**:
+   - Update `buildQuery(lat, lng, radiusMeters, category: String = "all")` to generate category-targeted Overpass QL filters.
+   - Update `fetchNearbyNodes` and `generateNearbyFallbackSpots` to pass and apply category tags.
+
+3. **`ScoutGemRepository.kt` & `ScoutRepository.kt`**:
+   - Update `syncLiveOsmGems(userLat, userLng, radiusMeters, category: String = "all")` to query and process category-filtered POIs.
+
+4. **`ScoutViewModel.kt`**:
+   - Add `selectCategory(category: String)` method that updates `selectedCategory` and invokes `scrapeOsmGems(lat, lng, category)`.
+
+5. **`RadarScreen.kt`**:
+   - Insert floating horizontal `RadarCategoryFilterRibbon` near the top of the screen overlaid on the map canvas.
+   - Bind chip clicks to `onCategorySelected`.
+
+6. **Unit Tests (`ScoutRepositoryTest.kt` / `OverpassRetrofitClientTest.kt`)**:
+   - Add unit tests verifying category QL query building and DAO category filtering.

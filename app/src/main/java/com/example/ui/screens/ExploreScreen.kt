@@ -353,7 +353,7 @@ fun ExploreScreen(
                         Spacer(modifier = Modifier.width(8.dp))
                         val gpsText = if (hasLocationPermission) {
                             if (userLocation != null) {
-                                "GPS Active • Lisbon (±${userLocation.accuracy.toInt()}m)"
+                                "GPS Active (±${userLocation.accuracy.toInt()}m)"
                             } else {
                                 strings.gpsActive
                             }

@@ -282,7 +282,9 @@ fun VividScoutApp(viewModel: ScoutViewModel) {
 
                                 MainTab.RADAR -> {
                                     RadarScreen(
-                                        spots = allSpots,
+                                        spots = filteredSpots,
+                                        selectedCategory = selectedCategory,
+                                        onCategorySelected = { cat -> viewModel.setCategory(cat) },
                                         userLocation = userLocation,
                                         hasLocationPermission = hasLocationPermission,
                                         isPreciseLocation = isPreciseLocation,

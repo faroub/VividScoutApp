@@ -236,11 +236,20 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
             com.example.engine.VectorWalkGraph.reloadAllDownloadedRegions(regions)
         }
 
-        // Auto-discover local spots via OpenStreetMap Overpass when user GPS is outside seeded region
+        // Auto-discover local spots via OpenStreetMap Overpass when user GPS is active
         viewModelScope.launch {
             userLocation.collect { loc ->
                 if (loc != null) {
                     offlineMapManager.refreshPacksState(loc.latitude, loc.longitude)
+
+                    // If user is far from Lisbon (> 100 km), purge un-saved seed spots outside user's current area
+                    val distFromLisbon = com.example.data.location.LocationTracker.distanceBetween(
+                        loc.latitude, loc.longitude, 38.7112, -9.1423
+                    )
+                    if (distFromLisbon > 100000f) {
+                        repository.purgeUnsavedDistantSpots(loc.latitude, loc.longitude, radiusDegrees = 1.5)
+                    }
+
                     val currentSpots = allSpots.value
                     val nearbyCount = currentSpots.count { spot ->
                         spot.computedDistanceMeters(loc.latitude, loc.longitude) <= 10000f
@@ -257,9 +266,10 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
     val filteredSpots: StateFlow<List<ScoutSpotEntity>> = combine(
         allSpots,
         _selectedCategory,
-        _searchQuery
-    ) { spots, category, query ->
-        spots.filter { spot ->
+        _searchQuery,
+        userCoordinates
+    ) { spots, category, query, coords ->
+        val matching = spots.filter { spot ->
             val matchesCategory = if (category == "all") true else spot.category.equals(category, ignoreCase = true)
             val matchesQuery = if (query.isBlank()) true else {
                 spot.title.contains(query, ignoreCase = true) ||
@@ -268,6 +278,18 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
             }
             matchesCategory && matchesQuery
         }
+
+        // Check if there are local spots within 50 km
+        val hasNearby = matching.any { it.computedDistanceMeters(coords.first, coords.second) <= 50000f }
+        val proximityFiltered = if (hasNearby) {
+            matching.filter { spot ->
+                spot.isSaved || spot.isDiscovered || spot.isOfflineDraft || spot.computedDistanceMeters(coords.first, coords.second) <= 100000f
+            }
+        } else {
+            matching
+        }
+
+        proximityFiltered.sortedBy { it.computedDistanceMeters(coords.first, coords.second) }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun navigateToMain(tab: MainTab = MainTab.EXPLORE) {
@@ -286,6 +308,8 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setCategory(category: String) {
         _selectedCategory.value = category
+        val coords = userCoordinates.value
+        scrapeOsmGems(coords.first, coords.second, radiusMeters = 2000, category = category)
     }
 
     fun setSearchQuery(query: String) {
@@ -452,12 +476,12 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun scrapeOsmGems(lat: Double, lng: Double, radiusMeters: Int = 1500) {
+    fun scrapeOsmGems(lat: Double, lng: Double, radiusMeters: Int = 1500, category: String = "all") {
         if (_isScrapingOsm.value) return
         viewModelScope.launch {
             _isScrapingOsm.value = true
-            _osmScrapeMessage.value = "Scraping viewpoints, bakeries & shortcuts from OpenStreetMap..."
-            val result = gemRepository.syncLiveOsmGems(lat, lng, radiusMeters)
+            _osmScrapeMessage.value = "Scraping $category POIs near your location from OpenStreetMap..."
+            val result = gemRepository.syncLiveOsmGems(lat, lng, radiusMeters, category)
             result.fold(
                 onSuccess = { count ->
                     _lastOsmSyncedCount.value = count

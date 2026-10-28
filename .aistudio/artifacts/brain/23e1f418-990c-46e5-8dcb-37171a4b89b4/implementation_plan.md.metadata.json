@@ -1,6 +1,6 @@
 {
-  "summary":  "Implementation plan for the Region Downloader feature with an interactive bounding box on the vector map canvas, offline storage of road segments, elevation points, and cached spots, and dynamic A* graph expansion for seamless offline navigation in remote areas.",
-  "updatedAt":  "2026-10-28T21:22:37.597177143Z",
+  "summary":  "Implementation plan for category filtering extension in ScoutGemRepository and floating category chip ribbon on the Radar map screen.",
+  "updatedAt":  "2026-10-28T21:54:40.298898344Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

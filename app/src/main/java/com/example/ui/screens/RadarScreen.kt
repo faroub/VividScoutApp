@@ -47,6 +47,8 @@ import androidx.compose.material.icons.filled.GpsFixed
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.filled.NearMe
+import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Radar
@@ -117,6 +119,8 @@ enum class RadarViewMode {
 @Composable
 fun RadarScreen(
     spots: List<ScoutSpotEntity>,
+    selectedCategory: String = "all",
+    onCategorySelected: (String) -> Unit = {},
     userLocation: Location? = null,
     hasLocationPermission: Boolean = true,
     isPreciseLocation: Boolean = true,
@@ -391,6 +395,14 @@ fun RadarScreen(
                     }
                 }
             }
+        }
+
+        // 2.5 Floating Category Chips Ribbon for Map Screen
+        item {
+            RadarCategoryFilterRibbon(
+                selectedCategory = selectedCategory,
+                onCategorySelected = onCategorySelected
+            )
         }
 
         // 3. Main Visual Component (Map or Radar)
@@ -926,5 +938,65 @@ fun RadarSweepView(
             style = MaterialTheme.typography.labelSmall,
             color = Color(0xFF94A3B8)
         )
+    }
+}
+
+@Composable
+fun RadarCategoryFilterRibbon(
+    selectedCategory: String,
+    onCategorySelected: (String) -> Unit
+) {
+    val categories = listOf(
+        Triple("all", "All", Icons.Default.NearMe),
+        Triple("touristic", "Touristic", Icons.Default.LocationOn),
+        Triple("dining", "Dining", Icons.Default.Restaurant),
+        Triple("historical", "Historical", Icons.Default.Explore),
+        Triple("events", "Events", Icons.Default.Star),
+        Triple("gems", "Gems", Icons.Default.Bookmark)
+    )
+
+    androidx.compose.foundation.lazy.LazyRow(
+        contentPadding = PaddingValues(horizontal = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("radar_category_filter_ribbon")
+    ) {
+        items(categories) { (id, label, icon) ->
+            val isSelected = selectedCategory.equals(id, ignoreCase = true) ||
+                    (id == "touristic" && selectedCategory.equals("sights", ignoreCase = true)) ||
+                    (id == "dining" && selectedCategory.equals("eats", ignoreCase = true)) ||
+                    (id == "historical" && selectedCategory.equals("history", ignoreCase = true)) ||
+                    (id == "gems" && selectedCategory.equals("shortcut", ignoreCase = true))
+
+            Surface(
+                shape = RoundedCornerShape(999.dp),
+                color = if (isSelected) PrimaryContainer else SurfaceContainerLowest,
+                shadowElevation = if (isSelected) 6.dp else 2.dp,
+                modifier = Modifier
+                    .clickable { onCategorySelected(id) }
+                    .testTag("radar_category_chip_$id")
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = label,
+                        tint = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold
+                        ),
+                        color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
+        }
     }
 }

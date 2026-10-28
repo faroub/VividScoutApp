@@ -134,6 +134,18 @@ class ScoutRepository(
         )
     }
 
+    suspend fun purgeUnsavedDistantSpots(
+        centerLat: Double,
+        centerLng: Double,
+        radiusDegrees: Double = 1.0 // Approx 111 km
+    ) = withContext(Dispatchers.IO) {
+        val minLat = centerLat - radiusDegrees
+        val maxLat = centerLat + radiusDegrees
+        val minLng = centerLng - radiusDegrees
+        val maxLng = centerLng + radiusDegrees
+        scoutDao.deleteUnsavedDistantSpots(minLat, maxLat, minLng, maxLng)
+    }
+
     suspend fun initializeIfEmpty() = withContext(Dispatchers.IO) {
         if (scoutDao.getCount() == 0) {
             com.example.data.local.AppDatabase.populateInitialSpots(scoutDao)

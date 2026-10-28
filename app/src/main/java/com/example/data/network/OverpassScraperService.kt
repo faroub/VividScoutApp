@@ -205,7 +205,7 @@ class OverpassScraperService {
                         }
                     }
 
-                val street = tags.optString("addr:street").ifBlank { "Lisbon Historic District" }
+                val street = tags.optString("addr:street").ifBlank { "Local District" }
                 val randomRating = 4.5 + (Random.nextDouble() * 0.4)
                 val formattedRating = String.format(Locale.US, "%.1f", randomRating).toDoubleOrNull() ?: 4.8
 
