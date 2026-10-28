@@ -133,6 +133,12 @@ fun RadarScreen(
     onClearWalkingTrail: () -> Unit = {},
     cacheHealth: com.example.data.model.VicinityCacheHealth? = null,
     onOpenCacheHealth: () -> Unit = {},
+    isRegionDownloadMode: Boolean = false,
+    selectionBounds: com.example.data.offline.GeoBoundingBox? = null,
+    onUpdateSelectionBounds: (com.example.data.offline.GeoBoundingBox) -> Unit = {},
+    onStartRegionDownload: () -> Unit = {},
+    onCancelRegionDownload: () -> Unit = {},
+    onConfirmRegionDownload: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var viewMode by remember { mutableStateOf(RadarViewMode.MAP) }
@@ -420,6 +426,12 @@ fun RadarScreen(
                             onPlanTrailClick = onPlanWalkingTrail,
                             cacheHealth = cacheHealth,
                             onOpenCacheHealth = onOpenCacheHealth,
+                            isRegionDownloadMode = isRegionDownloadMode,
+                            selectionBounds = selectionBounds,
+                            onUpdateSelectionBounds = onUpdateSelectionBounds,
+                            onStartRegionDownload = onStartRegionDownload,
+                            onCancelRegionDownload = onCancelRegionDownload,
+                            onConfirmRegionDownload = onConfirmRegionDownload,
                             modifier = Modifier.fillMaxSize()
                         )
                     } else {

@@ -126,6 +126,11 @@ fun VividScoutApp(viewModel: ScoutViewModel) {
     val routePlannerDestination by viewModel.routePlannerDestination.collectAsState()
     val plannedRoute by viewModel.plannedRoute.collectAsState()
     val isCalculatingRoute by viewModel.isCalculatingRoute.collectAsState()
+    val isRegionDownloadMode by viewModel.isRegionDownloadMode.collectAsState()
+    val activeSelectionBounds by viewModel.activeSelectionBounds.collectAsState()
+    val showRegionDownloadDialog by viewModel.showRegionDownloadDialog.collectAsState()
+    val downloadedRegions by viewModel.downloadedRegions.collectAsState()
+    val isDownloadingRegion by viewModel.isDownloadingRegion.collectAsState()
 
     // Automatically refresh permission state when returning to the app from System Settings
     DisposableEffect(lifecycleOwner) {
@@ -293,7 +298,13 @@ fun VividScoutApp(viewModel: ScoutViewModel) {
                                         onPlanWalkingTrail = { viewModel.openRoutePlanner() },
                                         onClearWalkingTrail = { viewModel.clearPlannedRoute() },
                                         cacheHealth = vicinityCacheHealth,
-                                        onOpenCacheHealth = { viewModel.openCacheHealthDialog() }
+                                        onOpenCacheHealth = { viewModel.openCacheHealthDialog() },
+                                        isRegionDownloadMode = isRegionDownloadMode,
+                                        selectionBounds = activeSelectionBounds,
+                                        onUpdateSelectionBounds = { viewModel.updateSelectionBounds(it) },
+                                        onStartRegionDownload = { viewModel.enterRegionDownloadMode() },
+                                        onCancelRegionDownload = { viewModel.exitRegionDownloadMode() },
+                                        onConfirmRegionDownload = { viewModel.openRegionDownloadDialog() }
                                     )
                                 }
 
@@ -339,12 +350,14 @@ fun VividScoutApp(viewModel: ScoutViewModel) {
                                             viewModel.downloadOfflineMapPack(packId)
                                         },
                                         onDeleteOfflinePack = { packId -> viewModel.deleteOfflineMapPack(packId) },
-                                        onDownloadCurrentGpsPack = {
+                                         onDownloadCurrentGpsPack = {
                                             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
                                                 notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                                             }
                                             viewModel.downloadCurrentGpsMapPack()
                                         },
+                                        customRegions = downloadedRegions,
+                                        onDeleteCustomRegion = { viewModel.deleteDownloadedRegion(it) },
                                         onOpenDiagnostics = { viewModel.openDiagnosticDialog() }
                                     )
                                 }
@@ -479,6 +492,19 @@ fun VividScoutApp(viewModel: ScoutViewModel) {
                             openAppSettings()
                         },
                         onDismiss = { viewModel.dismissLocationSettingsDialog() }
+                    )
+                }
+
+                // Custom Region Downloader Confirmation Dialog
+                if (showRegionDownloadDialog && activeSelectionBounds != null) {
+                    val bounds = activeSelectionBounds!!
+                    val spotsCount = allSpots.count { bounds.contains(it.latitude, it.longitude) }
+                    com.example.ui.dialogs.RegionDownloadDialog(
+                        bounds = bounds,
+                        spotsInBoundsCount = spotsCount,
+                        isDownloading = isDownloadingRegion,
+                        onConfirmDownload = { name -> viewModel.downloadCurrentSelectedRegion(name) },
+                        onDismiss = { viewModel.closeRegionDownloadDialog() }
                     )
                 }
             }

@@ -16,7 +16,8 @@ data class OfflineWalkingTrail(
     val estimatedWalkingMinutes: Int,
     val steps: List<RouteStep> = emptyList(),
     val originTitle: String = "Starting Point",
-    val destinationTitle: String = "Destination"
+    val destinationTitle: String = "Destination",
+    val elevationProfile: RouteElevationProfile? = null
 ) {
     val formattedDistance: String
         get() = if (totalDistanceMeters >= 1000) {
@@ -106,6 +107,7 @@ object OfflineRouteEngine {
         }
 
         val minutes = (totalDist / WALKING_SPEED_METERS_PER_MIN).roundToInt().coerceAtLeast(1)
+        val elevationProfile = LisbonElevationModel.buildElevationProfile(pathPoints)
 
         return OfflineWalkingTrail(
             waypoints = orderedWaypoints,
@@ -113,7 +115,8 @@ object OfflineRouteEngine {
             totalDistanceMeters = totalDist,
             estimatedWalkingMinutes = minutes,
             originTitle = "My Location",
-            destinationTitle = orderedWaypoints.lastOrNull()?.name ?: "Saved Gems Trail"
+            destinationTitle = orderedWaypoints.lastOrNull()?.name ?: "Saved Gems Trail",
+            elevationProfile = elevationProfile
         )
     }
 
@@ -144,6 +147,8 @@ object OfflineRouteEngine {
         originEntity?.let { waypoints.add(it) }
         destEntity?.let { waypoints.add(it) }
 
+        val elevationProfile = LisbonElevationModel.buildElevationProfile(result.pathPoints)
+
         return OfflineWalkingTrail(
             waypoints = waypoints,
             pathPoints = result.pathPoints,
@@ -151,7 +156,8 @@ object OfflineRouteEngine {
             estimatedWalkingMinutes = result.estimatedWalkingMinutes,
             steps = result.steps,
             originTitle = result.originName,
-            destinationTitle = result.destinationName
+            destinationTitle = result.destinationName,
+            elevationProfile = elevationProfile
         )
     }
 }

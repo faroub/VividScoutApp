@@ -109,6 +109,12 @@ fun ScoutMapView(
     onClearTrailClick: (() -> Unit)? = null,
     cacheHealth: com.example.data.model.VicinityCacheHealth? = null,
     onOpenCacheHealth: () -> Unit = {},
+    isRegionDownloadMode: Boolean = false,
+    selectionBounds: com.example.data.offline.GeoBoundingBox? = null,
+    onUpdateSelectionBounds: ((com.example.data.offline.GeoBoundingBox) -> Unit)? = null,
+    onStartRegionDownload: (() -> Unit)? = null,
+    onCancelRegionDownload: (() -> Unit)? = null,
+    onConfirmRegionDownload: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val strings = LocalAppStrings.current
@@ -189,6 +195,12 @@ fun ScoutMapView(
             onClearTrailClick = onClearTrailClick,
             cacheHealth = cacheHealth,
             onOpenCacheHealth = onOpenCacheHealth,
+            isRegionDownloadMode = isRegionDownloadMode,
+            selectionBounds = selectionBounds,
+            onUpdateSelectionBounds = onUpdateSelectionBounds,
+            onStartRegionDownload = onStartRegionDownload,
+            onCancelRegionDownload = onCancelRegionDownload,
+            onConfirmRegionDownload = onConfirmRegionDownload,
             modifier = Modifier.fillMaxSize()
         )
 

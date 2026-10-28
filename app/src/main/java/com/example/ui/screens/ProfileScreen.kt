@@ -86,6 +86,8 @@ fun ProfileScreen(
     onDownloadOfflinePack: (String) -> Unit = {},
     onDeleteOfflinePack: (String) -> Unit = {},
     onDownloadCurrentGpsPack: () -> Unit = {},
+    customRegions: List<com.example.data.offline.DownloadedRegionPack> = emptyList(),
+    onDeleteCustomRegion: (String) -> Unit = {},
     onOpenDiagnostics: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -385,7 +387,9 @@ fun ProfileScreen(
                 totalStorageBytes = totalOfflineStorageBytes,
                 onDownloadPack = onDownloadOfflinePack,
                 onDeletePack = onDeleteOfflinePack,
-                onDownloadCurrentGpsPack = onDownloadCurrentGpsPack
+                onDownloadCurrentGpsPack = onDownloadCurrentGpsPack,
+                customRegions = customRegions,
+                onDeleteCustomRegion = onDeleteCustomRegion
             )
         }
 

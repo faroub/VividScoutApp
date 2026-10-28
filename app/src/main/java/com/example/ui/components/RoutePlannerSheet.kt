@@ -483,6 +483,15 @@ fun RoutePlannerSheet(
                     }
                 }
 
+                // Dedicated Elevation Profile Sparkline Card (Incline vs Decline)
+                if (plannedRoute.elevationProfile != null) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    ElevationProfileSparkline(
+                        elevationProfile = plannedRoute.elevationProfile,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+
                 Spacer(modifier = Modifier.height(14.dp))
 
                 // Turn-by-Turn Steps Header & List

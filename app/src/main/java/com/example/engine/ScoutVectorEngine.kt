@@ -111,4 +111,20 @@ object ScoutVectorEngine {
 
         return Offset(panX, panY)
     }
+
+    /**
+     * Inverts a canvas screen offset back into GPS coordinates (lat, lng).
+     */
+    fun unprojectCanvasOffsetToGps(
+        screenOffset: Offset,
+        userLat: Double,
+        userLng: Double,
+        canvasCenter: Offset,
+        zoomScale: Float,
+        baseScale: Float = DEFAULT_BASE_SCALE
+    ): Pair<Double, Double> {
+        val dLng = (screenOffset.x - canvasCenter.x) / (baseScale * zoomScale)
+        val dLat = - (screenOffset.y - canvasCenter.y) / (baseScale * zoomScale)
+        return Pair(userLat + dLat, userLng + dLng)
+    }
 }

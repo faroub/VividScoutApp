@@ -196,4 +196,55 @@ object VectorWalkGraph {
             haversineMeters(lat, lng, node.lat, node.lng)
         }
     }
+
+    /**
+     * Injects road segments from downloaded offline regions into the active routing graph.
+     * Guarantees A* search immediately has coverage over newly saved remote regions.
+     */
+    fun loadCustomRegionSegments(segments: List<com.example.data.offline.DownloadedRoadSegment>) {
+        for (seg in segments) {
+            if (!baseNodes.containsKey(seg.fromId)) {
+                baseNodes[seg.fromId] = WalkNode(seg.fromId, seg.fromLat, seg.fromLng, seg.streetName)
+            }
+            if (!baseNodes.containsKey(seg.toId)) {
+                baseNodes[seg.toId] = WalkNode(seg.toId, seg.toLat, seg.toLng, seg.streetName)
+            }
+
+            val existing = baseEdges.any { it.fromId == seg.fromId && it.toId == seg.toId }
+            if (!existing) {
+                baseEdges.add(
+                    WalkEdge(
+                        fromId = seg.fromId,
+                        toId = seg.toId,
+                        distanceMeters = seg.distanceMeters,
+                        streetName = seg.streetName,
+                        isPedestrianOnly = seg.isPedestrian,
+                        isStairsOrCalçada = seg.isStairs
+                    )
+                )
+                baseEdges.add(
+                    WalkEdge(
+                        fromId = seg.toId,
+                        toId = seg.fromId,
+                        distanceMeters = seg.distanceMeters,
+                        streetName = seg.streetName,
+                        isPedestrianOnly = seg.isPedestrian,
+                        isStairsOrCalçada = seg.isStairs
+                    )
+                )
+            }
+        }
+    }
+
+    /**
+     * Re-initializes base Lisbon network and injects all downloaded region segments.
+     */
+    fun reloadAllDownloadedRegions(regions: List<com.example.data.offline.DownloadedRegionPack>) {
+        baseNodes.clear()
+        baseEdges.clear()
+        buildLisbonWalkingNetwork()
+        for (region in regions) {
+            loadCustomRegionSegments(region.roadSegments)
+        }
+    }
 }

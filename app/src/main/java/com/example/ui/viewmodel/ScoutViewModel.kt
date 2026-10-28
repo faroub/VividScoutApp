@@ -7,6 +7,7 @@ import com.example.data.local.AppDatabase
 import com.example.data.local.ScoutSpotEntity
 import com.example.data.repository.ScoutRepository
 import com.example.data.repository.ScoutGemRepository
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -39,9 +40,25 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
     val gemRepository: ScoutGemRepository = ScoutGemRepository(db.scoutDao(), db.discoveredGemDao())
     val locationTracker: LocationTracker = LocationTracker(application)
     val offlineMapManager: com.example.data.offline.OfflineMapManager = com.example.data.offline.OfflineMapManager(application, gemRepository)
+    val regionStorage = com.example.data.offline.OfflineRegionStorage(application)
 
     val offlineMapPacks: StateFlow<List<com.example.data.offline.OfflineMapPack>> = offlineMapManager.packsState
     val offlineStorageBytes: StateFlow<Long> = offlineMapManager.totalStorageBytes
+
+    private val _isRegionDownloadMode = MutableStateFlow(false)
+    val isRegionDownloadMode: StateFlow<Boolean> = _isRegionDownloadMode.asStateFlow()
+
+    private val _activeSelectionBounds = MutableStateFlow<com.example.data.offline.GeoBoundingBox?>(null)
+    val activeSelectionBounds: StateFlow<com.example.data.offline.GeoBoundingBox?> = _activeSelectionBounds.asStateFlow()
+
+    private val _showRegionDownloadDialog = MutableStateFlow(false)
+    val showRegionDownloadDialog: StateFlow<Boolean> = _showRegionDownloadDialog.asStateFlow()
+
+    private val _downloadedRegions = MutableStateFlow<List<com.example.data.offline.DownloadedRegionPack>>(emptyList())
+    val downloadedRegions: StateFlow<List<com.example.data.offline.DownloadedRegionPack>> = _downloadedRegions.asStateFlow()
+
+    private val _isDownloadingRegion = MutableStateFlow(false)
+    val isDownloadingRegion: StateFlow<Boolean> = _isDownloadingRegion.asStateFlow()
 
     val userLocation: StateFlow<Location?> = locationTracker.currentLocation
     val hasLocationPermission: StateFlow<Boolean> = locationTracker.hasPermission
@@ -210,6 +227,13 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
         }
         if (locationTracker.checkHasPermission()) {
             locationTracker.startTracking()
+        }
+
+        // Load custom downloaded regions from disk
+        viewModelScope.launch(Dispatchers.IO) {
+            val regions = regionStorage.getAllRegions()
+            _downloadedRegions.value = regions
+            com.example.engine.VectorWalkGraph.reloadAllDownloadedRegions(regions)
         }
 
         // Auto-discover local spots via OpenStreetMap Overpass when user GPS is outside seeded region
@@ -606,6 +630,84 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
 
     fun dismissOsmMessage() {
         _osmScrapeMessage.value = null
+    }
+
+    fun enterRegionDownloadMode() {
+        val center = userCoordinates.value
+        // Default bounding box approx 1.6km x 1.4km
+        val latDelta = 0.007
+        val lngDelta = 0.009
+        _activeSelectionBounds.value = com.example.data.offline.GeoBoundingBox(
+            minLat = center.first - latDelta,
+            minLng = center.second - lngDelta,
+            maxLat = center.first + latDelta,
+            maxLng = center.second + lngDelta
+        )
+        _isRegionDownloadMode.value = true
+    }
+
+    fun exitRegionDownloadMode() {
+        _isRegionDownloadMode.value = false
+        _activeSelectionBounds.value = null
+    }
+
+    fun updateSelectionBounds(bounds: com.example.data.offline.GeoBoundingBox) {
+        _activeSelectionBounds.value = bounds
+    }
+
+    fun openRegionDownloadDialog() {
+        if (_activeSelectionBounds.value != null) {
+            _showRegionDownloadDialog.value = true
+        }
+    }
+
+    fun closeRegionDownloadDialog() {
+        _showRegionDownloadDialog.value = false
+    }
+
+    fun downloadCurrentSelectedRegion(regionName: String) {
+        val bounds = _activeSelectionBounds.value ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            _isDownloadingRegion.value = true
+            _showRegionDownloadDialog.value = false
+
+            val spotsInRegion = allSpots.value.filter { bounds.contains(it.latitude, it.longitude) }
+            val (roadSegments, elevationAnchors) = regionStorage.synthesizeRoadNetworkForBounds(
+                bounds = bounds,
+                regionName = regionName,
+                cachedSpots = spotsInRegion
+            )
+
+            val estimatedBytes = (roadSegments.size * 220L) + (elevationAnchors.size * 64L) + 4096L
+            val newPack = com.example.data.offline.DownloadedRegionPack(
+                id = "custom_${System.currentTimeMillis()}",
+                name = regionName,
+                bounds = bounds,
+                roadSegments = roadSegments,
+                elevationAnchors = elevationAnchors,
+                spotsCount = spotsInRegion.size,
+                totalSizeBytes = estimatedBytes
+            )
+
+            regionStorage.saveRegion(newPack)
+            val allPacks = regionStorage.getAllRegions()
+            _downloadedRegions.value = allPacks
+            com.example.engine.VectorWalkGraph.reloadAllDownloadedRegions(allPacks)
+
+            delay(400)
+            _isDownloadingRegion.value = false
+            _isRegionDownloadMode.value = false
+            _activeSelectionBounds.value = null
+        }
+    }
+
+    fun deleteDownloadedRegion(regionId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            regionStorage.deleteRegion(regionId)
+            val allPacks = regionStorage.getAllRegions()
+            _downloadedRegions.value = allPacks
+            com.example.engine.VectorWalkGraph.reloadAllDownloadedRegions(allPacks)
+        }
     }
 
     override fun onCleared() {
