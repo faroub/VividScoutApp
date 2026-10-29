@@ -38,6 +38,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.data.local.ScoutSpotEntity
+import com.example.ui.components.ARNavigationOverlay
 import com.example.ui.components.BottomNavigationDock
 import com.example.ui.components.VividScoutTopBar
 import com.example.ui.dialogs.ClearCacheConfirmationDialog
@@ -139,6 +140,8 @@ fun VividScoutApp(viewModel: ScoutViewModel) {
     val showClearCacheDialog by viewModel.showClearCacheDialog.collectAsState()
     val databaseSizeBytes by viewModel.databaseSizeBytes.collectAsState()
     val recentSearches by viewModel.recentSearches.collectAsState()
+    val achievements by viewModel.achievements.collectAsState()
+    val unlockedAchievementsCount by viewModel.unlockedAchievementsCount.collectAsState()
 
     // Automatically refresh permission state when returning to the app from System Settings
     DisposableEffect(lifecycleOwner) {
@@ -187,6 +190,7 @@ fun VividScoutApp(viewModel: ScoutViewModel) {
     }
 
     var selectedSpotForDetail by remember { mutableStateOf<ScoutSpotEntity?>(null) }
+    var isArModeActive by remember { mutableStateOf(false) }
 
     CompositionLocalProvider(
         LocalLayoutDirection provides (if (appLanguage.isRtl) LayoutDirection.Rtl else LayoutDirection.Ltr),
@@ -208,9 +212,13 @@ fun VividScoutApp(viewModel: ScoutViewModel) {
             }
 
             is AppScreen.Main -> {
-                // Handle system back navigation to return to explore tab if on another tab
-                BackHandler(enabled = currentTab != MainTab.EXPLORE) {
-                    viewModel.selectTab(MainTab.EXPLORE)
+                // Handle system back navigation to return to explore tab if on another tab or exit AR mode
+                BackHandler(enabled = isArModeActive || currentTab != MainTab.EXPLORE) {
+                    if (isArModeActive) {
+                        isArModeActive = false
+                    } else {
+                        viewModel.selectTab(MainTab.EXPLORE)
+                    }
                 }
 
                 Scaffold(
@@ -234,6 +242,9 @@ fun VividScoutApp(viewModel: ScoutViewModel) {
                             },
                             onGpsClick = {
                                 requestLocationPermission()
+                            },
+                            onArClick = {
+                                isArModeActive = true
                             },
                             hasLocationPermission = hasLocationPermission
                         )
@@ -321,7 +332,8 @@ fun VividScoutApp(viewModel: ScoutViewModel) {
                                         recentSearches = recentSearches,
                                         onSelectRecentSearch = { viewModel.executeRecentSearch(it) },
                                         onDeleteRecentSearch = { viewModel.deleteRecentSearch(it) },
-                                        onClearAllRecentSearches = { viewModel.clearAllRecentSearches() }
+                                        onClearAllRecentSearches = { viewModel.clearAllRecentSearches() },
+                                        achievements = achievements
                                     )
                                 }
 
@@ -379,12 +391,32 @@ fun VividScoutApp(viewModel: ScoutViewModel) {
                                         totalSpotsCount = allSpots.size,
                                         savedCount = savedSpots.size,
                                         databaseSizeBytes = databaseSizeBytes,
-                                        onClearCacheClick = { viewModel.openClearCacheDialog() }
+                                        onClearCacheClick = { viewModel.openClearCacheDialog() },
+                                        achievements = achievements,
+                                        unlockedAchievementsCount = unlockedAchievementsCount
                                     )
                                 }
                             }
                         }
                     }
+                }
+
+                // AR Navigation Overlay (Fullscreen Camera HUD)
+                if (isArModeActive) {
+                    ARNavigationOverlay(
+                        spots = filteredSpots.ifEmpty { allSpots },
+                        userCoordinates = userCoordinates,
+                        onClose = { isArModeActive = false },
+                        onSelectSpot = { spot ->
+                            selectedSpotForDetail = spot
+                            isArModeActive = false
+                        },
+                        onPlanRoute = { spot ->
+                            viewModel.openRoutePlanner(destination = spot)
+                            viewModel.selectTab(MainTab.RADAR)
+                            isArModeActive = false
+                        }
+                    )
                 }
 
                 // Spot Detail Bottom Sheet

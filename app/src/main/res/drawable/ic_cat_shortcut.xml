@@ -1,0 +1,54 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="400dp"
+    android:height="220dp"
+    android:viewportWidth="400"
+    android:viewportHeight="220">
+
+    <!-- Azulejo Teal Alleyway Gradient -->
+    <path android:pathData="M0,0h400v220h-400z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="200"
+                android:startY="0"
+                android:endX="200"
+                android:endY="220"
+                android:type="linear">
+                <item android:color="#FF0D9488" android:offset="0.0" />
+                <item android:color="#FF0F766E" android:offset="0.5" />
+                <item android:color="#FF115E59" android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Tunnel Arch Perspective Silhouette -->
+    <path
+        android:pathData="M0,0 L150,90 V170 L0,220 Z"
+        android:fillColor="#042F2E" />
+    <path
+        android:pathData="M400,0 L250,90 V170 L400,220 Z"
+        android:fillColor="#042F2E" />
+
+    <!-- Distant Light at the End of the Tunnel -->
+    <path
+        android:pathData="M150,90 Q200,60 250,90 V170 H150 Z"
+        android:fillColor="#FEF08A"
+        android:fillAlpha="0.9" />
+
+    <!-- Old Brass Street Lamp Silhouette -->
+    <path
+        android:pathData="M130,80 H150 V110 H130 Z"
+        android:fillColor="#CCFBF1" />
+    <path
+        android:pathData="M140,80 V60 H110"
+        android:strokeColor="#0F172A"
+        android:strokeWidth="4" />
+
+    <!-- Azulejo Tile Grid Highlights -->
+    <path
+        android:pathData="M20,30 h30 v30 h-30 z M70,50 h30 v30 h-30 z M300,40 h30 v30 h-30 z M350,60 h30 v30 h-30 z"
+        android:strokeColor="#99F6E4"
+        android:strokeWidth="2"
+        android:fillColor="#0D9488"
+        android:fillAlpha="0.5" />
+</vector>

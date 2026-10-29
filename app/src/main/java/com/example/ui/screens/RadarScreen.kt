@@ -151,6 +151,7 @@ fun RadarScreen(
     onSelectRecentSearch: (RecentSearchEntity) -> Unit = {},
     onDeleteRecentSearch: (String) -> Unit = {},
     onClearAllRecentSearches: () -> Unit = {},
+    achievements: List<com.example.data.local.AchievementEntity> = emptyList(),
     modifier: Modifier = Modifier
 ) {
     var viewMode by remember { mutableStateOf(RadarViewMode.MAP) }
@@ -464,6 +465,7 @@ fun RadarScreen(
                             onStartRegionDownload = onStartRegionDownload,
                             onCancelRegionDownload = onCancelRegionDownload,
                             onConfirmRegionDownload = onConfirmRegionDownload,
+                            achievements = achievements,
                             modifier = Modifier.fillMaxSize()
                         )
                     } else {

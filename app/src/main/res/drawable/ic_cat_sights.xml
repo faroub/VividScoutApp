@@ -1,0 +1,59 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="400dp"
+    android:height="220dp"
+    android:viewportWidth="400"
+    android:viewportHeight="220">
+
+    <!-- Background Gradient: Golden Sunset Sky over Lisbon -->
+    <path android:pathData="M0,0h400v220h-400z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="200"
+                android:startY="0"
+                android:endX="200"
+                android:endY="220"
+                android:type="linear">
+                <item android:color="#FFF97316" android:offset="0.0" />
+                <item android:color="#FFE11D48" android:offset="0.6" />
+                <item android:color="#FF4C0519" android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Sun Disc -->
+    <path
+        android:pathData="M200,80m-35,0a35,35 0 1,1 70,0a35,35 0 1,1 -70,0"
+        android:fillColor="#FEF08A"
+        android:fillAlpha="0.85" />
+
+    <!-- Tagus River Water Surface -->
+    <path android:pathData="M0,160 Q100,150 200,165 T400,160 L400,220 L0,220 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="200"
+                android:startY="150"
+                android:endX="200"
+                android:endY="220"
+                android:type="linear">
+                <item android:color="#FF1E293B" android:offset="0.0" />
+                <item android:color="#FF0F172A" android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Lisbon Hills & Roof Silhouettes -->
+    <path
+        android:pathData="M0,170 L25,145 L40,150 L65,130 L90,155 L120,135 L145,150 L180,120 L210,140 L250,115 L280,145 L320,125 L355,150 L400,130 L400,180 L0,180 Z"
+        android:fillColor="#FF292524" />
+
+    <!-- Balustrade & Arch Motif -->
+    <path
+        android:pathData="M20,195 H380 V205 H20 Z"
+        android:fillColor="#FFF8FAFC"
+        android:fillAlpha="0.9" />
+    <path
+        android:pathData="M40,180 V195 M80,180 V195 M120,180 V195 M160,180 V195 M200,180 V195 M240,180 V195 M280,180 V195 M320,180 V195 M360,180 V195"
+        android:strokeColor="#FFF8FAFC"
+        android:strokeWidth="4" />
+</vector>

@@ -19,6 +19,12 @@ interface ScoutDao {
     @Query("SELECT * FROM scout_spots WHERE isDiscovered = 1 ORDER BY discoveredTimestamp DESC")
     fun getDiscoveredSpots(): Flow<List<ScoutSpotEntity>>
 
+    @Query("SELECT * FROM scout_spots WHERE isDiscovered = 1")
+    suspend fun getDiscoveredSpotsSync(): List<ScoutSpotEntity>
+
+    @Query("SELECT * FROM scout_spots")
+    suspend fun getAllSpotsSync(): List<ScoutSpotEntity>
+
     @Query("SELECT * FROM scout_spots WHERE isOfflineDraft = 1 ORDER BY timestamp DESC")
     fun getOfflineDrafts(): Flow<List<ScoutSpotEntity>>
 

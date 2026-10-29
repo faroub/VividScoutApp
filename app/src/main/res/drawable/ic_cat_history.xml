@@ -1,0 +1,49 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="400dp"
+    android:height="220dp"
+    android:viewportWidth="400"
+    android:viewportHeight="220">
+
+    <!-- Gothic Twilight Dusk Gradient -->
+    <path android:pathData="M0,0h400v220h-400z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="200"
+                android:startY="0"
+                android:endX="200"
+                android:endY="220"
+                android:type="linear">
+                <item android:color="#FF1E1B4B" android:offset="0.0" />
+                <item android:color="#FF312E81" android:offset="0.5" />
+                <item android:color="#FF0F172A" android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Star Constellations -->
+    <path
+        android:pathData="M80,30h2v2h-2z M150,50h2v2h-2z M280,25h3v3h-3z M340,60h2v2h-2z M220,35h2v2h-2z"
+        android:fillColor="#FEF08A"
+        android:fillAlpha="0.9" />
+
+    <!-- Castle Citadel Wall Lines -->
+    <path
+        android:pathData="M30,130 H370 V220 H30 Z"
+        android:fillColor="#1E293B" />
+
+    <!-- Battlements Crest -->
+    <path
+        android:pathData="M30,110 H60 V130 H30 Z M90,110 H120 V130 H90 Z M150,110 H180 V130 H150 Z M210,110 H240 V130 H210 Z M270,110 H300 V130 H270 Z M330,110 H360 V130 H330 Z"
+        android:fillColor="#334155" />
+
+    <!-- Gothic Pointed Archway Entry -->
+    <path
+        android:pathData="M160,220 V160 Q200,125 240,160 V220 Z"
+        android:fillColor="#FEF3C7"
+        android:fillAlpha="0.9" />
+
+    <path
+        android:pathData="M175,220 V175 Q200,145 225,175 V220 Z"
+        android:fillColor="#020617" />
+</vector>

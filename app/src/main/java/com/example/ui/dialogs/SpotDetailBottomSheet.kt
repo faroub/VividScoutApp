@@ -49,6 +49,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import com.example.util.ImageResolver
 import com.example.data.local.ScoutSpotEntity
 import com.example.ui.theme.LocalAppStrings
 import com.example.ui.theme.PrimaryContainer
@@ -62,10 +64,18 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalContext
+import com.example.data.local.AppDatabase
+import com.example.data.model.WeatherReport
+import com.example.data.repository.WeatherRepository
+import com.example.ui.components.WeatherCard
 import com.example.ui.theme.SecondaryContainer
 import com.example.ui.theme.SurfaceContainerLow
 import com.example.ui.theme.SurfaceContainerLowest
 import com.example.ui.theme.Tertiary
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -82,8 +92,37 @@ fun SpotDetailBottomSheet(
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val strings = LocalAppStrings.current
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
     var noteText by remember(spot.id) { mutableStateOf(spot.userNotes ?: "") }
     var isNoteSaved by remember { mutableStateOf(false) }
+
+    var weatherReport by remember { mutableStateOf<WeatherReport?>(null) }
+    var isWeatherLoading by remember { mutableStateOf(false) }
+
+    val weatherRepository = remember {
+        val db = AppDatabase.getDatabase(context)
+        WeatherRepository(db.weatherDao())
+    }
+
+    fun fetchWeather(forceRefresh: Boolean = false) {
+        scope.launch {
+            isWeatherLoading = true
+            weatherReport = weatherRepository.getOrFetchWeather(
+                gemId = spot.id,
+                latitude = spot.latitude,
+                longitude = spot.longitude,
+                category = spot.category,
+                forceRefresh = forceRefresh
+            )
+            isWeatherLoading = false
+        }
+    }
+
+    LaunchedEffect(spot.id) {
+        fetchWeather(forceRefresh = false)
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -105,7 +144,13 @@ fun SpotDetailBottomSheet(
                     .height(230.dp)
             ) {
                 AsyncImage(
-                    model = spot.imageUrl,
+                    model = ImageRequest.Builder(context)
+                        .data(ImageResolver.resolveImageModel(spot.imageUrl, spot.category, spot.title))
+                        .crossfade(true)
+                        .placeholder(ImageResolver.getDrawableResForCategory(spot.category))
+                        .error(ImageResolver.getDrawableResForCategory(spot.category))
+                        .fallback(ImageResolver.getDrawableResForCategory(spot.category))
+                        .build(),
                     contentDescription = spot.title,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()
@@ -210,6 +255,13 @@ fun SpotDetailBottomSheet(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     lineHeight = 22.sp
+                )
+
+                // Weather & Visit Suitability Forecast Card
+                WeatherCard(
+                    weather = weatherReport,
+                    isLoading = isWeatherLoading,
+                    onRefreshClick = { fetchWeather(forceRefresh = true) }
                 )
 
                 // Audio Lore Player (if available)

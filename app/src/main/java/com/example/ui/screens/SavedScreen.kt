@@ -51,7 +51,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import com.example.util.ImageResolver
 import com.example.data.local.ScoutSpotEntity
 import com.example.ui.theme.BrandCoral
 import com.example.ui.theme.LocalAppStrings
@@ -312,8 +315,15 @@ fun SavedScreen(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        val context = LocalContext.current
                         AsyncImage(
-                            model = spot.imageUrl,
+                            model = ImageRequest.Builder(context)
+                                .data(ImageResolver.resolveImageModel(spot.imageUrl, spot.category, spot.title))
+                                .crossfade(true)
+                                .placeholder(ImageResolver.getDrawableResForCategory(spot.category))
+                                .error(ImageResolver.getDrawableResForCategory(spot.category))
+                                .fallback(ImageResolver.getDrawableResForCategory(spot.category))
+                                .build(),
                             contentDescription = spot.title,
                             contentScale = ContentScale.Crop,
                             modifier = Modifier

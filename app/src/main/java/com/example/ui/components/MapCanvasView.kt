@@ -29,6 +29,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -110,8 +111,20 @@ fun MapCanvasView(
     onStartRegionDownload: (() -> Unit)? = null,
     onCancelRegionDownload: (() -> Unit)? = null,
     onConfirmRegionDownload: (() -> Unit)? = null,
+    achievements: List<com.example.data.local.AchievementEntity> = emptyList(),
     modifier: Modifier = Modifier
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val compassSensorManager = remember { com.example.sensor.CompassSensorManager(context) }
+    val compassState by compassSensorManager.compassState.collectAsState()
+
+    androidx.compose.runtime.DisposableEffect(userLat, userLng) {
+        compassSensorManager.startListening(userLat, userLng)
+        onDispose {
+            compassSensorManager.stopListening()
+        }
+    }
+
     var panOffset by remember { mutableStateOf(Offset.Zero) }
     var internalZoomScale by remember { mutableFloatStateOf(zoomScale) }
 
@@ -431,6 +444,24 @@ fun MapCanvasView(
                 val pinY = pinPos.y
 
                 val isSelected = selectedGem?.id == gem.id
+                val tierStyle = com.example.util.MarkerTierResolver.resolveTierForCategory(gem.category, achievements)
+
+                // Achievement Tier Pulsing Aura Ring (Bronze / Silver / Gold)
+                if (tierStyle.isPulsing) {
+                    val auraRadius = (20f + (beaconPulse * 8f)) * activeZoomScale.coerceIn(0.8f, 1.3f)
+                    drawCircle(
+                        color = tierStyle.auraColor.copy(alpha = 0.35f),
+                        radius = auraRadius,
+                        center = Offset(pinX, pinY)
+                    )
+                    drawCircle(
+                        color = tierStyle.auraColor,
+                        radius = auraRadius,
+                        center = Offset(pinX, pinY),
+                        style = Stroke(width = 1.5f)
+                    )
+                }
+
                 val pinColor = when {
                     gem.isSaved -> BrandCoral
                     gem.isDiscovered -> Color(0xFFEAB308) // Discovered gold
@@ -625,6 +656,27 @@ fun MapCanvasView(
                 )
             }
         }
+
+        // True North Digital Compass Overlay (Floating on Map Canvas)
+        val targetSpot = selectedGem?.toEntity() ?: com.example.util.CompassMathUtils.findNearestSavedGem(
+            userLat,
+            userLng,
+            gems.map { it.toEntity() }
+        )
+
+        CompassOverlay(
+            compassState = compassState,
+            userLat = userLat,
+            userLng = userLng,
+            targetGem = targetSpot,
+            onToggleTrueNorth = { compassSensorManager.toggleTrueNorthMode() },
+            onSelectTargetGem = { spot ->
+                gems.find { it.id == spot.id }?.let { onGemSelect(it) }
+            },
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(end = 12.dp, top = if (cacheHealth != null) 52.dp else 12.dp)
+        )
 
         // Preset Zoom Level Selector Chips (Bottom Floating above controls)
         Row(

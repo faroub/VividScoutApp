@@ -94,6 +94,8 @@ fun ProfileScreen(
     savedCount: Int = 0,
     databaseSizeBytes: Long = 0L,
     onClearCacheClick: () -> Unit = {},
+    achievements: List<com.example.data.local.AchievementEntity> = emptyList(),
+    unlockedAchievementsCount: Int = 0,
     modifier: Modifier = Modifier
 ) {
     val strings = LocalAppStrings.current
@@ -203,6 +205,15 @@ fun ProfileScreen(
                     }
                 }
             }
+        }
+
+        // Scout Achievements Showcase Section
+        item {
+            com.example.ui.components.AchievementsShowcaseSection(
+                achievements = achievements,
+                unlockedCount = unlockedAchievementsCount,
+                modifier = Modifier.fillMaxWidth()
+            )
         }
 
         // Offline Protocol & Queue Tile

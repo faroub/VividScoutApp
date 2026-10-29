@@ -61,7 +61,10 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.viewmodel.ScoutMapViewModel
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import com.example.util.ImageResolver
 import com.example.data.local.ScoutSpotEntity
 import com.example.data.local.computedDistanceMeters
 import com.example.data.local.computedDistanceString
@@ -115,6 +118,7 @@ fun ScoutMapView(
     onStartRegionDownload: (() -> Unit)? = null,
     onCancelRegionDownload: (() -> Unit)? = null,
     onConfirmRegionDownload: (() -> Unit)? = null,
+    achievements: List<com.example.data.local.AchievementEntity> = emptyList(),
     modifier: Modifier = Modifier
 ) {
     val strings = LocalAppStrings.current
@@ -201,6 +205,7 @@ fun ScoutMapView(
             onStartRegionDownload = onStartRegionDownload,
             onCancelRegionDownload = onCancelRegionDownload,
             onConfirmRegionDownload = onConfirmRegionDownload,
+            achievements = achievements,
             modifier = Modifier.fillMaxSize()
         )
 
@@ -635,7 +640,13 @@ fun ScoutMapView(
                 ) {
                     Box(modifier = Modifier.size(54.dp)) {
                         AsyncImage(
-                            model = spot.imageUrl,
+                            model = ImageRequest.Builder(LocalContext.current)
+                                .data(ImageResolver.resolveImageModel(spot.imageUrl, spot.category, spot.title))
+                                .crossfade(true)
+                                .placeholder(ImageResolver.getDrawableResForCategory(spot.category))
+                                .error(ImageResolver.getDrawableResForCategory(spot.category))
+                                .fallback(ImageResolver.getDrawableResForCategory(spot.category))
+                                .build(),
                             contentDescription = spot.title,
                             contentScale = ContentScale.Crop,
                             modifier = Modifier

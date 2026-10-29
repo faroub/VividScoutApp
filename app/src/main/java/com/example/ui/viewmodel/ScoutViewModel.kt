@@ -3,6 +3,7 @@ package com.example.ui.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.data.local.AchievementEntity
 import com.example.data.local.AppDatabase
 import com.example.data.local.RecentSearchEntity
 import com.example.data.local.ScoutSpotEntity
@@ -37,11 +38,16 @@ sealed class AppScreen {
 class ScoutViewModel(application: Application) : AndroidViewModel(application) {
 
     private val db = AppDatabase.getDatabase(application)
-    private val repository: ScoutRepository = ScoutRepository(db.scoutDao(), db.discoveredGemDao())
+    private val repository: ScoutRepository = ScoutRepository(db.scoutDao(), db.discoveredGemDao(), db.achievementDao())
     val gemRepository: ScoutGemRepository = ScoutGemRepository(db.scoutDao(), db.discoveredGemDao(), db.recentSearchDao())
     val locationTracker: LocationTracker = LocationTracker(application)
     val offlineMapManager: com.example.data.offline.OfflineMapManager = com.example.data.offline.OfflineMapManager(application, gemRepository)
     val regionStorage = com.example.data.offline.OfflineRegionStorage(application)
+
+    val achievements: StateFlow<List<AchievementEntity>> = repository.allAchievements
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val unlockedAchievementsCount: StateFlow<Int> = repository.unlockedAchievementsCount
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
     val offlineMapPacks: StateFlow<List<com.example.data.offline.OfflineMapPack>> = offlineMapManager.packsState
     val offlineStorageBytes: StateFlow<Long> = offlineMapManager.totalStorageBytes

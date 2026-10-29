@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.NearMe
 import androidx.compose.material.icons.filled.Sensors
@@ -65,6 +66,7 @@ fun VividScoutTopBar(
     onToggleHeaderStyle: () -> Unit,
     onLanguageClick: () -> Unit,
     onGpsClick: () -> Unit = {},
+    onArClick: () -> Unit = {},
     hasLocationPermission: Boolean = true,
     modifier: Modifier = Modifier
 ) {
@@ -218,6 +220,21 @@ fun VividScoutTopBar(
                             fontSize = 11.sp
                         )
                     }
+                }
+
+                // AR Camera Mode button
+                IconButton(
+                    onClick = onArClick,
+                    modifier = Modifier
+                        .size(36.dp)
+                        .testTag("ar_mode_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.AutoAwesome,
+                        contentDescription = "AR Navigation Mode",
+                        tint = BrandCoral,
+                        modifier = Modifier.size(19.dp)
+                    )
                 }
 
                 // Header style toggle
