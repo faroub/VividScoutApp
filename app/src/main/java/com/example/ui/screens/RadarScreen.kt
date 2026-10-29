@@ -38,7 +38,9 @@ import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bookmark
+import com.example.data.local.RecentSearchEntity
 import com.example.ui.components.DiscoverGemsLoadingState
+import com.example.ui.components.RecentSearchStrip
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.ChevronRight
@@ -145,6 +147,10 @@ fun RadarScreen(
     onStartRegionDownload: () -> Unit = {},
     onCancelRegionDownload: () -> Unit = {},
     onConfirmRegionDownload: () -> Unit = {},
+    recentSearches: List<RecentSearchEntity> = emptyList(),
+    onSelectRecentSearch: (RecentSearchEntity) -> Unit = {},
+    onDeleteRecentSearch: (String) -> Unit = {},
+    onClearAllRecentSearches: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var viewMode by remember { mutableStateOf(RadarViewMode.MAP) }
@@ -405,6 +411,18 @@ fun RadarScreen(
                 selectedCategory = selectedCategory,
                 onCategorySelected = onCategorySelected
             )
+        }
+
+        // 2.7 Recent Gemini AI Searches Horizontal Scroll Strip
+        if (recentSearches.isNotEmpty()) {
+            item {
+                RecentSearchStrip(
+                    recentSearches = recentSearches,
+                    onSearchClick = onSelectRecentSearch,
+                    onDeleteSearch = onDeleteRecentSearch,
+                    onClearAllSearches = onClearAllRecentSearches
+                )
+            }
         }
 
         // 3. Main Visual Component (Map or Radar)

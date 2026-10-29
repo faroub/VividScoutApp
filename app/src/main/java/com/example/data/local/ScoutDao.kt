@@ -78,4 +78,7 @@ interface ScoutDao {
 
     @Query("SELECT * FROM scout_spots WHERE isSaved = 0 AND isDiscovered = 0 AND isOfflineDraft = 0")
     suspend fun getUnsavedTransientSpots(): List<ScoutSpotEntity>
+
+    @Query("DELETE FROM scout_spots WHERE isSaved = 0 AND isDiscovered = 0 AND isOfflineDraft = 0")
+    suspend fun clearAllTransientSpots(): Int
 }

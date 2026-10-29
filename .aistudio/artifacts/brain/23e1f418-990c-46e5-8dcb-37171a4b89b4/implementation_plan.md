@@ -1,79 +1,114 @@
-# Auto-Cleanup Service in ScoutGemRepository
+# Implementation Plan: Recent Searches Strip for Gemini-Driven Discovery
 
-Implement a background auto-cleanup service within `ScoutGemRepository` and `ScoutDao` that maintains a lean local Room database by periodically pruning transient cached gems older than 30 days and removing un-saved POIs situated beyond a 100km radius from the user's active GPS position.
-
----
-
-## User Review & Critical Decisions
-
-> [!IMPORTANT]
-> The following requirements were confirmed during planning:
-
-- **Confirmed Decision 1 (Data Protection)**: Strictly safeguard all user-authored and curated records (`isSaved == 1`, `isDiscovered == 1`, and `isOfflineDraft == 1`). Auto-cleanup applies solely to transient cached/scouted spots (`isSaved == 0 AND isDiscovered == 0 AND isOfflineDraft == 0`).
-- **Confirmed Decision 2 (Home Location Anchor)**: Calculate the 100km radius boundary dynamically against the user's latest recorded GPS coordinates (with Lisbon as default fallback if GPS is not yet acquired).
-- **Confirmed Decision 3 (Trigger Mechanism)**: Execute auto-cleanup silently in the background on application startup within `ScoutViewModel`, with automatic re-evaluation if the user relocates substantially (>50km).
+Implement a 'Recent Searches' horizontal scroll strip positioned directly above the map in `RadarScreen`, persisting the last 5 Gemini-driven discovery queries in Room database with AI sparkle chips, individual delete buttons, a "Clear All" option, and instant query re-execution.
 
 ---
 
-## 1. Overview & Architecture
+## User Review Required
 
-Over time, exploring different districts, cities, or running repeated Gemini AI and OpenStreetMap queries can accumulate hundreds of transient POI entries in the SQLite database. 
-
-The **Auto-Cleanup Service** provides:
-1. **Time-Based Cache Eviction**: Prunes transient un-saved entries whose `timestamp` is older than 30 days (`System.currentTimeMillis() - 30.days`).
-2. **Geographic Proximity Pruning**: Computes spherical distance from the user's current GPS location and eliminates transient un-saved spots beyond 100 kilometers.
-3. **Zero Data Loss Guarantee**: Preserves user bookmarks, verified achievements, and pending drafts regardless of age or distance.
-4. **Telemetry & Observability**: Returns a structured `AutoCleanupReport` detailing the number of expired spots and distant spots pruned, exposed via `StateFlow` and Logcat.
+> [!NOTE]
+> Based on your preferences from clarifying questions:
+> 1. **Visual Style**: Each search chip presents an **AI sparkle icon** (`Icons.Default.AutoAwesome`) alongside the query text, with clean Material 3 styling and subtle tonal badges.
+> 2. **Persistence**: Search queries are persisted across app restarts in the **Room database** (`vivid_scout_database`) with a strict capacity cap of 5 most recent unique queries.
+> 3. **Management**: Each chip features an **individual remove ('✕') button** with accessible 48dp touch targets, alongside a dedicated **"Clear All"** action button.
 
 ---
 
-## 2. Technical Implementation Details
+## Proposed Changes
 
-### Database Layer (`ScoutDao.kt`)
-- Add query:
-  ```kotlin
-  @Query("DELETE FROM scout_spots WHERE isSaved = 0 AND isDiscovered = 0 AND isOfflineDraft = 0 AND timestamp < :cutoffTimestamp")
-  suspend fun deleteExpiredSpots(cutoffTimestamp: Long): Int
-  ```
-- Add batch deletion query by ID:
-  ```kotlin
-  @Query("DELETE FROM scout_spots WHERE isSaved = 0 AND isDiscovered = 0 AND isOfflineDraft = 0 AND id IN (:spotIds)")
-  suspend fun deleteSpotsByIds(spotIds: List<String>): Int
-  ```
+### 1. Room Database Layer: Entity & DAO
 
-### Repository Layer (`ScoutGemRepository.kt`)
-- Define `AutoCleanupReport`:
-  ```kotlin
-  data class AutoCleanupReport(
-      val timestamp: Long = System.currentTimeMillis(),
-      val expiredCount: Int = 0,
-      val distantCount: Int = 0,
-      val totalRemoved: Int = 0,
-      val anchorLat: Double = 0.0,
-      val anchorLng: Double = 0.0
-  )
-  ```
-- Implement `performAutoCleanup(userLat: Double, userLng: Double, maxAgeDays: Int = 30, maxRadiusKm: Double = 100.0): AutoCleanupReport`:
-  1. Calculate `cutoffTimestamp = System.currentTimeMillis() - (maxAgeDays * 24 * 60 * 60 * 1000L)`.
-  2. Execute `deleteExpiredSpots(cutoffTimestamp)`.
-  3. Retrieve un-saved candidates and filter those where geodesic distance to `(userLat, userLng)` exceeds `100,000` meters.
-  4. Prune distant IDs via `deleteSpotsByIds`.
-  5. Update `_lastCleanupReport` StateFlow.
+#### `app/src/main/java/com/example/data/local/RecentSearchEntity.kt`
+- Define Room entity `@Entity(tableName = "recent_searches")`:
+  - `id: String` (Primary Key, unique identifier or UUID)
+  - `queryText: String` (Search query or thematic discovery prompt, e.g. "Azulejo viewpoints", "Historic bakeries")
+  - `category: String` (Associated category filter, e.g. "all", "sights", "eats")
+  - `timestamp: Long` (Timestamp for LRU ordering)
 
-### ViewModel & Startup Integration (`ScoutViewModel.kt`)
-- In `ScoutViewModel.init`:
-  - Launch non-blocking background coroutine (with 2-second delay to prioritize initial UI render).
-  - Execute `gemRepository.performAutoCleanup(coords.first, coords.second)`.
-  - Listen to `userLocation` updates to trigger distant cleanup when moving to a new region (>50km shift).
+#### `app/src/main/java/com/example/data/local/RecentSearchDao.kt`
+- Create Room DAO interface:
+  - `@Query("SELECT * FROM recent_searches ORDER BY timestamp DESC LIMIT 5") fun getRecentSearches(): Flow<List<RecentSearchEntity>>`
+  - `@Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun insertSearch(search: RecentSearchEntity)`
+  - `@Query("DELETE FROM recent_searches WHERE id = :id") suspend fun deleteSearchById(id: String): Int`
+  - `@Query("DELETE FROM recent_searches") suspend fun clearAllSearches(): Int`
+  - `@Query("DELETE FROM recent_searches WHERE id NOT IN (SELECT id FROM recent_searches ORDER BY timestamp DESC LIMIT 5)") suspend fun trimOldSearches(): Int`
+  - `@Query("SELECT * FROM recent_searches WHERE LOWER(queryText) = LOWER(:queryText) LIMIT 1") suspend fun findByQueryText(queryText: String): RecentSearchEntity?`
+
+#### `app/src/main/java/com/example/data/local/AppDatabase.kt`
+- Add `RecentSearchEntity::class` to database `entities` list.
+- Bump database version from `2` to `3`.
+- Expose `abstract fun recentSearchDao(): RecentSearchDao`.
+- Pre-populate 2 initial curated discovery queries (e.g. "Secret Azulejo Viewpoints", "Artisanal Pastel Pastries") on fresh DB creation so the strip is immediately discoverable.
 
 ---
 
-## 3. Verification & Testing
+### 2. Network & Repository Layer
 
-1. **Unit & Robolectric Testing**:
-   - Add test case verifying expired spots (>30 days old) with `isSaved = 0` are deleted.
-   - Verify spots >30 days old with `isSaved = 1` or `isDiscovered = 1` are NOT deleted.
-   - Verify spots >100km away with `isSaved = 0` are removed, while nearby spots (<100km) remain intact.
-2. **Build Validation**:
-   - Compile using `compile_applet`.
-   - Run tests using `gradle :app:testDebugUnitTest`.
+#### `app/src/main/java/com/example/data/network/GeminiSpotService.kt`
+- Add optional `customQuery: String = ""` parameter to `discoverGems(userLat, userLng, category, radiusMeters, customQuery)`.
+- If `customQuery.isNotBlank()`, inject contextual search directive into Gemini 3.5 Flash-Lite / Gemini 3.8 Flash prompt:
+  - `"User search inquiry / theme: '$customQuery'. Focus discoveries strictly on real, named landmarks matching this inquiry."`
+
+#### `app/src/main/java/com/example/data/repository/ScoutGemRepository.kt`
+- Inject `recentSearchDao: RecentSearchDao` into `ScoutGemRepository`.
+- Expose `val recentSearches: Flow<List<RecentSearchEntity>> = recentSearchDao.getRecentSearches()`.
+- Add `suspend fun recordRecentSearch(queryText: String, category: String = "all")`:
+  - Check for existing search with same text (case-insensitive); update timestamp or insert new.
+  - Trim table to keep only the latest 5 records.
+- Add `suspend fun removeRecentSearch(id: String)` and `suspend fun clearAllRecentSearches()`.
+- Update `syncLiveOsmGems` to accept optional `customQuery: String = ""` and automatically record non-blank searches.
+
+---
+
+### 3. ViewModel Layer
+
+#### `app/src/main/java/com/example/ui/viewmodel/ScoutViewModel.kt`
+- Expose `recentSearches: StateFlow<List<RecentSearchEntity>>` via `recentSearchDao` / `gemRepository`.
+- Expose `searchQuery: StateFlow<String>` (already existing).
+- Implement:
+  - `fun executeRecentSearch(search: RecentSearchEntity)`: sets `searchQuery`, selects category if applicable, records the search with updated timestamp, and triggers `scrapeOsmGems(userLat, userLng, customQuery = search.queryText)`.
+  - `fun submitGeminiDiscoveryQuery(queryText: String)`: triggers Gemini discovery for custom text inquiry and records to Room.
+  - `fun deleteRecentSearch(id: String)`: deletes specific query chip.
+  - `fun clearAllRecentSearches()`: purges all recent search history.
+
+---
+
+### 4. UI Layer: Recent Searches Horizontal Scroll Strip
+
+#### `app/src/main/java/com/example/ui/components/RecentSearchStrip.kt`
+- Create a dedicated Jetpack Compose component:
+  - Horizontal scrolling `LazyRow` styled to sit smoothly above the map.
+  - **Chip styling**:
+    - Rounded pills with subtle surface container background (`SurfaceContainerLowest`) and subtle teal/primary border.
+    - **AI Sparkle Icon** (`Icons.Default.AutoAwesome` in `BrandTeal`) at the start.
+    - **Query text** with clear typography and max character truncation.
+    - **Individual Dismiss Button**: Small `IconButton` with `Icons.Default.Close` (`14.dp` icon with minimum 48x48dp interactive touch target).
+    - `Modifier.testTag("recent_search_chip_${search.id}")` and `Modifier.testTag("delete_recent_search_${search.id}")`.
+  - **Clear All action**:
+    - Compact text/icon button at the tail: "Clear" with `Icons.Default.DeleteSweep` or `Clear All` chip.
+  - **Inline Prompt Input**:
+    - Optional small "+" or custom search pill allowing travelers to type a quick discovery prompt right from the strip.
+
+#### `app/src/main/java/com/example/ui/screens/RadarScreen.kt`
+- Add `recentSearches: List<RecentSearchEntity>`, `onSelectRecentSearch: (RecentSearchEntity) -> Unit`, `onDeleteRecentSearch: (String) -> Unit`, and `onClearAllRecentSearches: () -> Unit` to `RadarScreen` parameters.
+- Place `RecentSearchStrip` directly above the map container (above item 3: Main Visual Component Map/Radar).
+
+#### `app/src/main/java/com/example/MainActivity.kt`
+- Collect `recentSearches by viewModel.recentSearches.collectAsState()`.
+- Pass `recentSearches`, `onSelectRecentSearch = { viewModel.executeRecentSearch(it) }`, `onDeleteRecentSearch = { viewModel.deleteRecentSearch(it) }`, and `onClearAllRecentSearches = { viewModel.clearAllRecentSearches() }` into `RadarScreen`.
+
+---
+
+## Verification Plan
+
+### Automated Unit Tests
+- Add unit tests in `app/src/test/java/com/example/data/local/RecentSearchDaoTest.kt`:
+  - Verify inserting queries caps at 5 records and respects LRU ordering (most recent first).
+  - Verify duplicate query update re-elevates to top without duplicating rows.
+  - Verify deleting single query by ID.
+  - Verify clearing all recent searches.
+  - Run via `gradle :app:testDebugUnitTest`.
+
+### Build Verification
+- Execute `compile_applet` to verify compilation and resource binding.
+- Verify smooth rendering in Streaming Android Emulator.

@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.local.AppDatabase
+import com.example.data.local.RecentSearchEntity
 import com.example.data.local.ScoutSpotEntity
 import com.example.data.repository.ScoutRepository
 import com.example.data.repository.ScoutGemRepository
@@ -37,7 +38,7 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
 
     private val db = AppDatabase.getDatabase(application)
     private val repository: ScoutRepository = ScoutRepository(db.scoutDao(), db.discoveredGemDao())
-    val gemRepository: ScoutGemRepository = ScoutGemRepository(db.scoutDao(), db.discoveredGemDao())
+    val gemRepository: ScoutGemRepository = ScoutGemRepository(db.scoutDao(), db.discoveredGemDao(), db.recentSearchDao())
     val locationTracker: LocationTracker = LocationTracker(application)
     val offlineMapManager: com.example.data.offline.OfflineMapManager = com.example.data.offline.OfflineMapManager(application, gemRepository)
     val regionStorage = com.example.data.offline.OfflineRegionStorage(application)
@@ -173,6 +174,9 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
     val offlineDrafts: StateFlow<List<ScoutSpotEntity>> = repository.offlineDrafts
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val recentSearches: StateFlow<List<RecentSearchEntity>> = gemRepository.recentSearches
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     val syncStatus: StateFlow<com.example.ui.components.OfflineSyncStatus> = combine(
         allSpots,
         offlineDrafts,
@@ -224,7 +228,35 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
     private var lastCleanupLat: Double? = null
     private var lastCleanupLng: Double? = null
 
+    private val _showClearCacheDialog = MutableStateFlow(false)
+    val showClearCacheDialog: StateFlow<Boolean> = _showClearCacheDialog.asStateFlow()
+
+    private val _databaseSizeBytes = MutableStateFlow(com.example.util.StorageSizeCalculator.getRoomDatabaseSizeBytes(application))
+    val databaseSizeBytes: StateFlow<Long> = _databaseSizeBytes.asStateFlow()
+
     val autoCleanupReport: StateFlow<com.example.data.repository.AutoCleanupReport?> = gemRepository.lastCleanupReport
+
+    fun refreshDatabaseSize() {
+        viewModelScope.launch(Dispatchers.IO) {
+            _databaseSizeBytes.value = com.example.util.StorageSizeCalculator.getRoomDatabaseSizeBytes(getApplication())
+        }
+    }
+
+    fun openClearCacheDialog() {
+        _showClearCacheDialog.value = true
+    }
+
+    fun dismissClearCacheDialog() {
+        _showClearCacheDialog.value = false
+    }
+
+    fun confirmClearCache() {
+        viewModelScope.launch(Dispatchers.IO) {
+            gemRepository.clearTransientCache()
+            _showClearCacheDialog.value = false
+            refreshDatabaseSize()
+        }
+    }
 
     init {
         viewModelScope.launch {
@@ -512,21 +544,28 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun discoverGemsWithGemini(lat: Double, lng: Double, radiusMeters: Int = 1500, category: String = "all") {
-        scrapeOsmGems(lat, lng, radiusMeters, category)
+    fun discoverGemsWithGemini(lat: Double, lng: Double, radiusMeters: Int = 1500, category: String = "all", customQuery: String = "") {
+        scrapeOsmGems(lat, lng, radiusMeters, category, customQuery)
     }
 
-    fun scrapeOsmGems(lat: Double, lng: Double, radiusMeters: Int = 1500, category: String = "all") {
+    fun scrapeOsmGems(
+        lat: Double,
+        lng: Double,
+        radiusMeters: Int = 1500,
+        category: String = "all",
+        customQuery: String = ""
+    ) {
         if (_isScrapingOsm.value) return
         viewModelScope.launch {
             _isScrapingOsm.value = true
-            _osmScrapeMessage.value = "Scanning verified $category spots near your location with Gemini 3.8 Flash AI..."
-            val result = gemRepository.syncLiveOsmGems(lat, lng, radiusMeters, category)
+            val queryDisplay = if (customQuery.isNotBlank()) "'$customQuery'" else "$category spots"
+            _osmScrapeMessage.value = "Scanning verified $queryDisplay near your location with Gemini AI..."
+            val result = gemRepository.syncLiveOsmGems(lat, lng, radiusMeters, category, customQuery)
             result.fold(
                 onSuccess = { count ->
                     _lastOsmSyncedCount.value = count
                     _osmScrapeMessage.value = if (count > 0) {
-                        "✨ $count verified places discovered with Gemini 3.8 Flash into Room DB!"
+                        "✨ $count verified places discovered with Gemini into Room DB!"
                     } else {
                         "Gemini AI scan complete. All available spots up-to-date."
                     }
@@ -539,6 +578,35 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
                 }
             )
             _isScrapingOsm.value = false
+        }
+    }
+
+    fun executeRecentSearch(search: RecentSearchEntity) {
+        _searchQuery.value = search.queryText
+        if (search.category.isNotBlank() && search.category != "all") {
+            _selectedCategory.value = search.category
+        }
+        val coords = userCoordinates.value
+        scrapeOsmGems(coords.first, coords.second, category = _selectedCategory.value, customQuery = search.queryText)
+    }
+
+    fun submitGeminiDiscoveryQuery(queryText: String) {
+        val trimmed = queryText.trim()
+        if (trimmed.isBlank()) return
+        _searchQuery.value = trimmed
+        val coords = userCoordinates.value
+        scrapeOsmGems(coords.first, coords.second, category = _selectedCategory.value, customQuery = trimmed)
+    }
+
+    fun deleteRecentSearch(id: String) {
+        viewModelScope.launch {
+            gemRepository.removeRecentSearch(id)
+        }
+    }
+
+    fun clearAllRecentSearches() {
+        viewModelScope.launch {
+            gemRepository.clearAllRecentSearches()
         }
     }
 

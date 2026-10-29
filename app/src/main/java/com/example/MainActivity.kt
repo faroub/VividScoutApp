@@ -40,6 +40,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.data.local.ScoutSpotEntity
 import com.example.ui.components.BottomNavigationDock
 import com.example.ui.components.VividScoutTopBar
+import com.example.ui.dialogs.ClearCacheConfirmationDialog
 import com.example.ui.dialogs.LanguageSelectionDialog
 import com.example.ui.dialogs.LocationPermissionRationaleDialog
 import com.example.ui.dialogs.LocationPermissionSettingsDialog
@@ -135,6 +136,9 @@ fun VividScoutApp(viewModel: ScoutViewModel) {
     val showRegionDownloadDialog by viewModel.showRegionDownloadDialog.collectAsState()
     val downloadedRegions by viewModel.downloadedRegions.collectAsState()
     val isDownloadingRegion by viewModel.isDownloadingRegion.collectAsState()
+    val showClearCacheDialog by viewModel.showClearCacheDialog.collectAsState()
+    val databaseSizeBytes by viewModel.databaseSizeBytes.collectAsState()
+    val recentSearches by viewModel.recentSearches.collectAsState()
 
     // Automatically refresh permission state when returning to the app from System Settings
     DisposableEffect(lifecycleOwner) {
@@ -313,7 +317,11 @@ fun VividScoutApp(viewModel: ScoutViewModel) {
                                         onUpdateSelectionBounds = { viewModel.updateSelectionBounds(it) },
                                         onStartRegionDownload = { viewModel.enterRegionDownloadMode() },
                                         onCancelRegionDownload = { viewModel.exitRegionDownloadMode() },
-                                        onConfirmRegionDownload = { viewModel.openRegionDownloadDialog() }
+                                        onConfirmRegionDownload = { viewModel.openRegionDownloadDialog() },
+                                        recentSearches = recentSearches,
+                                        onSelectRecentSearch = { viewModel.executeRecentSearch(it) },
+                                        onDeleteRecentSearch = { viewModel.deleteRecentSearch(it) },
+                                        onClearAllRecentSearches = { viewModel.clearAllRecentSearches() }
                                     )
                                 }
 
@@ -367,7 +375,11 @@ fun VividScoutApp(viewModel: ScoutViewModel) {
                                         },
                                         customRegions = downloadedRegions,
                                         onDeleteCustomRegion = { viewModel.deleteDownloadedRegion(it) },
-                                        onOpenDiagnostics = { viewModel.openDiagnosticDialog() }
+                                        onOpenDiagnostics = { viewModel.openDiagnosticDialog() },
+                                        totalSpotsCount = allSpots.size,
+                                        savedCount = savedSpots.size,
+                                        databaseSizeBytes = databaseSizeBytes,
+                                        onClearCacheClick = { viewModel.openClearCacheDialog() }
                                     )
                                 }
                             }
@@ -514,6 +526,19 @@ fun VividScoutApp(viewModel: ScoutViewModel) {
                         isDownloading = isDownloadingRegion,
                         onConfirmDownload = { name -> viewModel.downloadCurrentSelectedRegion(name) },
                         onDismiss = { viewModel.closeRegionDownloadDialog() }
+                    )
+                }
+
+                // Clear Cache Confirmation Dialog
+                if (showClearCacheDialog) {
+                    val permanentCount = (savedSpots.size + discoveredSpots.size).coerceAtMost(allSpots.size)
+                    val transientCount = (allSpots.size - permanentCount - offlineDrafts.size).coerceAtLeast(0)
+                    ClearCacheConfirmationDialog(
+                        transientCount = transientCount,
+                        savedCount = savedSpots.size,
+                        discoveredCount = discoveredSpots.size,
+                        onConfirm = { viewModel.confirmClearCache() },
+                        onDismiss = { viewModel.dismissClearCacheDialog() }
                     )
                 }
             }

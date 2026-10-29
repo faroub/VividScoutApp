@@ -24,6 +24,7 @@ class RoomDatabaseTest {
     private lateinit var db: AppDatabase
     private lateinit var scoutDao: ScoutDao
     private lateinit var discoveredGemDao: DiscoveredGemDao
+    private lateinit var recentSearchDao: RecentSearchDao
 
     @Before
     fun createDb() {
@@ -33,6 +34,7 @@ class RoomDatabaseTest {
             .build()
         scoutDao = db.scoutDao()
         discoveredGemDao = db.discoveredGemDao()
+        recentSearchDao = db.recentSearchDao()
     }
 
     @After
@@ -370,4 +372,203 @@ class RoomDatabaseTest {
         assertFalse(remaining.any { it.id == "spot_auto_expired" })
         assertFalse(remaining.any { it.id == "spot_auto_porto" })
     }
+
+    @Test
+    fun manualClearTransientCachePurgesOnlyUnsavedTransientSpots() = runTest {
+        val repository = com.example.data.repository.ScoutGemRepository(scoutDao, discoveredGemDao)
+
+        // 1. Transient cached spot 1
+        val transientSpot1 = ScoutSpotEntity(
+            id = "transient_1",
+            title = "Unsaved Cached Cafe",
+            description = "Ephemeral map discovery",
+            category = "eats",
+            distance = "150m",
+            walkMinutes = 2,
+            rating = 4.3,
+            reviewCount = "12",
+            imageUrl = "",
+            badgeLabel = "",
+            statusBadge = "",
+            tagsRaw = "",
+            isSaved = false,
+            isDiscovered = false,
+            isOfflineDraft = false
+        )
+
+        // 2. Transient cached spot 2
+        val transientSpot2 = ScoutSpotEntity(
+            id = "transient_2",
+            title = "Unsaved Cached Viewpoint",
+            description = "Ephemeral map discovery",
+            category = "sights",
+            distance = "300m",
+            walkMinutes = 4,
+            rating = 4.6,
+            reviewCount = "45",
+            imageUrl = "",
+            badgeLabel = "",
+            statusBadge = "",
+            tagsRaw = "",
+            isSaved = false,
+            isDiscovered = false,
+            isOfflineDraft = false
+        )
+
+        // 3. Saved bookmark (MUST BE PRESERVED)
+        val savedSpot = ScoutSpotEntity(
+            id = "saved_spot_1",
+            title = "My Favorite Miradouro",
+            description = "Bookmarked gem",
+            category = "sights",
+            distance = "500m",
+            walkMinutes = 6,
+            rating = 4.9,
+            reviewCount = "800",
+            imageUrl = "",
+            badgeLabel = "SAVED",
+            statusBadge = "Bookmarked",
+            tagsRaw = "favorite",
+            isSaved = true,
+            isDiscovered = false,
+            isOfflineDraft = false
+        )
+
+        // 4. Discovered badge (MUST BE PRESERVED)
+        val discoveredSpot = ScoutSpotEntity(
+            id = "discovered_spot_1",
+            title = "Secret Tiled Archway",
+            description = "Explored and stamped in passport",
+            category = "gems",
+            distance = "400m",
+            walkMinutes = 5,
+            rating = 4.8,
+            reviewCount = "150",
+            imageUrl = "",
+            badgeLabel = "DISCOVERED",
+            statusBadge = "Discovered",
+            tagsRaw = "passport",
+            isSaved = false,
+            isDiscovered = true,
+            isOfflineDraft = false
+        )
+
+        // 5. Offline Draft (MUST BE PRESERVED)
+        val offlineDraftSpot = ScoutSpotEntity(
+            id = "draft_spot_1",
+            title = "Unsynced Local Discovery",
+            description = "Created while offline",
+            category = "shortcuts",
+            distance = "50m",
+            walkMinutes = 1,
+            rating = 5.0,
+            reviewCount = "1",
+            imageUrl = "",
+            badgeLabel = "DRAFT",
+            statusBadge = "Offline Draft",
+            tagsRaw = "local",
+            isSaved = false,
+            isDiscovered = false,
+            isOfflineDraft = true
+        )
+
+        scoutDao.insertSpots(listOf(transientSpot1, transientSpot2, savedSpot, discoveredSpot, offlineDraftSpot))
+        assertEquals(5, scoutDao.getCount())
+
+        val purgedCount = repository.clearTransientCache()
+        assertEquals(2, purgedCount)
+
+        val remainingSpots = scoutDao.getAllSpotsList()
+        assertEquals(3, remainingSpots.size)
+        assertTrue(remainingSpots.any { it.id == "saved_spot_1" })
+        assertTrue(remainingSpots.any { it.id == "discovered_spot_1" })
+        assertTrue(remainingSpots.any { it.id == "draft_spot_1" })
+        assertFalse(remainingSpots.any { it.id == "transient_1" })
+        assertFalse(remainingSpots.any { it.id == "transient_2" })
+    }
+
+    @Test
+    fun recentSearchDaoPersistsTop5QueriesInLruOrder() = runTest {
+        val baseTime = 1000000L
+        for (i in 1..7) {
+            recentSearchDao.insertSearch(
+                RecentSearchEntity(
+                    id = "search_$i",
+                    queryText = "Query #$i",
+                    category = "sights",
+                    timestamp = baseTime + (i * 1000L)
+                )
+            )
+        }
+
+        // DAO getRecentSearchesList returns top 5 ordered by timestamp DESC
+        val recent = recentSearchDao.getRecentSearchesList()
+        assertEquals(5, recent.size)
+        assertEquals("Query #7", recent[0].queryText)
+        assertEquals("Query #6", recent[1].queryText)
+        assertEquals("Query #5", recent[2].queryText)
+        assertEquals("Query #4", recent[3].queryText)
+        assertEquals("Query #3", recent[4].queryText)
+
+        // After trimming excess searches, total count in DB should be capped at 5
+        recentSearchDao.trimExcessSearches()
+        assertEquals(5, recentSearchDao.getCount())
+    }
+
+    @Test
+    fun repositoryRecordRecentSearchReElevatesDuplicateQueries() = runTest {
+        val repository = com.example.data.repository.ScoutGemRepository(
+            scoutDao = scoutDao,
+            discoveredGemDao = discoveredGemDao,
+            recentSearchDao = recentSearchDao
+        )
+
+        // Insert 5 searches
+        repository.recordRecentSearch("Azulejo Tiles", "sights")
+        repository.recordRecentSearch("Fado Music", "history")
+        repository.recordRecentSearch("Custard Tarts", "eats")
+        repository.recordRecentSearch("Tram 28 Stops", "shortcuts")
+        repository.recordRecentSearch("Riverfront Sunset", "sights")
+
+        var list = recentSearchDao.getRecentSearchesList()
+        assertEquals(5, list.size)
+        assertEquals("Riverfront Sunset", list.first().queryText)
+
+        // Now search "Azulejo Tiles" again - it should be re-elevated to index 0 without duplicating rows
+        repository.recordRecentSearch("azulejo tiles", "sights")
+        list = recentSearchDao.getRecentSearchesList()
+        assertEquals(5, list.size)
+        assertEquals("Azulejo Tiles", list.first().queryText)
+    }
+
+    @Test
+    fun repositoryDeleteAndClearRecentSearches() = runTest {
+        val repository = com.example.data.repository.ScoutGemRepository(
+            scoutDao = scoutDao,
+            discoveredGemDao = discoveredGemDao,
+            recentSearchDao = recentSearchDao
+        )
+
+        repository.recordRecentSearch("Search A")
+        repository.recordRecentSearch("Search B")
+        repository.recordRecentSearch("Search C")
+
+        var list = recentSearchDao.getRecentSearchesList()
+        assertEquals(3, list.size)
+
+        val toDelete = list.find { it.queryText == "Search B" }
+        assertNotNull(toDelete)
+        val deleted = repository.removeRecentSearch(toDelete!!.id)
+        assertEquals(1, deleted)
+
+        list = recentSearchDao.getRecentSearchesList()
+        assertEquals(2, list.size)
+        assertFalse(list.any { it.queryText == "Search B" })
+
+        // Clear all
+        val cleared = repository.clearAllRecentSearches()
+        assertEquals(2, cleared)
+        assertEquals(0, recentSearchDao.getCount())
+    }
 }
+

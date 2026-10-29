@@ -1,6 +1,6 @@
 {
-  "summary":  "Implementation plan for the auto-cleanup service in ScoutGemRepository to purge cached POIs older than 30 days and outside a 100km radius from the user's active GPS location while strictly protecting saved, discovered, and drafted gems.",
-  "updatedAt":  "2026-10-29T19:55:05.401500888Z",
+  "summary":  "Implementation plan for the Recent Searches horizontal scroll strip above the map. Persists the last 5 Gemini-driven discovery queries in Room database, displays AI sparkle chips with query text and individual remove buttons, provides a Clear All option, and enables instant re-execution of discovery queries.",
+  "updatedAt":  "2026-10-29T20:16:54.229615733Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

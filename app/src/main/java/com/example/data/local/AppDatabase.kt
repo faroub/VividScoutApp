@@ -11,14 +11,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 @Database(
-    entities = [ScoutSpotEntity::class, DiscoveredGemEntity::class],
-    version = 2,
+    entities = [ScoutSpotEntity::class, DiscoveredGemEntity::class, RecentSearchEntity::class],
+    version = 3,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun scoutDao(): ScoutDao
     abstract fun discoveredGemDao(): DiscoveredGemDao
+    abstract fun recentSearchDao(): RecentSearchDao
 
     companion object {
         @Volatile
@@ -45,8 +46,36 @@ abstract class AppDatabase : RoomDatabase() {
                 INSTANCE?.let { database ->
                     CoroutineScope(Dispatchers.IO).launch {
                         populateInitialSpots(database.scoutDao())
+                        populateInitialRecentSearches(database.recentSearchDao())
                     }
                 }
+            }
+        }
+
+        suspend fun populateInitialRecentSearches(dao: RecentSearchDao) {
+            val now = System.currentTimeMillis()
+            val initialSearches = listOf(
+                RecentSearchEntity(
+                    id = "search_seed_1",
+                    queryText = "Secret Azulejo Viewpoints",
+                    category = "sights",
+                    timestamp = now
+                ),
+                RecentSearchEntity(
+                    id = "search_seed_2",
+                    queryText = "Artisanal Pastel Pastries",
+                    category = "eats",
+                    timestamp = now - 60_000L
+                ),
+                RecentSearchEntity(
+                    id = "search_seed_3",
+                    queryText = "Historic Fado Taverns",
+                    category = "history",
+                    timestamp = now - 120_000L
+                )
+            )
+            for (search in initialSearches) {
+                dao.insertSearch(search)
             }
         }
 

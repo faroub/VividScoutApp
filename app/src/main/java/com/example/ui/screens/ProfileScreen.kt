@@ -57,6 +57,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.ui.theme.BrandCoral
 import com.example.ui.theme.BrandTeal
+import com.example.ui.components.DataStorageDashboardCard
 import com.example.ui.theme.LocalAppLanguage
 import com.example.ui.theme.LocalAppStrings
 import com.example.ui.theme.PrimaryContainer
@@ -89,6 +90,10 @@ fun ProfileScreen(
     customRegions: List<com.example.data.offline.DownloadedRegionPack> = emptyList(),
     onDeleteCustomRegion: (String) -> Unit = {},
     onOpenDiagnostics: () -> Unit = {},
+    totalSpotsCount: Int = 0,
+    savedCount: Int = 0,
+    databaseSizeBytes: Long = 0L,
+    onClearCacheClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val strings = LocalAppStrings.current
@@ -390,6 +395,18 @@ fun ProfileScreen(
                 onDownloadCurrentGpsPack = onDownloadCurrentGpsPack,
                 customRegions = customRegions,
                 onDeleteCustomRegion = onDeleteCustomRegion
+            )
+        }
+
+        // Data Usage & Local Storage Dashboard
+        item {
+            DataStorageDashboardCard(
+                totalSpotsCount = totalSpotsCount,
+                savedCount = savedCount,
+                discoveredCount = discoveredCount,
+                draftCount = offlineDraftCount,
+                databaseSizeBytes = databaseSizeBytes,
+                onClearCacheClick = onClearCacheClick
             )
         }
 

@@ -1,6 +1,8 @@
 package com.example.data.repository
 
 import com.example.data.local.DiscoveredGemDao
+import com.example.data.local.RecentSearchDao
+import com.example.data.local.RecentSearchEntity
 import com.example.data.local.ScoutDao
 import com.example.data.local.ScoutSpotEntity
 import com.example.data.model.ScoutGem
@@ -12,6 +14,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 
@@ -35,9 +38,45 @@ data class AutoCleanupReport(
 class ScoutGemRepository(
     private val scoutDao: ScoutDao,
     private val discoveredGemDao: DiscoveredGemDao? = null,
+    private val recentSearchDao: RecentSearchDao? = null,
     val overpassClient: OverpassRetrofitClient = OverpassRetrofitClient(),
     val geminiSpotService: GeminiSpotService = GeminiSpotService()
 ) {
+
+    val recentSearches: Flow<List<RecentSearchEntity>> =
+        recentSearchDao?.getRecentSearches() ?: flowOf(emptyList())
+
+    suspend fun recordRecentSearch(queryText: String, category: String = "all"): Unit = withContext(Dispatchers.IO) {
+        val trimmed = queryText.trim()
+        if (trimmed.isBlank() || recentSearchDao == null) return@withContext
+
+        val existing = recentSearchDao.findByQueryText(trimmed)
+        if (existing != null) {
+            recentSearchDao.insertSearch(
+                existing.copy(
+                    timestamp = System.currentTimeMillis(),
+                    category = category
+                )
+            )
+        } else {
+            recentSearchDao.insertSearch(
+                RecentSearchEntity(
+                    queryText = trimmed,
+                    category = category,
+                    timestamp = System.currentTimeMillis()
+                )
+            )
+        }
+        recentSearchDao.trimExcessSearches()
+    }
+
+    suspend fun removeRecentSearch(id: String): Int = withContext(Dispatchers.IO) {
+        recentSearchDao?.deleteSearchById(id) ?: 0
+    }
+
+    suspend fun clearAllRecentSearches(): Int = withContext(Dispatchers.IO) {
+        recentSearchDao?.clearAllSearches() ?: 0
+    }
 
     private val _lastCleanupReport = MutableStateFlow<AutoCleanupReport?>(null)
     val lastCleanupReport: StateFlow<AutoCleanupReport?> = _lastCleanupReport.asStateFlow()
@@ -163,6 +202,16 @@ class ScoutGemRepository(
     }
 
     /**
+     * Manually forces a purge of all transient cached POIs from the local database.
+     * Strictly preserves all saved (isSaved=1), discovered (isDiscovered=1), and drafted (isOfflineDraft=1) gems.
+     */
+    suspend fun clearTransientCache(): Int = withContext(Dispatchers.IO) {
+        val purged = scoutDao.clearAllTransientSpots()
+        android.util.Log.i("ScoutGemRepository", "Manual cache clear purged $purged transient spots from Room DB.")
+        purged
+    }
+
+    /**
      * Discovers real, authentic, named spots near the user's location using Firebase AI Logic (Gemini 3.8 Flash).
      * Falls back to Overpass API / offline generator if AI discovery is offline or unavailable.
      */
@@ -170,10 +219,14 @@ class ScoutGemRepository(
         userLat: Double = 38.7112,
         userLng: Double = -9.1423,
         radiusMeters: Int = 1500,
-        category: String = "all"
+        category: String = "all",
+        customQuery: String = ""
     ): Result<Int> = withContext(Dispatchers.IO) {
-        // First try Firebase AI Logic (Gemini 3.8 Flash) for high quality verified spots
-        val geminiResult = geminiSpotService.discoverGems(userLat, userLng, category, radiusMeters)
+        if (customQuery.isNotBlank()) {
+            recordRecentSearch(customQuery, category)
+        }
+        // First try Firebase AI Logic (Gemini 3.5 Flash-Lite / 3.8 Flash) for high quality verified spots
+        val geminiResult = geminiSpotService.discoverGems(userLat, userLng, category, radiusMeters, customQuery)
         if (geminiResult.isSuccess) {
             val spots = geminiResult.getOrNull().orEmpty()
             if (spots.isNotEmpty()) {
