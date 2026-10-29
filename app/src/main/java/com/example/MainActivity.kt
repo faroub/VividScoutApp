@@ -65,6 +65,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // STEP 1: Configure App Check with launch intent before any UI or Firebase operations
+        com.example.util.configureAppCheck(this, intent)
+
         enableEdgeToEdge()
 
         // Initialize the Scout Vector Map Engine on app startup
@@ -276,7 +280,10 @@ fun VividScoutApp(viewModel: ScoutViewModel) {
                                         syncStatus = syncStatus,
                                         onOpenDiagnostics = { viewModel.openDiagnosticDialog() },
                                         cacheHealth = vicinityCacheHealth,
-                                        onOpenCacheHealth = { viewModel.openCacheHealthDialog() }
+                                        onOpenCacheHealth = { viewModel.openCacheHealthDialog() },
+                                        isDiscovering = isScrapingOsm,
+                                        discoveryMessage = osmScrapeMessage,
+                                        onTriggerDiscover = { viewModel.scrapeOsmGems(userCoordinates.first, userCoordinates.second, category = selectedCategory) }
                                     )
                                 }
 

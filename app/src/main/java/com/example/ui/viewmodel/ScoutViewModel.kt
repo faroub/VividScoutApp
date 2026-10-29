@@ -221,6 +221,11 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
         )
     )
 
+    private var lastCleanupLat: Double? = null
+    private var lastCleanupLng: Double? = null
+
+    val autoCleanupReport: StateFlow<com.example.data.repository.AutoCleanupReport?> = gemRepository.lastCleanupReport
+
     init {
         viewModelScope.launch {
             repository.initializeIfEmpty()
@@ -236,11 +241,35 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
             com.example.engine.VectorWalkGraph.reloadAllDownloadedRegions(regions)
         }
 
+        // Periodic/Startup Auto-Cleanup: purges cached gems > 30 days old and un-saved gems > 100km away
+        viewModelScope.launch(Dispatchers.IO) {
+            delay(1500)
+            val coords = userCoordinates.value
+            gemRepository.performAutoCleanup(coords.first, coords.second, maxAgeDays = 30, maxRadiusKm = 100.0)
+            lastCleanupLat = coords.first
+            lastCleanupLng = coords.second
+        }
+
         // Auto-discover local spots via OpenStreetMap Overpass when user GPS is active
         viewModelScope.launch {
             userLocation.collect { loc ->
                 if (loc != null) {
                     offlineMapManager.refreshPacksState(loc.latitude, loc.longitude)
+
+                    // If user moved significantly (> 50 km from last cleanup anchor), run distant auto-cleanup
+                    val distFromLastCleanup = if (lastCleanupLat != null && lastCleanupLng != null) {
+                        com.example.data.location.LocationTracker.distanceBetween(
+                            loc.latitude, loc.longitude, lastCleanupLat!!, lastCleanupLng!!
+                        )
+                    } else {
+                        Float.MAX_VALUE
+                    }
+
+                    if (distFromLastCleanup > 50000f) {
+                        lastCleanupLat = loc.latitude
+                        lastCleanupLng = loc.longitude
+                        gemRepository.performAutoCleanup(loc.latitude, loc.longitude, maxAgeDays = 30, maxRadiusKm = 100.0)
+                    }
 
                     // If user is far from Lisbon (> 100 km), purge un-saved seed spots outside user's current area
                     val distFromLisbon = com.example.data.location.LocationTracker.distanceBetween(
@@ -260,6 +289,13 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
             }
+        }
+    }
+
+    fun triggerAutoCleanup() {
+        val coords = userCoordinates.value
+        viewModelScope.launch(Dispatchers.IO) {
+            gemRepository.performAutoCleanup(coords.first, coords.second)
         }
     }
 
@@ -476,26 +512,30 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun discoverGemsWithGemini(lat: Double, lng: Double, radiusMeters: Int = 1500, category: String = "all") {
+        scrapeOsmGems(lat, lng, radiusMeters, category)
+    }
+
     fun scrapeOsmGems(lat: Double, lng: Double, radiusMeters: Int = 1500, category: String = "all") {
         if (_isScrapingOsm.value) return
         viewModelScope.launch {
             _isScrapingOsm.value = true
-            _osmScrapeMessage.value = "Scraping $category POIs near your location from OpenStreetMap..."
+            _osmScrapeMessage.value = "Scanning verified $category spots near your location with Gemini 3.8 Flash AI..."
             val result = gemRepository.syncLiveOsmGems(lat, lng, radiusMeters, category)
             result.fold(
                 onSuccess = { count ->
                     _lastOsmSyncedCount.value = count
                     _osmScrapeMessage.value = if (count > 0) {
-                        "✨ $count real gems scraped from OpenStreetMap into Room DB!"
+                        "✨ $count verified places discovered with Gemini 3.8 Flash into Room DB!"
                     } else {
-                        "OSM scan complete. All available spots up-to-date."
+                        "Gemini AI scan complete. All available spots up-to-date."
                     }
                     if (count > 0) {
                         _userPoints.value += count * 5
                     }
                 },
                 onFailure = { err ->
-                    _osmScrapeMessage.value = "OSM Overpass query: ${err.message ?: "Network error"}. Tap to retry."
+                    _osmScrapeMessage.value = "Gemini AI discovery: ${err.message ?: "Network error"}. Tap to retry."
                 }
             )
             _isScrapingOsm.value = false

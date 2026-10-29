@@ -430,19 +430,13 @@ class OverpassRetrofitClient(
                 }
             }
 
-            // Derive title
-            val rawName = tags["name"] ?: tags["name:en"] ?: tags["name:pt"]
-            val title = if (!rawName.isNullOrBlank()) {
-                rawName
-            } else {
-                when (category) {
-                    "eats" -> "Pastelaria & Bakery — Fresh Batch #${index + 1}"
-                    "sights" -> "Scenic Viewpoint Overlook #${index + 1}"
-                    "shortcut" -> "Cobblestone Steps Shortcut #${index + 1}"
-                    "history" -> "Historic ${tags["historic"]?.replace('_', ' ')?.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.ROOT) else it.toString() } ?: "Site"} Landmark"
-                    else -> "Discovered Node #${element.id}"
-                }
+            // Derive title and verify official name requirement
+            val rawName = tags["name"] ?: tags["name:en"] ?: tags["name:es"] ?: tags["name:fr"] ?: tags["name:pt"]
+            if (rawName.isNullOrBlank()) {
+                dropReasons.add("Element ${element.type} #${element.id} dropped: Missing official name tag.")
+                return@forEachIndexed
             }
+            val title = rawName
 
             // Description
             val desc = tags["description"] ?: tags["note"] ?: when (category) {

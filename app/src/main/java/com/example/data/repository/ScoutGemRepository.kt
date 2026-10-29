@@ -5,22 +5,42 @@ import com.example.data.local.ScoutDao
 import com.example.data.local.ScoutSpotEntity
 import com.example.data.model.ScoutGem
 import com.example.data.model.toScoutGem
+import com.example.data.network.GeminiSpotService
 import com.example.data.network.OverpassRetrofitClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 
 /**
+ * Diagnostic summary produced when auto-cleanup runs on the local Room database.
+ */
+data class AutoCleanupReport(
+    val timestamp: Long = System.currentTimeMillis(),
+    val expiredRemoved: Int = 0,
+    val distantRemoved: Int = 0,
+    val totalRemoved: Int = 0,
+    val anchorLat: Double = 0.0,
+    val anchorLng: Double = 0.0
+)
+
+/**
  * Offline-First Repository for ScoutGem locations.
- * Room is the single source of truth; live Overpass API web scraper results
- * are inserted into Room in the background so the app remains 100% functional offline.
+ * Room is the single source of truth; live spot discovery results from Firebase AI Logic (Gemini 3.8 Flash)
+ * and Overpass API are inserted into Room in the background so the app remains 100% functional offline.
  */
 class ScoutGemRepository(
     private val scoutDao: ScoutDao,
     private val discoveredGemDao: DiscoveredGemDao? = null,
-    val overpassClient: OverpassRetrofitClient = OverpassRetrofitClient()
+    val overpassClient: OverpassRetrofitClient = OverpassRetrofitClient(),
+    val geminiSpotService: GeminiSpotService = GeminiSpotService()
 ) {
+
+    private val _lastCleanupReport = MutableStateFlow<AutoCleanupReport?>(null)
+    val lastCleanupReport: StateFlow<AutoCleanupReport?> = _lastCleanupReport.asStateFlow()
 
     /**
      * Diagnostic telemetry log flow for the Overpass API inspector.
@@ -48,8 +68,6 @@ class ScoutGemRepository(
 
     /**
      * Executes a suspendable block with exponential backoff retries.
-     * Performs up to maxAttempts (default 3) starting at initialDelayMs (default 1000ms),
-     * doubling delay per failed attempt.
      */
     suspend fun <T> retryWithExponentialBackoff(
         maxAttempts: Int = 3,
@@ -64,7 +82,7 @@ class ScoutGemRepository(
             lastResult = block()
             if (lastResult.isSuccess) {
                 if (attempt > 1) {
-                    android.util.Log.i("ScoutGemRepository", "Overpass sync succeeded on retry attempt #$attempt")
+                    android.util.Log.i("ScoutGemRepository", "Spot discovery succeeded on retry attempt #$attempt")
                 }
                 return lastResult
             }
@@ -72,7 +90,7 @@ class ScoutGemRepository(
             if (attempt < maxAttempts) {
                 android.util.Log.w(
                     "ScoutGemRepository",
-                    "Overpass sync attempt #$attempt failed. Retrying in ${currentDelay}ms... Error: ${lastResult.exceptionOrNull()?.message}"
+                    "Spot discovery attempt #$attempt failed. Retrying in ${currentDelay}ms... Error: ${lastResult.exceptionOrNull()?.message}"
                 )
                 kotlinx.coroutines.delay(currentDelay)
                 currentDelay = (currentDelay * factor).toLong()
@@ -81,25 +99,98 @@ class ScoutGemRepository(
 
         android.util.Log.e(
             "ScoutGemRepository",
-            "All $maxAttempts attempts failed for Overpass sync: ${lastResult.exceptionOrNull()?.message}"
+            "All $maxAttempts attempts failed for spot discovery: ${lastResult.exceptionOrNull()?.message}"
         )
         return lastResult
     }
 
     /**
-     * Asynchronously scrapes live OpenStreetMap viewpoints, bakeries, shortcuts & historic ruins
-     * around the user's GPS coordinates via Overpass API and inserts them into Room with exponential backoff.
+     * Periodically removes un-saved cached gems older than 30 days and un-saved spots outside
+     * a 100km radius from the user's home/current GPS coordinates to keep the local database lean.
+     * Strictly preserves all saved (isSaved=1), discovered (isDiscovered=1), and drafted (isOfflineDraft=1) gems.
+     */
+    suspend fun performAutoCleanup(
+        userLat: Double = 38.7112,
+        userLng: Double = -9.1423,
+        maxAgeDays: Int = 30,
+        maxRadiusKm: Double = 100.0
+    ): AutoCleanupReport = withContext(Dispatchers.IO) {
+        val now = System.currentTimeMillis()
+        val cutoffTimestamp = now - (maxAgeDays.toLong() * 24L * 60L * 60L * 1000L)
+
+        // 1. Delete un-saved spots older than cutoff timestamp (e.g. 30 days)
+        val expiredRemoved = scoutDao.deleteExpiredSpots(cutoffTimestamp)
+
+        // 2. Fetch remaining un-saved transient spots to evaluate distance cutoff
+        val transientSpots = scoutDao.getUnsavedTransientSpots()
+        val maxRadiusMeters = (maxRadiusKm * 1000.0).toFloat()
+        val distantSpotIds = mutableListOf<String>()
+
+        if (userLat != 0.0 || userLng != 0.0) {
+            for (spot in transientSpots) {
+                val distance = com.example.data.location.LocationTracker.distanceBetween(
+                    userLat, userLng, spot.latitude, spot.longitude
+                )
+                if (distance > maxRadiusMeters) {
+                    distantSpotIds.add(spot.id)
+                }
+            }
+        }
+
+        val distantRemoved = if (distantSpotIds.isNotEmpty()) {
+            scoutDao.deleteSpotsByIds(distantSpotIds)
+        } else {
+            0
+        }
+
+        val totalRemoved = expiredRemoved + distantRemoved
+        val report = AutoCleanupReport(
+            timestamp = now,
+            expiredRemoved = expiredRemoved,
+            distantRemoved = distantRemoved,
+            totalRemoved = totalRemoved,
+            anchorLat = userLat,
+            anchorLng = userLng
+        )
+
+        _lastCleanupReport.value = report
+        android.util.Log.i(
+            "ScoutGemRepository",
+            "Auto-cleanup completed: removed $expiredRemoved expired spots (> ${maxAgeDays}d) and $distantRemoved distant spots (> ${maxRadiusKm.toInt()}km). Total pruned: $totalRemoved."
+        )
+
+        report
+    }
+
+    /**
+     * Discovers real, authentic, named spots near the user's location using Firebase AI Logic (Gemini 3.8 Flash).
+     * Falls back to Overpass API / offline generator if AI discovery is offline or unavailable.
      */
     suspend fun syncLiveOsmGems(
         userLat: Double = 38.7112,
         userLng: Double = -9.1423,
-        radiusMeters: Int = 1200,
+        radiusMeters: Int = 1500,
         category: String = "all"
     ): Result<Int> = withContext(Dispatchers.IO) {
+        // First try Firebase AI Logic (Gemini 3.8 Flash) for high quality verified spots
+        val geminiResult = geminiSpotService.discoverGems(userLat, userLng, category, radiusMeters)
+        if (geminiResult.isSuccess) {
+            val spots = geminiResult.getOrNull().orEmpty()
+            if (spots.isNotEmpty()) {
+                scoutDao.clearFallbackSpots()
+                deduplicateAndInsert(spots)
+                return@withContext Result.success(spots.size)
+            }
+        }
+
+        // Fallback to Overpass API scraper with exponential backoff if AI is unavailable or returned empty
         retryWithExponentialBackoff(maxAttempts = 2, initialDelayMs = 500L, factor = 1.5) {
             val fetchResult = overpassClient.fetchNearbyNodes(userLat, userLng, radiusMeters, category)
             fetchResult.fold(
                 onSuccess = { osmEntities ->
+                    if (osmEntities.isNotEmpty()) {
+                        scoutDao.clearFallbackSpots()
+                    }
                     val rawSpots = if (osmEntities.isNotEmpty()) {
                         osmEntities
                     } else {
@@ -126,16 +217,30 @@ class ScoutGemRepository(
 
     private suspend fun deduplicateAndInsert(spots: List<ScoutSpotEntity>) {
         val existingSpots = scoutDao.getAllSpotsList()
-        val unique = spots.filter { newSpot ->
-            val duplicate = existingSpots.find { existing ->
+        val unique = mutableListOf<ScoutSpotEntity>()
+
+        spots.forEach { newSpot ->
+            val newTitleNorm = newSpot.title.lowercase(java.util.Locale.ROOT).replace(Regex("[^a-z0-9]"), "")
+            val isDuplicate = existingSpots.any { existing ->
+                val existingTitleNorm = existing.title.lowercase(java.util.Locale.ROOT).replace(Regex("[^a-z0-9]"), "")
                 existing.id == newSpot.id ||
-                (existing.title.equals(newSpot.title, ignoreCase = true) &&
-                 com.example.data.location.LocationTracker.distanceBetween(
-                     existing.latitude, existing.longitude, newSpot.latitude, newSpot.longitude
-                 ) < 20f)
+                (newTitleNorm.isNotBlank() && newTitleNorm == existingTitleNorm) ||
+                (com.example.data.location.LocationTracker.distanceBetween(
+                    existing.latitude, existing.longitude, newSpot.latitude, newSpot.longitude
+                ) < 80f && existing.category == newSpot.category)
+            } || unique.any { added ->
+                val addedTitleNorm = added.title.lowercase(java.util.Locale.ROOT).replace(Regex("[^a-z0-9]"), "")
+                (newTitleNorm.isNotBlank() && newTitleNorm == addedTitleNorm) ||
+                (com.example.data.location.LocationTracker.distanceBetween(
+                    added.latitude, added.longitude, newSpot.latitude, newSpot.longitude
+                ) < 80f && added.category == newSpot.category)
             }
-            duplicate == null
+
+            if (!isDuplicate) {
+                unique.add(newSpot)
+            }
         }
+
         if (unique.isNotEmpty()) {
             scoutDao.insertSpots(unique)
         }

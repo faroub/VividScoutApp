@@ -1,111 +1,79 @@
-# Category Filtering Extension & Map Screen Category Chips
+# Auto-Cleanup Service in ScoutGemRepository
 
-Extend `ScoutGemRepository` query logic to support category filtering across all major POI types (`all`, `touristic`, `dining`, `historical`, `events`, `gems`), update `OverpassRetrofitClient` to query category-specific OpenStreetMap nodes, and render a floating horizontal category chip ribbon on the main Radar map screen.
+Implement a background auto-cleanup service within `ScoutGemRepository` and `ScoutDao` that maintains a lean local Room database by periodically pruning transient cached gems older than 30 days and removing un-saved POIs situated beyond a 100km radius from the user's active GPS position.
+
+---
 
 ## User Review & Critical Decisions
 
 > [!IMPORTANT]
-> The following decisions were confirmed in Phase 1:
+> The following requirements were confirmed during planning:
 
-- **Confirmed Decision 1 (Category Types)**: Supported category filter chips: **All**, **Touristic** (sights & attractions), **Dining** (bakeries & restaurants), **Historical** (monuments & ruins), **Events** (cultural venues & parks), and **Gems** (secret spots & shortcuts).
-- **Confirmed Decision 2 (Map Screen Layout)**: Floating horizontal category chip ribbon positioned near the top of the Radar map view below the top bar.
-- **Confirmed Decision 3 (Overpass Fetch Integration)**: Selecting a category chip updates map markers immediately and triggers a category-specific Overpass QL fetch targeted at the user's active GPS coordinates.
-
----
-
-## 1. Overview & Core Concept
-
-- **What It Does**: Expands VividScout into a complete tourist guide by categorizing both hidden gems and major tourist attractions, historic monuments, dining venues, cultural event spaces, and secret passes. Users can tap floating category chips directly on the main Radar map screen to isolate specific venue types and fetch live OSM data for that exact category.
-- **Target Audience**: Tourists, visitors, and local explorers seeking immediate situational awareness of specific POI categories around their current location.
-- **Key Value**: Delivers instant category-driven filtering on both the map view and the explore feed while leveraging real-time OpenStreetMap Overpass queries.
+- **Confirmed Decision 1 (Data Protection)**: Strictly safeguard all user-authored and curated records (`isSaved == 1`, `isDiscovered == 1`, and `isOfflineDraft == 1`). Auto-cleanup applies solely to transient cached/scouted spots (`isSaved == 0 AND isDiscovered == 0 AND isOfflineDraft == 0`).
+- **Confirmed Decision 2 (Home Location Anchor)**: Calculate the 100km radius boundary dynamically against the user's latest recorded GPS coordinates (with Lisbon as default fallback if GPS is not yet acquired).
+- **Confirmed Decision 3 (Trigger Mechanism)**: Execute auto-cleanup silently in the background on application startup within `ScoutViewModel`, with automatic re-evaluation if the user relocates substantially (>50km).
 
 ---
 
-## 2. User Experience & Visual Design
+## 1. Overview & Architecture
 
-- **Floating Category Chip Ribbon (Radar Screen)**:
-  - Horizontal scrollable row of styled M3 Filter Chips floating gracefully near the top of the Radar map screen.
-  - Active chip uses a vibrant container background with a high-contrast label and category icon; inactive chips use a semi-transparent surface container with subtle border elevation.
-  - Icons per category:
-    - **All**: `NearMe`
-    - **Touristic**: `PhotoCamera` / `Attractions`
-    - **Dining**: `Restaurant` / `Utensils`
-    - **Historical**: `Castle` / `Explore`
-    - **Events**: `Event` / `Celebration`
-    - **Gems**: `Verified` / `Sparkles`
-- **Dynamic Map Marker Filtering**:
-  - Selecting a category chip instantly filters pin markers rendered on `MapCanvasView` / `GoogleMapView`.
-  - Displays a brief pulse toast when scraping category-specific Overpass POIs (e.g., `"Scanning nearby Dining POIs on OpenStreetMap..."`).
+Over time, exploring different districts, cities, or running repeated Gemini AI and OpenStreetMap queries can accumulate hundreds of transient POI entries in the SQLite database. 
+
+The **Auto-Cleanup Service** provides:
+1. **Time-Based Cache Eviction**: Prunes transient un-saved entries whose `timestamp` is older than 30 days (`System.currentTimeMillis() - 30.days`).
+2. **Geographic Proximity Pruning**: Computes spherical distance from the user's current GPS location and eliminates transient un-saved spots beyond 100 kilometers.
+3. **Zero Data Loss Guarantee**: Preserves user bookmarks, verified achievements, and pending drafts regardless of age or distance.
+4. **Telemetry & Observability**: Returns a structured `AutoCleanupReport` detailing the number of expired spots and distant spots pruned, exposed via `StateFlow` and Logcat.
 
 ---
 
-## 3. Key Product Decisions & Trade-Offs
+## 2. Technical Implementation Details
 
-- **Decision 1: Category Mapping & Room Query Parameters**:
-  - *Chosen Approach*: Add `category: String = "all"` parameter to `ScoutGemRepository.observeGems`, `ScoutRepository`, `ScoutDao.getSpotsByCategory`, and `OverpassRetrofitClient.buildCategoryQuery`.
-  - *Why*: Allows seamless reactive flow filtering directly from Room DB into `StateFlow<List<ScoutSpotEntity>>`.
+### Database Layer (`ScoutDao.kt`)
+- Add query:
+  ```kotlin
+  @Query("DELETE FROM scout_spots WHERE isSaved = 0 AND isDiscovered = 0 AND isOfflineDraft = 0 AND timestamp < :cutoffTimestamp")
+  suspend fun deleteExpiredSpots(cutoffTimestamp: Long): Int
+  ```
+- Add batch deletion query by ID:
+  ```kotlin
+  @Query("DELETE FROM scout_spots WHERE isSaved = 0 AND isDiscovered = 0 AND isOfflineDraft = 0 AND id IN (:spotIds)")
+  suspend fun deleteSpotsByIds(spotIds: List<String>): Int
+  ```
 
-- **Decision 2: Overpass QL Category Query Expansion**:
-  - *Chosen Approach*: Map category types to specific Overpass QL key-value filters:
-    - `touristic`: `node["tourism"]`, `way["tourism"]`
-    - `dining`: `node["amenity"="restaurant"]`, `node["shop"="bakery"]`, `node["amenity"="cafe"]`
-    - `historical`: `node["historic"]`, `way["historic"]`
-    - `events`: `node["amenity"="arts_centre"]`, `node["leisure"="park"]`, `node["tourism"="museum"]`
-    - `gems`: `way["highway"="steps"]`, `node["tourism"="viewpoint"]`
+### Repository Layer (`ScoutGemRepository.kt`)
+- Define `AutoCleanupReport`:
+  ```kotlin
+  data class AutoCleanupReport(
+      val timestamp: Long = System.currentTimeMillis(),
+      val expiredCount: Int = 0,
+      val distantCount: Int = 0,
+      val totalRemoved: Int = 0,
+      val anchorLat: Double = 0.0,
+      val anchorLng: Double = 0.0
+  )
+  ```
+- Implement `performAutoCleanup(userLat: Double, userLng: Double, maxAgeDays: Int = 30, maxRadiusKm: Double = 100.0): AutoCleanupReport`:
+  1. Calculate `cutoffTimestamp = System.currentTimeMillis() - (maxAgeDays * 24 * 60 * 60 * 1000L)`.
+  2. Execute `deleteExpiredSpots(cutoffTimestamp)`.
+  3. Retrieve un-saved candidates and filter those where geodesic distance to `(userLat, userLng)` exceeds `100,000` meters.
+  4. Prune distant IDs via `deleteSpotsByIds`.
+  5. Update `_lastCleanupReport` StateFlow.
+
+### ViewModel & Startup Integration (`ScoutViewModel.kt`)
+- In `ScoutViewModel.init`:
+  - Launch non-blocking background coroutine (with 2-second delay to prioritize initial UI render).
+  - Execute `gemRepository.performAutoCleanup(coords.first, coords.second)`.
+  - Listen to `userLocation` updates to trigger distant cleanup when moving to a new region (>50km shift).
 
 ---
 
-## 4. Technical Architecture & Data Strategy
+## 3. Verification & Testing
 
-### System Architecture & Data Flow
-
-```
-┌────────────────────────────────────────────────────────┐
-│           Radar Screen Category Chip Ribbon            │
-│   [ All ] [ Touristic ] [ Dining ] [ Historical ] ...  │
-└──────────────────────────┬─────────────────────────────┘
-                           │ Category Selected ("dining")
-                           ▼
-┌────────────────────────────────────────────────────────┐
-│                    ScoutViewModel                      │
-│  • Updates _selectedCategory = "dining"               │
-│  • Triggers scrapeOsmGems(lat, lng, category="dining") │
-└──────────────┬───────────────────────────┬─────────────┘
-               │                           │
-               ▼                           ▼
-┌──────────────────────────────┐ ┌───────────────────────┐
-│     ScoutGemRepository       │ │  OverpassRetrofit     │
-│   • DAO query filtering      │ │  • Category QL query  │
-│   • 50km radius validation   │ │  • Map DTO -> Entities│
-└──────────────┬───────────────┘ └───────────┬───────────┘
-               │                            │
-               └───────────────┬────────────┘
-                               ▼
-┌────────────────────────────────────────────────────────┐
-│                Room DB (scout_spots)                   │
-│        Filtered StateFlow -> Radar Map Pins            │
-└────────────────────────────────────────────────────────┘
-```
-
-### File Modification Checklist
-
-1. **`ScoutDao.kt`**:
-   - Add `@Query("SELECT * FROM scout_spots WHERE category = :category ORDER BY timestamp DESC")`
-     `fun getSpotsByCategory(category: String): Flow<List<ScoutSpotEntity>>`
-
-2. **`OverpassRetrofitClient.kt`**:
-   - Update `buildQuery(lat, lng, radiusMeters, category: String = "all")` to generate category-targeted Overpass QL filters.
-   - Update `fetchNearbyNodes` and `generateNearbyFallbackSpots` to pass and apply category tags.
-
-3. **`ScoutGemRepository.kt` & `ScoutRepository.kt`**:
-   - Update `syncLiveOsmGems(userLat, userLng, radiusMeters, category: String = "all")` to query and process category-filtered POIs.
-
-4. **`ScoutViewModel.kt`**:
-   - Add `selectCategory(category: String)` method that updates `selectedCategory` and invokes `scrapeOsmGems(lat, lng, category)`.
-
-5. **`RadarScreen.kt`**:
-   - Insert floating horizontal `RadarCategoryFilterRibbon` near the top of the screen overlaid on the map canvas.
-   - Bind chip clicks to `onCategorySelected`.
-
-6. **Unit Tests (`ScoutRepositoryTest.kt` / `OverpassRetrofitClientTest.kt`)**:
-   - Add unit tests verifying category QL query building and DAO category filtering.
+1. **Unit & Robolectric Testing**:
+   - Add test case verifying expired spots (>30 days old) with `isSaved = 0` are deleted.
+   - Verify spots >30 days old with `isSaved = 1` or `isDiscovered = 1` are NOT deleted.
+   - Verify spots >100km away with `isSaved = 0` are removed, while nearby spots (<100km) remain intact.
+2. **Build Validation**:
+   - Compile using `compile_applet`.
+   - Run tests using `gradle :app:testDebugUnitTest`.

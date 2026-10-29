@@ -31,6 +31,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.AddLocationAlt
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Explore
@@ -57,6 +58,7 @@ import androidx.compose.material.icons.outlined.Deck
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.TravelExplore
+import androidx.compose.ui.text.style.TextAlign
 import android.location.Location
 import com.example.data.local.computedDistanceMeters
 import com.example.data.local.computedDistanceString
@@ -88,7 +90,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.data.local.ScoutSpotEntity
+import com.example.ui.components.DiscoverGemsLoadingState
 import com.example.ui.theme.BrandCoral
+import com.example.ui.theme.BrandNight
+import com.example.ui.theme.BrandTeal
 import com.example.ui.theme.EatsAmber
 import com.example.ui.theme.EatsAmberBg
 import com.example.ui.theme.HistoryPurple
@@ -137,6 +142,9 @@ fun ExploreScreen(
     onOpenDiagnostics: () -> Unit = {},
     cacheHealth: com.example.data.model.VicinityCacheHealth? = null,
     onOpenCacheHealth: () -> Unit = {},
+    isDiscovering: Boolean = false,
+    discoveryMessage: String? = null,
+    onTriggerDiscover: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val strings = LocalAppStrings.current
@@ -201,7 +209,11 @@ fun ExploreScreen(
                         }
 
                         // Live Scrape Pulse Ticker
-                        LiveScrapePulseTicker()
+                        LiveScrapePulseTicker(
+                            isDiscovering = isDiscovering,
+                            discoveryMessage = discoveryMessage,
+                            onTriggerDiscover = onTriggerDiscover
+                        )
                     }
                 }
 
@@ -265,41 +277,93 @@ fun ExploreScreen(
                         )
                     }
 
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(999.dp))
-                            .clickable { onRadarClick() }
-                            .padding(horizontal = 6.dp, vertical = 4.dp)
-                            .testTag("map_view_trigger")
-                    ) {
-                        Text(
-                            text = strings.mapView,
-                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                            color = Primary
-                        )
-                        Icon(
-                            imageVector = Icons.Default.ChevronRight,
-                            contentDescription = null,
-                            tint = Primary,
-                            modifier = Modifier.size(16.dp)
-                        )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(
+                            shape = RoundedCornerShape(999.dp),
+                            color = PrimaryContainer.copy(alpha = 0.15f),
+                            modifier = Modifier
+                                .clickable { onTriggerDiscover() }
+                                .testTag("discover_gems_button")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.AutoAwesome,
+                                    contentDescription = null,
+                                    tint = PrimaryContainer,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "Discover Gems",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                    color = PrimaryContainer
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.width(6.dp))
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(999.dp))
+                                .clickable { onRadarClick() }
+                                .padding(horizontal = 6.dp, vertical = 4.dp)
+                                .testTag("map_view_trigger")
+                        ) {
+                            Text(
+                                text = strings.mapView,
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                color = Primary
+                            )
+                            Icon(
+                                imageVector = Icons.Default.ChevronRight,
+                                contentDescription = null,
+                                tint = Primary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
                     }
                 }
             }
 
-            // 3. Feed Cards
-            items(spots, key = { it.id }) { spot ->
-                Box(modifier = Modifier.padding(horizontal = 16.dp)) {
-                    ScoutSpotCard(
-                        spot = spot,
-                        userCoordinates = userCoordinates,
-                        isPlayingAudio = playingAudioId == spot.id,
-                        onToggleSave = { onToggleSave(spot) },
-                        onUpvote = { onUpvote(spot) },
-                        onToggleAudio = { onToggleAudioLore(spot.id) },
-                        onDirectionsClick = { onSpotClick(spot) }
-                    )
+            // 3. Feed Cards or Discover Gems Loading State
+            if (isDiscovering) {
+                item {
+                    Box(modifier = Modifier.padding(horizontal = 16.dp)) {
+                        DiscoverGemsLoadingState(
+                            category = selectedCategory,
+                            userCoordinates = userCoordinates,
+                            gpsAccuracyMeters = userLocation?.accuracy,
+                            statusMessage = discoveryMessage
+                        )
+                    }
+                }
+            } else if (spots.isEmpty()) {
+                item {
+                    Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 20.dp)) {
+                        EmptyGemsDiscoverCard(
+                            selectedCategory = selectedCategory,
+                            onTriggerDiscover = onTriggerDiscover
+                        )
+                    }
+                }
+            } else {
+                items(spots, key = { it.id }) { spot ->
+                    Box(modifier = Modifier.padding(horizontal = 16.dp)) {
+                        ScoutSpotCard(
+                            spot = spot,
+                            userCoordinates = userCoordinates,
+                            isPlayingAudio = playingAudioId == spot.id,
+                            onToggleSave = { onToggleSave(spot) },
+                            onUpvote = { onUpvote(spot) },
+                            onToggleAudio = { onToggleAudioLore(spot.id) },
+                            onDirectionsClick = { onSpotClick(spot) }
+                        )
+                    }
                 }
             }
 
@@ -490,18 +554,25 @@ fun FloatingPillSearchBar(
 }
 
 @Composable
-fun LiveScrapePulseTicker() {
+fun LiveScrapePulseTicker(
+    isDiscovering: Boolean = false,
+    discoveryMessage: String? = null,
+    onTriggerDiscover: () -> Unit = {}
+) {
     val strings = LocalAppStrings.current
 
     Surface(
         shape = RoundedCornerShape(999.dp),
-        color = SurfaceContainerLow,
-        modifier = Modifier.fillMaxWidth()
+        color = if (isDiscovering) BrandNight else SurfaceContainerLow,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onTriggerDiscover() }
+            .testTag("live_scrape_pulse_ticker")
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 7.dp),
+                .padding(horizontal = 14.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -513,13 +584,17 @@ fun LiveScrapePulseTicker() {
                     modifier = Modifier
                         .size(8.dp)
                         .clip(CircleShape)
-                        .background(Primary)
+                        .background(if (isDiscovering) BrandTeal else Primary)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = strings.liveScoutTicker,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    text = if (isDiscovering) {
+                        discoveryMessage ?: "✨ Gemini 3.8 Flash discovering gems..."
+                    } else {
+                        "✨ Tap to discover tourist gems with Gemini AI"
+                    },
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                    color = if (isDiscovering) BrandTeal else MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -527,16 +602,88 @@ fun LiveScrapePulseTicker() {
 
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
-                    imageVector = Icons.Default.Bolt,
+                    imageVector = if (isDiscovering) Icons.Default.AutoAwesome else Icons.Default.Bolt,
                     contentDescription = null,
-                    tint = Secondary,
+                    tint = if (isDiscovering) BrandTeal else Secondary,
                     modifier = Modifier.size(14.dp)
                 )
-                Spacer(modifier = Modifier.width(2.dp))
+                Spacer(modifier = Modifier.width(3.dp))
                 Text(
-                    text = strings.syncing,
+                    text = if (isDiscovering) "Scouting" else "Discover",
                     style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                    color = Secondary
+                    color = if (isDiscovering) BrandTeal else Secondary
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun EmptyGemsDiscoverCard(
+    selectedCategory: String,
+    onTriggerDiscover: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        color = SurfaceContainerLowest,
+        shadowElevation = 4.dp,
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(54.dp)
+                    .clip(CircleShape)
+                    .background(PrimaryContainer.copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.AutoAwesome,
+                    contentDescription = null,
+                    tint = PrimaryContainer,
+                    modifier = Modifier.size(28.dp)
+                )
+            }
+
+            Text(
+                text = "No Spots Found in Vicinity",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.onSurface
+            )
+
+            Text(
+                text = "Let Gemini 3.8 Flash discover verified landmarks, historic viewpoints, and local culinary gems for your GPS location.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
+            )
+
+            Button(
+                onClick = onTriggerDiscover,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = PrimaryContainer,
+                    contentColor = Color.White
+                ),
+                shape = RoundedCornerShape(999.dp),
+                contentPadding = PaddingValues(horizontal = 20.dp, vertical = 10.dp),
+                modifier = Modifier.testTag("empty_state_discover_button")
+            ) {
+                Icon(
+                    imageVector = Icons.Default.AutoAwesome,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Discover with Gemini AI",
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
                 )
             }
         }

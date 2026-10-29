@@ -158,4 +158,216 @@ class RoomDatabaseTest {
         val updated = discoveredGemDao.getGemById("gem_custom_1")
         assertTrue(updated?.isSynced ?: false)
     }
+
+    @Test
+    fun autoCleanupDeletesExpiredUnsavedSpotsWhileProtectingSavedAndDiscovered() = runTest {
+        val now = System.currentTimeMillis()
+        val thirtyFiveDaysAgo = now - (35L * 24L * 60L * 60L * 1000L)
+        val fiveDaysAgo = now - (5L * 24L * 60L * 60L * 1000L)
+
+        // 1. Expired un-saved spot (should be deleted)
+        val expiredUnsaved = ScoutSpotEntity(
+            id = "spot_expired_unsaved",
+            title = "Stale Viewpoint",
+            description = "Old cached node",
+            category = "sights",
+            distance = "200m",
+            walkMinutes = 2,
+            rating = 4.5,
+            reviewCount = "10",
+            imageUrl = "https://example.com/stale.jpg",
+            badgeLabel = "STALE",
+            statusBadge = "Stale",
+            tagsRaw = "old",
+            timestamp = thirtyFiveDaysAgo,
+            isSaved = false,
+            isDiscovered = false,
+            isOfflineDraft = false
+        )
+
+        // 2. Expired but SAVED spot (MUST be preserved)
+        val expiredSaved = ScoutSpotEntity(
+            id = "spot_expired_saved",
+            title = "Favorite Historic Castle",
+            description = "Bookmarked long ago",
+            category = "history",
+            distance = "500m",
+            walkMinutes = 6,
+            rating = 4.9,
+            reviewCount = "500",
+            imageUrl = "https://example.com/castle.jpg",
+            badgeLabel = "FAVORITE",
+            statusBadge = "Saved",
+            tagsRaw = "castle",
+            timestamp = thirtyFiveDaysAgo,
+            isSaved = true,
+            isDiscovered = false,
+            isOfflineDraft = false
+        )
+
+        // 3. Expired but DISCOVERED spot (MUST be preserved)
+        val expiredDiscovered = ScoutSpotEntity(
+            id = "spot_expired_discovered",
+            title = "Visited Secret Staircase",
+            description = "Checked off checklist",
+            category = "gems",
+            distance = "300m",
+            walkMinutes = 4,
+            rating = 4.8,
+            reviewCount = "50",
+            imageUrl = "https://example.com/steps.jpg",
+            badgeLabel = "VISITED",
+            statusBadge = "Discovered",
+            tagsRaw = "visited",
+            timestamp = thirtyFiveDaysAgo,
+            isSaved = false,
+            isDiscovered = true,
+            isOfflineDraft = false
+        )
+
+        // 4. Recent un-saved spot (MUST be preserved)
+        val recentUnsaved = ScoutSpotEntity(
+            id = "spot_recent_unsaved",
+            title = "Fresh Bakery Batch",
+            description = "Recently cached",
+            category = "eats",
+            distance = "100m",
+            walkMinutes = 1,
+            rating = 4.7,
+            reviewCount = "80",
+            imageUrl = "https://example.com/fresh.jpg",
+            badgeLabel = "FRESH",
+            statusBadge = "Recent",
+            tagsRaw = "fresh",
+            timestamp = fiveDaysAgo,
+            isSaved = false,
+            isDiscovered = false,
+            isOfflineDraft = false
+        )
+
+        scoutDao.insertSpots(listOf(expiredUnsaved, expiredSaved, expiredDiscovered, recentUnsaved))
+        assertEquals(4, scoutDao.getCount())
+
+        val thirtyDaysCutoff = now - (30L * 24L * 60L * 60L * 1000L)
+        val deletedCount = scoutDao.deleteExpiredSpots(thirtyDaysCutoff)
+        assertEquals(1, deletedCount)
+
+        // Verify remaining spots
+        val remaining = scoutDao.getAllSpotsList()
+        assertEquals(3, remaining.size)
+        assertTrue(remaining.any { it.id == "spot_expired_saved" })
+        assertTrue(remaining.any { it.id == "spot_expired_discovered" })
+        assertTrue(remaining.any { it.id == "spot_recent_unsaved" })
+        assertFalse(remaining.any { it.id == "spot_expired_unsaved" })
+    }
+
+    @Test
+    fun repositoryPerformAutoCleanupPurgesExpiredAndDistantSpots() = runTest {
+        val repository = com.example.data.repository.ScoutGemRepository(scoutDao, discoveredGemDao)
+
+        val now = System.currentTimeMillis()
+        val fortyDaysAgo = now - (40L * 24L * 60L * 60L * 1000L)
+        val userLat = 38.7112
+        val userLng = -9.1423
+
+        // Spot 1: Expired (>30 days) nearby Lisbon (should be removed by age)
+        val spotExpired = ScoutSpotEntity(
+            id = "spot_auto_expired",
+            title = "Old Lisbon Alley",
+            description = "Expired un-saved",
+            category = "gems",
+            distance = "300m",
+            walkMinutes = 3,
+            rating = 4.5,
+            reviewCount = "12",
+            imageUrl = "",
+            badgeLabel = "",
+            statusBadge = "",
+            tagsRaw = "",
+            latitude = 38.7115,
+            longitude = -9.1420,
+            timestamp = fortyDaysAgo,
+            isSaved = false,
+            isDiscovered = false
+        )
+
+        // Spot 2: Recent, but in Porto (~275 km away, > 100km radius cutoff; should be removed by distance)
+        val spotDistantPorto = ScoutSpotEntity(
+            id = "spot_auto_porto",
+            title = "Ponte Luís I Porto",
+            description = "Far away un-saved spot",
+            category = "sights",
+            distance = "275km",
+            walkMinutes = 999,
+            rating = 4.9,
+            reviewCount = "5k",
+            imageUrl = "",
+            badgeLabel = "",
+            statusBadge = "",
+            tagsRaw = "",
+            latitude = 41.1400, // Porto latitude (~275km north of Lisbon)
+            longitude = -8.6095,
+            timestamp = now,
+            isSaved = false,
+            isDiscovered = false
+        )
+
+        // Spot 3: Far away in Porto, but SAVED (MUST be kept)
+        val spotSavedPorto = ScoutSpotEntity(
+            id = "spot_auto_porto_saved",
+            title = "Livraria Lello Porto",
+            description = "Saved distant spot",
+            category = "sights",
+            distance = "275km",
+            walkMinutes = 999,
+            rating = 4.8,
+            reviewCount = "4k",
+            imageUrl = "",
+            badgeLabel = "",
+            statusBadge = "",
+            tagsRaw = "",
+            latitude = 41.1469,
+            longitude = -8.6148,
+            timestamp = now,
+            isSaved = true,
+            isDiscovered = false
+        )
+
+        // Spot 4: Recent and within 2km of user (MUST be kept)
+        val spotNearbyRecent = ScoutSpotEntity(
+            id = "spot_auto_nearby",
+            title = "Praca do Comercio",
+            description = "Near and recent",
+            category = "sights",
+            distance = "500m",
+            walkMinutes = 6,
+            rating = 4.9,
+            reviewCount = "3k",
+            imageUrl = "",
+            badgeLabel = "",
+            statusBadge = "",
+            tagsRaw = "",
+            latitude = 38.7075,
+            longitude = -9.1364,
+            timestamp = now,
+            isSaved = false,
+            isDiscovered = false
+        )
+
+        scoutDao.insertSpots(listOf(spotExpired, spotDistantPorto, spotSavedPorto, spotNearbyRecent))
+        assertEquals(4, scoutDao.getCount())
+
+        val report = repository.performAutoCleanup(userLat, userLng, maxAgeDays = 30, maxRadiusKm = 100.0)
+
+        assertEquals(1, report.expiredRemoved)
+        assertEquals(1, report.distantRemoved)
+        assertEquals(2, report.totalRemoved)
+
+        val remaining = scoutDao.getAllSpotsList()
+        assertEquals(2, remaining.size)
+        assertTrue(remaining.any { it.id == "spot_auto_porto_saved" })
+        assertTrue(remaining.any { it.id == "spot_auto_nearby" })
+        assertFalse(remaining.any { it.id == "spot_auto_expired" })
+        assertFalse(remaining.any { it.id == "spot_auto_porto" })
+    }
 }

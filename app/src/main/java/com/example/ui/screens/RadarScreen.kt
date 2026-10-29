@@ -36,7 +36,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bookmark
+import com.example.ui.components.DiscoverGemsLoadingState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.ChevronRight
@@ -499,12 +501,12 @@ fun RadarScreen(
                             Spacer(modifier = Modifier.width(10.dp))
                             Column {
                                 Text(
-                                    text = "Live OSM Web Scraper",
+                                    text = "✨ Discover Gems with Gemini AI",
                                     style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Text(
-                                    text = "Scrape viewpoints, bakeries & shortcuts from OpenStreetMap into Room",
+                                    text = "Generate verified landmarks & viewpoints using Gemini 3.8 Flash",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -530,26 +532,34 @@ fun RadarScreen(
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    "Scraping...",
+                                    "Discovering...",
                                     style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold)
                                 )
                             } else {
                                 Icon(
-                                    imageVector = Icons.Default.CloudDownload,
+                                    imageVector = Icons.Default.AutoAwesome,
                                     contentDescription = null,
                                     tint = Color.White,
                                     modifier = Modifier.size(14.dp)
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    "Scrape",
+                                    "Discover",
                                     style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold)
                                 )
                             }
                         }
                     }
 
-                    if (osmScrapeMessage != null) {
+                    if (isScrapingOsm) {
+                        Spacer(modifier = Modifier.height(14.dp))
+                        DiscoverGemsLoadingState(
+                            category = selectedCategory,
+                            userCoordinates = Pair(userLat, userLng),
+                            gpsAccuracyMeters = userAccuracy,
+                            statusMessage = osmScrapeMessage
+                        )
+                    } else if (osmScrapeMessage != null) {
                         Spacer(modifier = Modifier.height(8.dp))
                         Surface(
                             shape = RoundedCornerShape(10.dp),

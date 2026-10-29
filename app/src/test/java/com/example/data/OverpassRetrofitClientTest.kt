@@ -144,6 +144,25 @@ class OverpassRetrofitClientTest {
     }
 
     @Test
+    fun mapElementsWithDiagnostics_dropsUnnamedElements() {
+        val elements = listOf(
+            OverpassElement(
+                type = "node",
+                id = 401L,
+                lat = 38.7120,
+                lon = -9.1420,
+                tags = mapOf("tourism" to "viewpoint") // No name tag
+            )
+        )
+
+        val (mapped, dropReasons) = client.mapElementsWithDiagnostics(elements, 38.7112, -9.1423)
+
+        assertEquals(0, mapped.size)
+        assertEquals(1, dropReasons.size)
+        assertTrue("Drop reason should indicate missing official name tag", dropReasons[0].contains("Missing official name tag"))
+    }
+
+    @Test
     fun overpassDiagnosticLog_calculatesMetricsCorrectly() {
         val log = com.example.data.network.OverpassDiagnosticLog(
             mirrorUrl = "https://overpass-api.de/",

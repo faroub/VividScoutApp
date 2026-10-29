@@ -1,6 +1,6 @@
 {
-  "summary":  "Implementation plan for category filtering extension in ScoutGemRepository and floating category chip ribbon on the Radar map screen.",
-  "updatedAt":  "2026-10-28T21:54:40.298898344Z",
+  "summary":  "Implementation plan for the auto-cleanup service in ScoutGemRepository to purge cached POIs older than 30 days and outside a 100km radius from the user's active GPS location while strictly protecting saved, discovered, and drafted gems.",
+  "updatedAt":  "2026-10-29T19:55:05.401500888Z",
   "requestFeedback":  true,
   "userFacing":  true
 }
