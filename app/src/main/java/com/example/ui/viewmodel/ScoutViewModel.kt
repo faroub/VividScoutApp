@@ -49,6 +49,15 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
     val unlockedAchievementsCount: StateFlow<Int> = repository.unlockedAchievementsCount
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
+    val isPrefetchServiceRunning: StateFlow<Boolean> = com.example.service.ProximityPrefetchService.isServiceRunning
+    val isPrefetching: StateFlow<Boolean> = com.example.service.ProximityPrefetchService.isPrefetching
+    val activePrefetchVector: StateFlow<com.example.util.MovementVector?> = com.example.service.ProximityPrefetchService.activeVector
+    val prefetchedGemsCount: StateFlow<Int> = com.example.service.ProximityPrefetchService.prefetchedCount
+    val prefetchStatusMessage: StateFlow<String> = com.example.service.ProximityPrefetchService.statusMessage
+    val activePowerMode: StateFlow<com.example.util.PrefetchPowerMode> = com.example.service.ProximityPrefetchService.activePowerMode
+    val prefetchBatteryStatus: StateFlow<com.example.util.BatteryStatus> = com.example.service.ProximityPrefetchService.batteryStatus
+    val prefetchSpeedKmh: StateFlow<Float> = com.example.service.ProximityPrefetchService.currentSpeedKmh
+
     val offlineMapPacks: StateFlow<List<com.example.data.offline.OfflineMapPack>> = offlineMapManager.packsState
     val offlineStorageBytes: StateFlow<Long> = offlineMapManager.totalStorageBytes
 
@@ -846,6 +855,26 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
             _downloadedRegions.value = allPacks
             com.example.engine.VectorWalkGraph.reloadAllDownloadedRegions(allPacks)
         }
+    }
+
+    fun startProximityPrefetch() {
+        val loc = userLocation.value
+        val lat = loc?.latitude ?: 38.7112
+        val lng = loc?.longitude ?: -9.1423
+        val bearing = if (loc != null && loc.hasBearing()) loc.bearing else 45f
+        com.example.service.ProximityPrefetchService.start(getApplication(), lat, lng, bearing)
+    }
+
+    fun stopProximityPrefetch() {
+        com.example.service.ProximityPrefetchService.stop(getApplication())
+    }
+
+    fun triggerManualPrefetch() {
+        val loc = userLocation.value
+        val lat = loc?.latitude ?: 38.7112
+        val lng = loc?.longitude ?: -9.1423
+        val bearing = if (loc != null && loc.hasBearing()) loc.bearing else 45f
+        com.example.service.ProximityPrefetchService.triggerManualPrefetch(getApplication(), lat, lng, bearing)
     }
 
     override fun onCleared() {

@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.NearMe
 import androidx.compose.material.icons.filled.Sensors
@@ -68,6 +69,10 @@ fun VividScoutTopBar(
     onGpsClick: () -> Unit = {},
     onArClick: () -> Unit = {},
     hasLocationPermission: Boolean = true,
+    isPrefetchActive: Boolean = false,
+    prefetchedCount: Int = 0,
+    prefetchPowerMode: com.example.util.PrefetchPowerMode = com.example.util.PrefetchPowerMode.OPTIMAL_WALKING,
+    onPrefetchClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val strings = LocalAppStrings.current
@@ -176,6 +181,55 @@ fun VividScoutTopBar(
                                 fontSize = 9.sp,
                                 fontWeight = FontWeight.Bold
                             )
+                        }
+
+                        // 5km Vector Prefetch Pill with Adaptive Policy Styling
+                        if (isPrefetchActive || prefetchedCount > 0) {
+                            val pillBgColor = when (prefetchPowerMode) {
+                                com.example.util.PrefetchPowerMode.VEHICLE_SPEED_PAUSED -> Color(0xFFF59E0B).copy(alpha = 0.22f)
+                                com.example.util.PrefetchPowerMode.LOW_BATTERY_ECO -> Color(0xFFEF4444).copy(alpha = 0.2f)
+                                com.example.util.PrefetchPowerMode.CHARGING_UNRESTRICTED -> Color(0xFF10B981).copy(alpha = 0.2f)
+                                com.example.util.PrefetchPowerMode.OPTIMAL_WALKING -> Color(0xFF8B5CF6).copy(alpha = 0.18f)
+                            }
+                            val pillContentColor = when (prefetchPowerMode) {
+                                com.example.util.PrefetchPowerMode.VEHICLE_SPEED_PAUSED -> Color(0xFFD97706)
+                                com.example.util.PrefetchPowerMode.LOW_BATTERY_ECO -> Color(0xFFDC2626)
+                                com.example.util.PrefetchPowerMode.CHARGING_UNRESTRICTED -> Color(0xFF059669)
+                                com.example.util.PrefetchPowerMode.OPTIMAL_WALKING -> Color(0xFFA78BFA)
+                            }
+                            val pillLabel = when {
+                                prefetchPowerMode == com.example.util.PrefetchPowerMode.VEHICLE_SPEED_PAUSED -> "Transit Paused"
+                                prefetchPowerMode == com.example.util.PrefetchPowerMode.LOW_BATTERY_ECO -> if (prefetchedCount > 0) "Eco ($prefetchedCount)" else "Eco 3m"
+                                prefetchPowerMode == com.example.util.PrefetchPowerMode.CHARGING_UNRESTRICTED -> "Plugged ($prefetchedCount)"
+                                prefetchedCount > 0 -> "5km ($prefetchedCount)"
+                                else -> "5km Pre-caching"
+                            }
+
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(999.dp))
+                                    .background(pillBgColor)
+                                    .clickable { onPrefetchClick() }
+                                    .padding(horizontal = 5.dp, vertical = 2.dp)
+                                    .testTag("topbar_prefetch_pill")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Bolt,
+                                    contentDescription = "5km Prefetch",
+                                    tint = pillContentColor,
+                                    modifier = Modifier.size(10.dp)
+                                )
+                                Spacer(modifier = Modifier.width(2.dp))
+                                Text(
+                                    text = pillLabel,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = pillContentColor,
+                                    fontSize = 8.5.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                         }
                     }
                     Text(

@@ -142,6 +142,14 @@ fun VividScoutApp(viewModel: ScoutViewModel) {
     val recentSearches by viewModel.recentSearches.collectAsState()
     val achievements by viewModel.achievements.collectAsState()
     val unlockedAchievementsCount by viewModel.unlockedAchievementsCount.collectAsState()
+    val isPrefetchActive by viewModel.isPrefetchServiceRunning.collectAsState()
+    val isPrefetching by viewModel.isPrefetching.collectAsState()
+    val prefetchVector by viewModel.activePrefetchVector.collectAsState()
+    val prefetchedGemsCount by viewModel.prefetchedGemsCount.collectAsState()
+    val prefetchStatusMessage by viewModel.prefetchStatusMessage.collectAsState()
+    val activePowerMode by viewModel.activePowerMode.collectAsState()
+    val prefetchBatteryStatus by viewModel.prefetchBatteryStatus.collectAsState()
+    val prefetchSpeedKmh by viewModel.prefetchSpeedKmh.collectAsState()
 
     // Automatically refresh permission state when returning to the app from System Settings
     DisposableEffect(lifecycleOwner) {
@@ -246,7 +254,11 @@ fun VividScoutApp(viewModel: ScoutViewModel) {
                             onArClick = {
                                 isArModeActive = true
                             },
-                            hasLocationPermission = hasLocationPermission
+                            hasLocationPermission = hasLocationPermission,
+                            isPrefetchActive = isPrefetchActive,
+                            prefetchedCount = prefetchedGemsCount,
+                            prefetchPowerMode = activePowerMode,
+                            onPrefetchClick = { viewModel.selectTab(MainTab.PROFILE) }
                         )
                     },
                     bottomBar = {
@@ -393,7 +405,31 @@ fun VividScoutApp(viewModel: ScoutViewModel) {
                                         databaseSizeBytes = databaseSizeBytes,
                                         onClearCacheClick = { viewModel.openClearCacheDialog() },
                                         achievements = achievements,
-                                        unlockedAchievementsCount = unlockedAchievementsCount
+                                        unlockedAchievementsCount = unlockedAchievementsCount,
+                                        isPrefetchActive = isPrefetchActive,
+                                        isPrefetching = isPrefetching,
+                                        prefetchVector = prefetchVector,
+                                        prefetchedGemsCount = prefetchedGemsCount,
+                                        prefetchStatusMessage = prefetchStatusMessage,
+                                        activePowerMode = activePowerMode,
+                                        batteryStatus = prefetchBatteryStatus,
+                                        prefetchSpeedKmh = prefetchSpeedKmh,
+                                        onTogglePrefetch = { active ->
+                                            if (active) {
+                                                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                                                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                                }
+                                                viewModel.startProximityPrefetch()
+                                            } else {
+                                                viewModel.stopProximityPrefetch()
+                                            }
+                                        },
+                                        onTriggerManualPrefetch = {
+                                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                                                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                            }
+                                            viewModel.triggerManualPrefetch()
+                                        }
                                     )
                                 }
                             }
