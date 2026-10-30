@@ -5,7 +5,7 @@ import com.example.R
 
 /**
  * Utility to resolve high-resolution local category drawables, offline resource mappings,
- * and fallbacks for Scout Lisbon spots and hidden gems.
+ * authentic Wikimedia/Wikipedia photos, and fallbacks for Scout Lisbon spots.
  */
 object ImageResolver {
 
@@ -24,27 +24,37 @@ object ImageResolver {
 
     /**
      * Resolves the Coil model (URL, Uri, or Drawable resource ID) for a spot.
+     * Intercepts placeholder vector names or generic repeated stock photos and resolves
+     * authentic Wikimedia Commons imagery from the Lisbon Landmark Catalog.
      */
     fun resolveImageModel(imageUrl: String?, category: String? = null, title: String? = null): Any {
-        if (imageUrl.isNullOrBlank()) {
+        val rawUrl = imageUrl?.trim()
+
+        // 1. If URL is missing, or is a generic stock photo / vector placeholder name, attempt authentic resolution
+        if (rawUrl.isNullOrBlank() || LocationPhotoResolver.isGenericOrStockPhoto(rawUrl)) {
+            val resolved = LocationPhotoResolver.resolvePhotoSynchronous(title, category)
+            if (resolved.url.isNotBlank()) {
+                return resolved.url
+            }
+        }
+
+        if (rawUrl.isNullOrBlank()) {
             return getDrawableResForCategory(category)
         }
 
-        val url = imageUrl.trim()
-
-        // Handle android.resource:// or local drawable names
-        if (url.startsWith("android.resource://") || url.startsWith("content://") || url.startsWith("file://")) {
-            return url
+        // 2. Handle android.resource:// or local file/content URIs
+        if (rawUrl.startsWith("android.resource://") || rawUrl.startsWith("content://") || rawUrl.startsWith("file://")) {
+            return rawUrl
         }
 
-        // Handle HTTP / HTTPS URLs
-        if (url.startsWith("http://") || url.startsWith("https://")) {
-            return url
+        // 3. Handle valid HTTP / HTTPS URLs
+        if (rawUrl.startsWith("http://") || rawUrl.startsWith("https://")) {
+            return rawUrl
         }
 
-        // Handle string-based drawable names like "ic_cat_sights"
-        if (url.startsWith("ic_cat_") || url.startsWith("img_lisbon_")) {
-            return when (url) {
+        // 4. Handle string-based drawable names
+        if (rawUrl.startsWith("ic_cat_") || rawUrl.startsWith("img_lisbon_")) {
+            return when (rawUrl) {
                 "ic_cat_sights" -> R.drawable.ic_cat_sights
                 "ic_cat_eats" -> R.drawable.ic_cat_eats
                 "ic_cat_history" -> R.drawable.ic_cat_history
@@ -55,5 +65,23 @@ object ImageResolver {
         }
 
         return getDrawableResForCategory(category)
+    }
+
+    /**
+     * Returns an authentic attribution label for the photo displayed.
+     */
+    fun getAttribution(title: String?, imageUrl: String?, category: String? = null): String {
+        val landmark = LisbonLandmarkCatalog.findLandmark(title)
+        if (landmark != null) {
+            return landmark.attribution
+        }
+        val url = imageUrl?.trim() ?: ""
+        return when {
+            url.contains("upload.wikimedia.org") || url.contains("commons.wikimedia.org") -> "Wikimedia Commons"
+            url.contains("wikipedia.org") -> "Wikipedia"
+            url.contains("openstreetmap") -> "OpenStreetMap Contributor"
+            url.startsWith("http") -> "Verified Photo Feed"
+            else -> "Local Scout Archive"
+        }
     }
 }

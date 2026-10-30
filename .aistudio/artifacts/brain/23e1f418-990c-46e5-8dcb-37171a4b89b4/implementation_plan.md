@@ -1,63 +1,96 @@
-# Implementation Plan: Adaptive Battery & Speed Policy for Proximity Prefetch
+# Global Spot Discovery & Dynamic Worldwide Photo Engine
 
-## 1. Goal Analysis
-Implement an intelligent adaptive battery and speed policy for the `ProximityPrefetchService` in *Scout Lisbon*. The policy dynamically adjusts location polling and prefetch behavior based on real-time device battery metrics (level & power-save mode) and movement velocity, preserving battery life and avoiding inefficient gem prefetching during transit.
+Expand the app from a Lisbon-specific radar to a global location discovery experience that works anywhere in the world, automatically acquiring the user's GPS position or allowing global city search, paired with dynamic worldwide photo resolution from Wikipedia REST and OpenStreetMap APIs.
 
----
-
-## 2. Core Policy Architecture
-
-### 2.1 Adaptive Power & Motion Profiles (`AdaptivePrefetchPolicy.kt`)
-We will create a domain model and evaluator:
-- **`PrefetchPowerMode`**:
-  - `OPTIMAL_WALKING`: Battery > 20%, speed $\le 6.9\text{ m/s}$ ($\approx 25\text{ km/h}$). Polling: 15s interval, 25m distance threshold, 400m displacement to trigger 5km prefetch.
-  - `VEHICLE_SPEED_PAUSED`: Speed $> 6.9\text{ m/s}$ ($\approx 25\text{ km/h}$, e.g. trains, metro, buses, cars). Prefetching paused until walking speed resumes; location tracking throttled to 60s low-power polling.
-  - `LOW_BATTERY_ECO`: Battery $\le 20\%$ or Android Power Saver active. Polling: 3 minutes (180s) interval, 100m distance threshold, 1000m displacement required to trigger prefetch.
-  - `CHARGING_UNRESTRICTED`: Device plugged into power. Standard optimal walking polling.
-- **`BatteryMonitor`**:
-  - Listens to `Intent.ACTION_BATTERY_CHANGED` (battery level %, plugged status) and `PowerManager.isPowerSaveMode`.
-  - Exposes reactive `StateFlow<BatteryState>`.
-
-### 2.2 Foreground Service Integration (`ProximityPrefetchService.kt`)
-- Monitor battery broadcasts and GPS velocity in real time.
-- Dynamically update the active `LocationRequest` via `fusedLocationClient.requestLocationUpdates(...)` when the profile transitions between `OPTIMAL_WALKING`, `VEHICLE_SPEED_PAUSED`, and `LOW_BATTERY_ECO` without stopping the service.
-- When `VEHICLE_SPEED_PAUSED` is active:
-  - Skip AI corridor queries.
-  - Update status message: `"Vehicle speed detected (X km/h) • Prefetch paused until walking resumes"`.
-- When `LOW_BATTERY_ECO` is active:
-  - Require 1000m displacement before triggering a corridor prefetch.
-  - Update status message: `"Eco Mode (Battery X%) • Polling every 3m"`.
-- Expose `activePowerMode: StateFlow<PrefetchPowerMode>` in the companion object.
-- Update the persistent notification with the active mode badge (e.g. `[Eco Mode: 18% Battery]` or `[Transit Speed: Paused]`).
-
-### 2.3 UI & Telemetry Enhancements
-- **Top Bar (`VividScoutTopBar.kt`)**:
-  - Update the `⚡ 5km Vector` indicator pill to reflect current mode (e.g., green for active, amber/orange for Eco Mode, yellow/slate for Vehicle Paused).
-- **Profile Screen (`ProfileScreen.kt`)**:
-  - Display an **Adaptive Battery & Speed Policy** card/chip:
-    - Current device battery percentage and power profile tag.
-    - Active GPS speed in km/h with mode label (Walking vs. Transit).
-    - Polling interval readout (e.g. "15s polling" vs "3m polling").
-    - Visual status badges for Eco Mode and Transit Pause.
+> [!IMPORTANT] User Preferences Confirmed in Phase 1
+> - **Global Location Strategy**: Device GPS with global search bar and instant city selector (e.g., Paris, Tokyo, New York, Sydney, Rio, Lisbon).
+> - **Worldwide Photo Engine**: Dynamic Wikipedia REST API (`/geosearch` and `/page/summary`) combined with OpenStreetMap tags globally, with smart fallback to category/landmark keywords.
+> - **First-Launch Behavior**: Automatically detect the user's real-time GPS location on first launch and populate nearby spots dynamically anywhere on Earth.
 
 ---
 
-## 3. Step-by-Step Action Plan
+## 1. Overview & Core Concept
 
-1. **Step 1**: Create `AdaptivePrefetchPolicy.kt` (`com.example.util`) containing power profiles, battery evaluation models, and policy thresholds.
-2. **Step 2**: Enhance `ProximityPrefetchService.kt` to monitor battery status via broadcast receiver, evaluate velocity thresholds, dynamically update fused location requests, and update ongoing notifications with power mode labels.
-3. **Step 3**: Expose `activePowerMode` and battery metrics in `ScoutViewModel.kt`.
-4. **Step 4**: Update `VividScoutTopBar.kt` and `ProfileScreen.kt` to render the active power profile pill and telemetry.
-5. **Step 5**: Create unit tests in `AdaptivePrefetchPolicyTest.kt` verifying policy transitions, speed threshold checks, and battery level rules.
-6. **Step 6**: Verify the build with `compile_applet` and execute unit tests with `gradle :app:testDebugUnitTest`.
+- **What It Does**: Transforms the app into a global exploration companion. Users can auto-discover authentic points of interest, hidden spots, historic landmarks, and community updates near their current GPS coordinates anywhere in the world, or search and jump to any global metropolis.
+- **Target Audience**: Explorers, urban travelers, local scouts, and photography enthusiasts worldwide.
+- **Key Value**: Provides instant, authentic location photos, real geographic data, and localized community updates anywhere on Earth without hardcoded city limitations.
 
 ---
 
-## 4. Verification Plan
-- Unit tests validating transitions:
-  - Battery 80%, Speed 1.4 m/s -> `OPTIMAL_WALKING` (15s polling, 400m prefetch trigger)
-  - Battery 80%, Speed 12.0 m/s -> `VEHICLE_SPEED_PAUSED` (prefetch paused, low-power monitoring)
-  - Battery 15%, Speed 1.4 m/s -> `LOW_BATTERY_ECO` (180s polling, 1km displacement trigger)
-  - Battery 15%, Plugged in -> `CHARGING_UNRESTRICTED`
-- Verify clean compilation with `compile_applet`.
-- Verify test suite pass with `gradle :app:testDebugUnitTest`.
+## 2. User Experience & Visual Design
+
+- **Key User Flows**:
+  1. **First Launch / GPS Auto-Location**: App prompts for standard Android location permission (`ACCESS_FINE_LOCATION`). Upon grant, it fetches the user's real latitude/longitude and retrieves real nearby landmarks and spots via Wikipedia Geosearch & OpenStreetMap Overpass API.
+  2. **Global City Search & Region Picker**: A prominent top bar allows typing any city or location (e.g., "Kyoto", "Berlin", "San Francisco"). Selecting a city smoothly centers the radar map and loads local spots for that destination.
+  3. **Spot Detail & Authentic Worldwide Media**: Tapping any spot displays authentic high-resolution imagery resolved dynamically from Wikipedia page image APIs, spot description, geographic coordinates, and localized community status updates (with 24h decay).
+  4. **Mesh Sync Community Feed**: View and submit community status reports (e.g., crowd level, scenic updates) embedded in spot detail or in the dedicated Community tab.
+
+- **Visual Identity & Theme**:
+  - **Aesthetic Direction**: Sleek, modern exploration radar with vibrant Material 3 dynamic styling.
+  - **Color Palette**: Modern dark/light posture with deep night radar backgrounds (`#0B0F19`), neon cyan/emerald accents (`#00F5D4`, `#10B981`), and warm alert tones.
+  - **Typography**: Clean high-contrast sans-serif hierarchy for maximum readability on outdoor mobile devices.
+
+---
+
+## 3. Key Product Decisions & Trade-Offs
+
+- **Decision 1: Global Location Provider**:
+  - *Chosen Approach*: FusedLocationProviderClient (Android Location Services) + Nominatim/OpenStreetMap Search API for city search.
+  - *Why*: Provides fast, power-efficient GPS fixes everywhere without requiring proprietary paid mapping API keys.
+
+- **Decision 2: Dynamic Photo Engine**:
+  - *Chosen Approach*: Dynamic Wikipedia REST API (`/w/api.php?action=query&list=geosearch` & `/api/rest_v1/page/summary/{title}`) combined with Wikidata/OSM image tags.
+  - *Why*: Guarantees high-quality, authentic, public-domain photographs for millions of real-world points of interest globally.
+
+- **Decision 3: Room Database & Disk Caching**:
+  - *Chosen Approach*: Cache fetched spot details and photo URLs in local Room database paired with Coil disk caching.
+  - *Why*: Enables seamless offline viewing, fast cold boot performance, and minimal network overhead.
+
+---
+
+## 4. Technical Architecture & Data Strategy
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                          Jetpack Compose UI                             │
+│ ┌──────────────────────┐ ┌─────────────────────┐ ┌───────────────────┐ │
+│ │ Global Radar View    │ │ City Search Bar     │ │ Spot Detail View  │ │
+│ └──────────┬───────────┘ └──────────┬──────────┘ └─────────┬─────────┘ │
+└────────────┼────────────────────────┼──────────────────────┼───────────┘
+             │                        │                      │
+             ▼                        ▼                      ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                           Spot Discovery ViewModel                      │
+│ - Coordinates & Current Selected Region                                 │
+│ - StateFlow<LocationUiState> & StateFlow<SpotDetailUiState>             │
+└────────────────────────────┬────────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                      Global Spot Repository                             │
+│ ┌──────────────────────────────────┐ ┌────────────────────────────────┐ │
+│ │  Wikipedia GeoSearch REST API    │ │  OpenStreetMap Overpass API    │ │
+│ └─────────────────┬────────────────┘ └───────────────┬────────────────┘ │
+└───────────────────┼──────────────────────────────────┼──────────────────┘
+                    │                                  │
+                    ▼                                  ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                      Room Database & Coil Cache                         │
+│ - Local Spot Entity Storage & URL Persistence                           │
+│ - Simulated Mesh Sync Community Status Storage                          │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+- **Data Models**:
+  - `Spot`: ID, title, description, latitude, longitude, photoUrl, thumbnailUrl, distanceMeters, category, wikipediaPageTitle, lastUpdated.
+  - `CommunityStatus`: ID, spotId, statusText, badgeType, timestamp, authorScoutHandle, decayHours (24h expiry).
+  - `CityRegion`: Name, country, latitude, longitude.
+
+- **Step-by-Step Implementation Plan**:
+  1. **Permissions & Manifest**: Declare `INTERNET`, `ACCESS_FINE_LOCATION`, and `ACCESS_COARSE_LOCATION` in `AndroidManifest.xml`.
+  2. **Location Engine**: Integrate Android FusedLocationProviderClient for real GPS coordinates with runtime permission handling.
+  3. **Worldwide Geo API Services**: Implement Wikipedia REST Geosearch and Summary client to dynamically fetch real landmark titles, summaries, and high-res thumbnail image URLs anywhere on Earth based on lat/lng.
+  4. **Global City Search**: Add city search repository using Nominatim geocoding API to query any city worldwide and center the radar map.
+  5. **Room Caching & Mesh Sync**: Store fetched spots and community updates locally with 24-hour decay logic.
+  6. **UI Updates**: Upgrade radar feed, top city search bar, spot detail bottom sheet/screen, and community feed tab.
+  7. **Build & Verify**: Compile with `compile_applet` and verify zero build errors.

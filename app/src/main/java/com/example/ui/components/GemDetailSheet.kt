@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -20,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Lightbulb
@@ -67,6 +69,13 @@ import com.example.ui.theme.PrimaryContainer
 import com.example.ui.theme.Secondary
 import kotlinx.coroutines.launch
 
+import androidx.compose.runtime.collectAsState
+import androidx.compose.material.icons.filled.AddComment
+import androidx.compose.material.icons.filled.NotificationsActive
+import com.example.data.local.CommunityTipEntity
+import com.example.util.TipDecayUtils
+import com.example.util.TipDecayTier
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GemDetailSheet(
@@ -76,6 +85,8 @@ fun GemDetailSheet(
     userCoordinates: Pair<Double, Double> = Pair(38.7112, -9.1423),
     onToggleSave: (ScoutSpotEntity) -> Unit = {},
     onRoutePlan: (ScoutSpotEntity) -> Unit = {},
+    onPostCommunityTip: ((spotId: String, spotTitle: String, content: String, isStatus: Boolean, category: String) -> Unit)? = null,
+    onUpvoteCommunityTip: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     if (!isOpen || spot == null) return
@@ -83,6 +94,12 @@ fun GemDetailSheet(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
+
+    var isPostTipOpen by remember { mutableStateOf(false) }
+
+    val db = remember { AppDatabase.getDatabase(context) }
+    val tipsForSpot by db.communityTipDao().getTipsForSpotFlow(spot.id).collectAsState(initial = emptyList())
+    val latestStatus = tipsForSpot.firstOrNull { it.isStatusUpdate }
 
     var weatherReport by remember { mutableStateOf<WeatherReport?>(null) }
     var isWeatherLoading by remember { mutableStateOf(false) }
@@ -208,6 +225,35 @@ fun GemDetailSheet(
                         )
                     }
                 }
+
+                // Photo attribution badge
+                val photoAttribution = ImageResolver.getAttribution(spot.title, spot.imageUrl, spot.category)
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(12.dp)
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(Color.Black.copy(alpha = 0.75f))
+                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.CameraAlt,
+                            contentDescription = null,
+                            tint = Color.White.copy(alpha = 0.9f),
+                            modifier = Modifier.size(12.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = photoAttribution,
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Medium
+                            ),
+                            color = Color.White
+                        )
+                    }
+                }
             }
 
             // Spot Title and Rating
@@ -260,6 +306,67 @@ fun GemDetailSheet(
                 onRefreshClick = { fetchWeather(forceRefresh = true) }
             )
 
+            // Live Community Spot Status Banner (if recent status exists)
+            if (latestStatus != null) {
+                val decayTier = TipDecayUtils.calculateDecayTier(latestStatus.timestamp)
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = decayTier.containerColor,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, decayTier.dotColor.copy(alpha = 0.5f)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("gem_detail_live_status_banner")
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(decayTier.dotColor.copy(alpha = 0.2f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.NotificationsActive,
+                                contentDescription = null,
+                                tint = decayTier.dotColor,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    text = "LIVE STATUS ALERT",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontWeight = FontWeight.Black,
+                                        letterSpacing = 0.8.sp,
+                                        fontSize = 9.sp
+                                    ),
+                                    color = decayTier.contentColor
+                                )
+                                Text(
+                                    text = "• ${TipDecayUtils.formatRelativeTime(latestStatus.timestamp)}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = decayTier.contentColor.copy(alpha = 0.8f),
+                                    fontSize = 9.sp
+                                )
+                            }
+                            Text(
+                                text = latestStatus.content,
+                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                                color = Color.White
+                            )
+                        }
+                    }
+                }
+            }
+
             // Description
             Text(
                 text = spot.description,
@@ -302,6 +409,88 @@ fun GemDetailSheet(
                 }
             }
 
+            // Community Tips & Ground Truth Section
+            Surface(
+                color = Color(0xFF0F172A),
+                shape = RoundedCornerShape(16.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF1E293B)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("gem_detail_community_section")
+            ) {
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = "COMMUNITY GROUND TRUTH",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Black,
+                                    letterSpacing = 0.8.sp
+                                ),
+                                color = BrandTeal
+                            )
+                            Text(
+                                text = "${tipsForSpot.size} Scout Reports in P2P Cache",
+                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                color = Color.White
+                            )
+                        }
+
+                        Button(
+                            onClick = { isPostTipOpen = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = BrandTeal),
+                            shape = RoundedCornerShape(999.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                            modifier = Modifier.testTag("gem_detail_post_tip_btn")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.AddComment,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Leave Tip",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold)
+                            )
+                        }
+                    }
+
+                    if (tipsForSpot.isEmpty()) {
+                        Text(
+                            text = "No community reports for this gem yet. Leave the first tip or status alert!",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color(0xFF94A3B8)
+                        )
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            tipsForSpot.take(3).forEach { tip ->
+                                CommunityTipCard(
+                                    tip = tip,
+                                    onUpvoteClick = { tipId ->
+                                        if (onUpvoteCommunityTip != null) {
+                                            onUpvoteCommunityTip(tipId)
+                                        } else {
+                                            scope.launch {
+                                                db.communityTipDao().incrementUpvote(tipId)
+                                            }
+                                        }
+                                    },
+                                    showSpotHeader = false
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             // Action Button: Route to Gem
             Button(
                 onClick = {
@@ -331,6 +520,22 @@ fun GemDetailSheet(
             Spacer(modifier = Modifier.height(12.dp))
         }
     }
+
+    PostTipDialog(
+        isOpen = isPostTipOpen,
+        onDismiss = { isPostTipOpen = false },
+        onSubmit = { spotId, spotTitle, content, isStatus, category ->
+            if (onPostCommunityTip != null) {
+                onPostCommunityTip(spotId, spotTitle, content, isStatus, category)
+            } else {
+                scope.launch {
+                    val repo = com.example.data.repository.CommunityTipRepository(db.communityTipDao())
+                    repo.postTip(spotId, spotTitle, content, isStatus, category)
+                }
+            }
+        },
+        initialSpot = spot
+    )
 }
 
 private fun String?.isNull_or_blank(): Boolean {

@@ -11,8 +11,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 @Database(
-    entities = [ScoutSpotEntity::class, DiscoveredGemEntity::class, RecentSearchEntity::class, WeatherCacheEntity::class, AchievementEntity::class],
-    version = 5,
+    entities = [
+        ScoutSpotEntity::class,
+        DiscoveredGemEntity::class,
+        RecentSearchEntity::class,
+        WeatherCacheEntity::class,
+        AchievementEntity::class,
+        CommunityTipEntity::class
+    ],
+    version = 6,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -22,6 +29,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun recentSearchDao(): RecentSearchDao
     abstract fun weatherDao(): WeatherDao
     abstract fun achievementDao(): AchievementDao
+    abstract fun communityTipDao(): CommunityTipDao
 
     companion object {
         @Volatile
@@ -50,6 +58,7 @@ abstract class AppDatabase : RoomDatabase() {
                         populateInitialSpots(database.scoutDao())
                         populateInitialRecentSearches(database.recentSearchDao())
                         populateInitialAchievements(database.achievementDao())
+                        populateInitialCommunityTips(database.communityTipDao())
                     }
                 }
             }
@@ -93,7 +102,7 @@ abstract class AppDatabase : RoomDatabase() {
                     walkMinutes = 5,
                     rating = 4.9,
                     reviewCount = "1.8k",
-                    imageUrl = "ic_cat_sights",
+                    imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/c/cd/MiradouroSantaLuzia.JPG/800px-MiradouroSantaLuzia.JPG",
                     badgeLabel = "SIGHTS",
                     statusBadge = "Scraped 8m ago",
                     tagsRaw = "Free Entry|||Quiet sunny nook right now|||Bougainvillea Bloom",
@@ -117,7 +126,7 @@ abstract class AppDatabase : RoomDatabase() {
                     walkMinutes = 3,
                     rating = 4.8,
                     reviewCount = "950",
-                    imageUrl = "ic_cat_eats",
+                    imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/3/30/Pastel_de_nata_em_Lisboa.jpg/800px-Pastel_de_nata_em_Lisboa.jpg",
                     badgeLabel = "WARM BAKERY ALERT",
                     statusBadge = "Oven: 4m ago",
                     tagsRaw = "~3 mins line|||Peak Crispness: 12 min window|||Fresh Batch Pulled",
@@ -138,7 +147,7 @@ abstract class AppDatabase : RoomDatabase() {
                     walkMinutes = 6,
                     rating = 4.9,
                     reviewCount = "1.4k",
-                    imageUrl = "ic_cat_history",
+                    imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d4/Convento_do_Carmo_Lisbon.jpg/800px-Convento_do_Carmo_Lisbon.jpg",
                     badgeLabel = "HISTORY",
                     statusBadge = "Audio Clip 1m30s",
                     tagsRaw = "Gothic Nave|||Skip-Queue Pass|||Audio Tour",
@@ -160,7 +169,7 @@ abstract class AppDatabase : RoomDatabase() {
                     walkMinutes = 7,
                     rating = 4.9,
                     reviewCount = "88",
-                    imageUrl = "ic_cat_shortcut",
+                    imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6b/Escadinhas_da_Sa%C3%BAde_Mouraria.jpg/800px-Escadinhas_da_Sa%C3%BAde_Mouraria.jpg",
                     badgeLabel = "COMMUNITY GEM",
                     statusBadge = "94% Verified",
                     tagsRaw = "Cuts 12 mins uphill|||Cobblestone Pass|||Secret Pass",
@@ -185,7 +194,7 @@ abstract class AppDatabase : RoomDatabase() {
                     walkMinutes = 11,
                     rating = 4.8,
                     reviewCount = "1.2k",
-                    imageUrl = "ic_cat_eats",
+                    imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/2/24/Pastel_de_Nata_Manteigaria.jpg/800px-Pastel_de_Nata_Manteigaria.jpg",
                     badgeLabel = "STREET EATS · WARM BATCH",
                     statusBadge = "Fresh out oven 3m ago",
                     tagsRaw = "Crisp Crust|||No Line right now|||€1.40 / piece",
@@ -206,7 +215,7 @@ abstract class AppDatabase : RoomDatabase() {
                     walkMinutes = 18,
                     rating = 4.9,
                     reviewCount = "3.2k",
-                    imageUrl = "ic_cat_sights",
+                    imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4b/Miradouro_da_Senhora_do_Monte%2C_Lisbon%2C_Portugal_%2848835849883%29.jpg/800px-Miradouro_da_Senhora_do_Monte%2C_Lisbon%2C_Portugal_%2848835849883%29.jpg",
                     badgeLabel = "PANORAMIC SUNSET",
                     statusBadge = "Golden Hour 19:42",
                     tagsRaw = "Golden Hour 19:42|||Free Access|||Busker Live",
@@ -227,7 +236,7 @@ abstract class AppDatabase : RoomDatabase() {
                     walkMinutes = 22,
                     rating = 4.8,
                     reviewCount = "2.1k",
-                    imageUrl = "ic_cat_history",
+                    imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/6/69/Castelo_de_S%C3%A3o_Jorge_by_Augusto_Cabrita.jpg/800px-Castelo_de_S%C3%A3o_Jorge_by_Augusto_Cabrita.jpg",
                     badgeLabel = "HIDDEN HISTORY",
                     statusBadge = "Pine Shaded Trail",
                     tagsRaw = "Secret Garden|||Medieval Walls|||Pine Shade",
@@ -248,7 +257,7 @@ abstract class AppDatabase : RoomDatabase() {
                     walkMinutes = 4,
                     rating = 5.0,
                     reviewCount = "Offline Draft",
-                    imageUrl = "ic_cat_secret",
+                    imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/3/36/Alfama_Lisbon_street_scene.jpg/800px-Alfama_Lisbon_street_scene.jpg",
                     badgeLabel = "OFFLINE SCOUT DRAFT",
                     statusBadge = "Pending Auto-Sync",
                     tagsRaw = "Offline Queued|||GPS Cached: ±3m|||Photo Stored Locally",
@@ -325,6 +334,11 @@ abstract class AppDatabase : RoomDatabase() {
                 )
             )
             dao.insertAchievements(initialAchievements)
+        }
+
+        suspend fun populateInitialCommunityTips(dao: CommunityTipDao) {
+            val initialTips = com.example.data.p2p.PeerMeshSyncEngine.createSeedTips()
+            dao.insertTips(initialTips)
         }
     }
 }

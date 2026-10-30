@@ -26,6 +26,7 @@ import com.example.data.local.computedDistanceMeters
 enum class MainTab {
     EXPLORE,
     RADAR,
+    COMMUNITY,
     SAVED,
     PROFILE
 }
@@ -61,6 +62,26 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
     val offlineMapPacks: StateFlow<List<com.example.data.offline.OfflineMapPack>> = offlineMapManager.packsState
     val offlineStorageBytes: StateFlow<Long> = offlineMapManager.totalStorageBytes
 
+    val communityRepository: com.example.data.repository.CommunityTipRepository =
+        com.example.data.repository.CommunityTipRepository(db.communityTipDao())
+
+    val allCommunityTips: StateFlow<List<com.example.data.local.CommunityTipEntity>> =
+        communityRepository.allTipsFlow
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val allStatusUpdates: StateFlow<List<com.example.data.local.CommunityTipEntity>> =
+        communityRepository.allStatusUpdatesFlow
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    private val _meshSyncPhase = MutableStateFlow(com.example.data.p2p.MeshSyncPhase.IDLE)
+    val meshSyncPhase: StateFlow<com.example.data.p2p.MeshSyncPhase> = _meshSyncPhase.asStateFlow()
+
+    private val _lastMeshSyncResult = MutableStateFlow<com.example.data.p2p.PeerMeshSyncResult?>(null)
+    val lastMeshSyncResult: StateFlow<com.example.data.p2p.PeerMeshSyncResult?> = _lastMeshSyncResult.asStateFlow()
+
+    private val _postTipSuccessMessage = MutableStateFlow<String?>(null)
+    val postTipSuccessMessage: StateFlow<String?> = _postTipSuccessMessage.asStateFlow()
+
     private val _isRegionDownloadMode = MutableStateFlow(false)
     val isRegionDownloadMode: StateFlow<Boolean> = _isRegionDownloadMode.asStateFlow()
 
@@ -90,11 +111,23 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
     private val _locationDeniedCount = MutableStateFlow(0)
     val locationDeniedCount: StateFlow<Int> = _locationDeniedCount.asStateFlow()
 
+    private val _selectedGlobalCity = MutableStateFlow<com.example.data.model.GlobalCity?>(null)
+    val selectedGlobalCity: StateFlow<com.example.data.model.GlobalCity?> = _selectedGlobalCity.asStateFlow()
+
+    private val _isUsingGpsLocation = MutableStateFlow(true)
+    val isUsingGpsLocation: StateFlow<Boolean> = _isUsingGpsLocation.asStateFlow()
+
+    private val _showGlobalCityDialog = MutableStateFlow(false)
+    val showGlobalCityDialog: StateFlow<Boolean> = _showGlobalCityDialog.asStateFlow()
+
     val userCoordinates: StateFlow<Pair<Double, Double>> = combine(
-        userLocation
-    ) { locs ->
-        val loc = locs[0]
-        if (loc != null) {
+        userLocation,
+        _selectedGlobalCity,
+        _isUsingGpsLocation
+    ) { loc, city, isGps ->
+        if (!isGps && city != null) {
+            Pair(city.latitude, city.longitude)
+        } else if (loc != null) {
             Pair(loc.latitude, loc.longitude)
         } else {
             Pair(38.7112, -9.1423)
@@ -277,6 +310,9 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             repository.initializeIfEmpty()
         }
+        viewModelScope.launch(Dispatchers.IO) {
+            communityRepository.ensureInitialTipsSeeded()
+        }
         if (locationTracker.checkHasPermission()) {
             locationTracker.startTracking()
         }
@@ -295,6 +331,12 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
             gemRepository.performAutoCleanup(coords.first, coords.second, maxAgeDays = 30, maxRadiusKm = 100.0)
             lastCleanupLat = coords.first
             lastCleanupLng = coords.second
+        }
+
+        // Background authentic photo enrichment via Wikipedia & Wikimedia Commons
+        viewModelScope.launch(Dispatchers.IO) {
+            delay(2500)
+            enrichSpotsPhotos()
         }
 
         // Auto-discover local spots via OpenStreetMap Overpass when user GPS is active
@@ -481,6 +523,33 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun openGlobalCityDialog() {
+        _showGlobalCityDialog.value = true
+    }
+
+    fun closeGlobalCityDialog() {
+        _showGlobalCityDialog.value = false
+    }
+
+    fun selectGlobalCity(city: com.example.data.model.GlobalCity) {
+        _selectedGlobalCity.value = city
+        _isUsingGpsLocation.value = false
+        _showGlobalCityDialog.value = false
+        scrapeOsmGems(city.latitude, city.longitude, radiusMeters = 3000)
+    }
+
+    fun selectCurrentGpsLocation() {
+        _selectedGlobalCity.value = null
+        _isUsingGpsLocation.value = true
+        _showGlobalCityDialog.value = false
+        val loc = userLocation.value
+        if (loc != null) {
+            scrapeOsmGems(loc.latitude, loc.longitude, radiusMeters = 3000)
+        } else {
+            requestStartTracking()
+        }
+    }
+
     fun openLocationRationaleDialog() {
         _showLocationRationaleDialog.value = true
     }
@@ -586,6 +655,7 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
                     }
                     if (count > 0) {
                         _userPoints.value += count * 5
+                        enrichSpotsPhotos()
                     }
                 },
                 onFailure = { err ->
@@ -593,6 +663,47 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
                 }
             )
             _isScrapingOsm.value = false
+        }
+    }
+
+    /**
+     * Iterates over all cached spots in Room and enriches any spots that have missing,
+     * generic, or stock photos with authentic Wikipedia/Wikimedia photos.
+     */
+    fun enrichSpotsPhotos() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val spots = db.scoutDao().getAllSpotsSync()
+            for (spot in spots) {
+                if (com.example.util.LocationPhotoResolver.isGenericOrStockPhoto(spot.imageUrl) ||
+                    spot.imageUrl.startsWith("ic_cat_") ||
+                    spot.imageUrl.startsWith("img_lisbon_")) {
+                    val resolved = com.example.util.LocationPhotoResolver.resolveEnrichedPhoto(
+                        title = spot.title,
+                        category = spot.category,
+                        districtOrLocation = spot.locationName
+                    )
+                    if (resolved.url.isNotBlank() && resolved.url != spot.imageUrl) {
+                        db.scoutDao().updateImageUrl(spot.id, resolved.url)
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Force-refreshes the authentic photo for a specific spot using Wikipedia / Wikimedia Commons.
+     */
+    fun refreshSpotPhoto(spotId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val spot = db.scoutDao().getSpotById(spotId) ?: return@launch
+            val resolved = com.example.util.LocationPhotoResolver.resolveEnrichedPhoto(
+                title = spot.title,
+                category = spot.category,
+                districtOrLocation = spot.locationName
+            )
+            if (resolved.url.isNotBlank()) {
+                db.scoutDao().updateImageUrl(spot.id, resolved.url)
+            }
         }
     }
 
@@ -875,6 +986,47 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
         val lng = loc?.longitude ?: -9.1423
         val bearing = if (loc != null && loc.hasBearing()) loc.bearing else 45f
         com.example.service.ProximityPrefetchService.triggerManualPrefetch(getApplication(), lat, lng, bearing)
+    }
+
+    fun postCommunityTip(
+        spotId: String,
+        spotTitle: String,
+        content: String,
+        isStatusUpdate: Boolean = false,
+        statusCategory: String = "INSIGHT"
+    ) {
+        viewModelScope.launch {
+            communityRepository.postTip(
+                spotId = spotId,
+                spotTitle = spotTitle,
+                content = content,
+                isStatusUpdate = isStatusUpdate,
+                statusCategory = statusCategory
+            )
+            _postTipSuccessMessage.value = if (isStatusUpdate) "Status update broadcasted to local cache!" else "Tip posted to community!"
+            delay(3000)
+            _postTipSuccessMessage.value = null
+        }
+    }
+
+    fun upvoteCommunityTip(tipId: String) {
+        viewModelScope.launch {
+            communityRepository.upvoteTip(tipId)
+        }
+    }
+
+    fun triggerPeerMeshSync() {
+        if (_meshSyncPhase.value != com.example.data.p2p.MeshSyncPhase.IDLE) return
+        viewModelScope.launch {
+            val result = communityRepository.syncWithNearbyPeers { phase ->
+                _meshSyncPhase.value = phase
+            }
+            _lastMeshSyncResult.value = result
+        }
+    }
+
+    fun clearPostTipSuccessMessage() {
+        _postTipSuccessMessage.value = null
     }
 
     override fun onCleared() {

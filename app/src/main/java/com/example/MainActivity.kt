@@ -47,6 +47,7 @@ import com.example.ui.dialogs.LocationPermissionRationaleDialog
 import com.example.ui.dialogs.LocationPermissionSettingsDialog
 import com.example.ui.dialogs.OfflineQueueDialog
 import com.example.ui.dialogs.SpotDetailBottomSheet
+import com.example.ui.screens.CommunityFeedScreen
 import com.example.ui.screens.ExploreScreen
 import com.example.ui.screens.OnboardingScreen
 import com.example.ui.screens.ProfileScreen
@@ -109,6 +110,9 @@ fun VividScoutApp(viewModel: ScoutViewModel) {
     val exploreHeaderStyle by viewModel.exploreHeaderStyle.collectAsState()
     val appLanguage by viewModel.appLanguage.collectAsState()
     val showLanguageDialog by viewModel.showLanguageDialog.collectAsState()
+    val selectedGlobalCity by viewModel.selectedGlobalCity.collectAsState()
+    val isUsingGpsLocation by viewModel.isUsingGpsLocation.collectAsState()
+    val showGlobalCityDialog by viewModel.showGlobalCityDialog.collectAsState()
     val userLocation by viewModel.userLocation.collectAsState()
     val hasLocationPermission by viewModel.hasLocationPermission.collectAsState()
     val isPreciseLocation by viewModel.isPreciseLocation.collectAsState()
@@ -150,6 +154,10 @@ fun VividScoutApp(viewModel: ScoutViewModel) {
     val activePowerMode by viewModel.activePowerMode.collectAsState()
     val prefetchBatteryStatus by viewModel.prefetchBatteryStatus.collectAsState()
     val prefetchSpeedKmh by viewModel.prefetchSpeedKmh.collectAsState()
+    val communityTips by viewModel.allCommunityTips.collectAsState()
+    val meshSyncPhase by viewModel.meshSyncPhase.collectAsState()
+    val lastMeshSyncResult by viewModel.lastMeshSyncResult.collectAsState()
+    val postTipSuccessMessage by viewModel.postTipSuccessMessage.collectAsState()
 
     // Automatically refresh permission state when returning to the app from System Settings
     DisposableEffect(lifecycleOwner) {
@@ -249,12 +257,14 @@ fun VividScoutApp(viewModel: ScoutViewModel) {
                                 viewModel.openLanguageDialog()
                             },
                             onGpsClick = {
-                                requestLocationPermission()
+                                viewModel.openGlobalCityDialog()
                             },
                             onArClick = {
                                 isArModeActive = true
                             },
                             hasLocationPermission = hasLocationPermission,
+                            selectedGlobalCity = selectedGlobalCity,
+                            isUsingGpsLocation = isUsingGpsLocation,
                             isPrefetchActive = isPrefetchActive,
                             prefetchedCount = prefetchedGemsCount,
                             prefetchPowerMode = activePowerMode,
@@ -346,6 +356,28 @@ fun VividScoutApp(viewModel: ScoutViewModel) {
                                         onDeleteRecentSearch = { viewModel.deleteRecentSearch(it) },
                                         onClearAllRecentSearches = { viewModel.clearAllRecentSearches() },
                                         achievements = achievements
+                                    )
+                                }
+
+                                MainTab.COMMUNITY -> {
+                                    CommunityFeedScreen(
+                                        tips = communityTips,
+                                        spots = allSpots,
+                                        syncPhase = meshSyncPhase,
+                                        lastSyncResult = lastMeshSyncResult,
+                                        onTriggerSync = { viewModel.triggerPeerMeshSync() },
+                                        onUpvoteTip = { tipId -> viewModel.upvoteCommunityTip(tipId) },
+                                        onPostTip = { spotId, spotTitle, content, isStatus, category ->
+                                            viewModel.postCommunityTip(spotId, spotTitle, content, isStatus, category)
+                                        },
+                                        onSpotClick = { spotId ->
+                                            val spot = allSpots.find { it.id == spotId }
+                                            if (spot != null) {
+                                                selectedSpotForDetail = spot
+                                            }
+                                        },
+                                        userCoordinates = userCoordinates,
+                                        successMessage = postTipSuccessMessage
                                     )
                                 }
 
@@ -543,6 +575,22 @@ fun VividScoutApp(viewModel: ScoutViewModel) {
                             viewModel.closeCacheHealthDialog()
                             viewModel.openDiagnosticDialog()
                         }
+                    )
+                }
+
+                // Global City / Destination Selector Dialog
+                if (showGlobalCityDialog) {
+                    com.example.ui.dialogs.GlobalCitySelectionDialog(
+                        selectedCity = selectedGlobalCity,
+                        isUsingGps = isUsingGpsLocation,
+                        onSelectCity = { city -> viewModel.selectGlobalCity(city) },
+                        onSelectGpsLocation = {
+                            viewModel.selectCurrentGpsLocation()
+                            if (!hasLocationPermission) {
+                                requestLocationPermission()
+                            }
+                        },
+                        onDismiss = { viewModel.closeGlobalCityDialog() }
                     )
                 }
 

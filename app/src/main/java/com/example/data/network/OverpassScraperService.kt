@@ -142,36 +142,38 @@ class OverpassScraperService {
 
                 if (lat == 0.0 || lon == 0.0) continue
 
+                // Extract all tags into a map
+                val tagsMap = mutableMapOf<String, String>()
+                val keys = tags.keys()
+                while (keys.hasNext()) {
+                    val key = keys.next()
+                    tagsMap[key] = tags.optString(key)
+                }
+
                 // Determine Category
                 val category: String
                 val badgeLabel: String
-                val imageUrl: String
 
                 when {
                     tags.optString("shop") == "bakery" || tags.optString("amenity") == "cafe" -> {
                         category = "eats"
                         badgeLabel = if (tags.optString("shop") == "bakery") "WARM BAKERY ALERT" else "LOCAL CAFE FEED"
-                        imageUrl = bakeryImages[i % bakeryImages.size]
                     }
                     tags.has("historic") -> {
                         category = "history"
                         badgeLabel = "HISTORIC MONUMENT"
-                        imageUrl = historicImages[i % historicImages.size]
                     }
                     tags.optString("tourism") == "viewpoint" -> {
                         category = "sights"
                         badgeLabel = "OSM VIEWPOINT"
-                        imageUrl = viewpointImages[i % viewpointImages.size]
                     }
                     tags.has("highway") -> {
                         category = "shortcut"
                         badgeLabel = "SECRET PASS"
-                        imageUrl = shortcutImages[i % shortcutImages.size]
                     }
                     else -> {
                         category = "sights"
                         badgeLabel = "COMMUNITY GEM"
-                        imageUrl = viewpointImages[i % viewpointImages.size]
                     }
                 }
 
@@ -192,6 +194,15 @@ class OverpassScraperService {
                     }
                 }
 
+                val street = tags.optString("addr:street").ifBlank { "Local District" }
+                val photoResult = com.example.util.LocationPhotoResolver.resolvePhotoSynchronous(
+                    title = title,
+                    category = category,
+                    districtOrLocation = street,
+                    osmTags = tagsMap
+                )
+                val imageUrl = photoResult.url
+
                 // Description
                 val desc = tags.optString("description")
                     .ifBlank { tags.optString("note") }
@@ -205,7 +216,6 @@ class OverpassScraperService {
                         }
                     }
 
-                val street = tags.optString("addr:street").ifBlank { "Local District" }
                 val randomRating = 4.5 + (Random.nextDouble() * 0.4)
                 val formattedRating = String.format(Locale.US, "%.1f", randomRating).toDoubleOrNull() ?: 4.8
 

@@ -179,25 +179,31 @@ class GeminiSpotService {
                 else -> "gems"
             }
 
-            val spotId = "gemini_${title.lowercase().replace(Regex("[^a-z0-9]"), "_")}_${spotLat.toString().take(6)}"
+                val spotId = "gemini_${title.lowercase().replace(Regex("[^a-z0-9]"), "_")}_${spotLat.toString().take(6)}"
 
-            val entity = ScoutSpotEntity(
-                id = spotId,
-                title = title,
-                description = description,
-                category = mappedCategory,
-                distance = distanceText,
-                walkMinutes = (distanceText.filter { it.isDigit() }.toIntOrNull() ?: 300) / 80 + 1,
-                rating = rating,
-                reviewCount = "(${(50..350).random()})",
-                imageUrl = "https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?w=600&q=80",
-                badgeLabel = when (mappedCategory) {
-                    "touristic" -> "TOP ATTRACTION"
-                    "restaurant" -> "FOOD GEM"
-                    "historical" -> "HISTORIC SITE"
-                    "events" -> "CULTURAL EVENT"
-                    else -> "VERIFIED GEM"
-                },
+                val resolvedPhoto = com.example.util.LocationPhotoResolver.resolvePhotoSynchronous(
+                    title = title,
+                    category = mappedCategory,
+                    districtOrLocation = locationName
+                )
+
+                val entity = ScoutSpotEntity(
+                    id = spotId,
+                    title = title,
+                    description = description,
+                    category = mappedCategory,
+                    distance = distanceText,
+                    walkMinutes = (distanceText.filter { it.isDigit() }.toIntOrNull() ?: 300) / 80 + 1,
+                    rating = rating,
+                    reviewCount = "(${(50..350).random()})",
+                    imageUrl = resolvedPhoto.url,
+                    badgeLabel = when (mappedCategory) {
+                        "touristic" -> "TOP ATTRACTION"
+                        "restaurant" -> "FOOD GEM"
+                        "historical" -> "HISTORIC SITE"
+                        "events" -> "CULTURAL EVENT"
+                        else -> "VERIFIED GEM"
+                    },
                 statusBadge = "VERIFIED SPOT",
                 tagsRaw = tagsList.joinToString(","),
                 proTip = audioLore,
@@ -250,7 +256,7 @@ class GeminiSpotService {
                 rating = 4.9,
                 latOffset = 0.0018,
                 lngOffset = 0.0022,
-                imageUrl = "https://images.unsplash.com/photo-1513688275127-1be5a8359473?auto=format&fit=crop&w=800&q=80",
+                imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/c/cd/MiradouroSantaLuzia.JPG/800px-MiradouroSantaLuzia.JPG",
                 tags = "viewpoint,terrace,azulejos,romantic,alfama"
             ),
             CuratedSpotBlueprint(
@@ -263,7 +269,7 @@ class GeminiSpotService {
                 rating = 4.9,
                 latOffset = -0.0012,
                 lngOffset = -0.0015,
-                imageUrl = "https://images.unsplash.com/photo-1509440159596-0249088772ff?auto=format&fit=crop&w=800&q=80",
+                imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/2/24/Pastel_de_Nata_Manteigaria.jpg/800px-Pastel_de_Nata_Manteigaria.jpg",
                 tags = "bakery,pastry,local_favorite,cinnamon,chiado"
             ),
             CuratedSpotBlueprint(
@@ -276,7 +282,7 @@ class GeminiSpotService {
                 rating = 4.8,
                 latOffset = 0.0031,
                 lngOffset = 0.0008,
-                imageUrl = "https://images.unsplash.com/photo-1588668214407-6ea9a6d8c272?auto=format&fit=crop&w=800&q=80",
+                imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/6/69/Castelo_de_S%C3%A3o_Jorge_by_Augusto_Cabrita.jpg/800px-Castelo_de_S%C3%A3o_Jorge_by_Augusto_Cabrita.jpg",
                 tags = "castle,fortress,history,panoramic,moorish"
             ),
             CuratedSpotBlueprint(
@@ -289,7 +295,7 @@ class GeminiSpotService {
                 rating = 4.7,
                 latOffset = -0.0025,
                 lngOffset = -0.0031,
-                imageUrl = "https://images.unsplash.com/photo-1548707309-dcebeab9ea9b?auto=format&fit=crop&w=800&q=80",
+                imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d3/Elevador_da_Bica_01.jpg/800px-Elevador_da_Bica_01.jpg",
                 tags = "funicular,tram,cobblestone,street,bica"
             ),
             CuratedSpotBlueprint(
@@ -302,7 +308,7 @@ class GeminiSpotService {
                 rating = 4.8,
                 latOffset = 0.0009,
                 lngOffset = -0.0019,
-                imageUrl = "https://images.unsplash.com/photo-1555881400-74d7acaacd8b?auto=format&fit=crop&w=800&q=80",
+                imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d4/Convento_do_Carmo_Lisbon.jpg/800px-Convento_do_Carmo_Lisbon.jpg",
                 tags = "monument,gothic,history,museum,chiado"
             ),
             CuratedSpotBlueprint(
@@ -315,7 +321,7 @@ class GeminiSpotService {
                 rating = 4.7,
                 latOffset = -0.0008,
                 lngOffset = -0.0011,
-                imageUrl = "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=800&q=80",
+                imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/a/ad/Taberna_tradicional_Lisboa_petiscos.jpg/800px-Taberna_tradicional_Lisboa_petiscos.jpg",
                 tags = "dining,seafood,wine,cozy,tavern"
             )
         )

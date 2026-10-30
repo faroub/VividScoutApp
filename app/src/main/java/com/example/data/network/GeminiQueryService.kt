@@ -168,12 +168,11 @@ class GeminiQueryService {
                     walkMinutes = ((i + 1) * 10).coerceAtLeast(3),
                     rating = rating,
                     reviewCount = "(${(60..300).random()})",
-                    imageUrl = when (mappedCategory) {
-                        "eats" -> "https://images.unsplash.com/photo-1509440159596-0249088772ff?auto=format&fit=crop&w=600&q=80"
-                        "history" -> "https://images.unsplash.com/photo-1548707309-dcebeab9ea9b?auto=format&fit=crop&w=600&q=80"
-                        "shortcut" -> "https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?auto=format&fit=crop&w=600&q=80"
-                        else -> "https://images.unsplash.com/photo-1513688275127-1be5a8359473?auto=format&fit=crop&w=600&q=80"
-                    },
+                    imageUrl = com.example.util.LocationPhotoResolver.resolvePhotoSynchronous(
+                        title = title,
+                        category = mappedCategory,
+                        districtOrLocation = locationName
+                    ).url,
                     badgeLabel = "PREFETCHED 5KM VECTOR",
                     statusBadge = "Prefetched AI Cache",
                     tagsRaw = tagsList.joinToString("|||"),
@@ -267,12 +266,11 @@ class GeminiQueryService {
                 walkMinutes = (distanceAheadMeters / 80).coerceAtLeast(2),
                 rating = 4.8,
                 reviewCount = "(${(80..320).random()})",
-                imageUrl = when (bp.category) {
-                    "eats" -> "https://images.unsplash.com/photo-1509440159596-0249088772ff?auto=format&fit=crop&w=600&q=80"
-                    "history" -> "https://images.unsplash.com/photo-1548707309-dcebeab9ea9b?auto=format&fit=crop&w=600&q=80"
-                    "shortcut" -> "https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?auto=format&fit=crop&w=600&q=80"
-                    else -> "https://images.unsplash.com/photo-1513688275127-1be5a8359473?auto=format&fit=crop&w=600&q=80"
-                },
+                imageUrl = com.example.util.LocationPhotoResolver.resolvePhotoSynchronous(
+                    title = bp.title,
+                    category = bp.category,
+                    districtOrLocation = bp.district
+                ).url,
                 badgeLabel = "PREFETCHED 5KM VECTOR",
                 statusBadge = "Prefetched AI Cache",
                 tagsRaw = "${bp.category}|||5km Vector Corridor|||Prefetched|||${vector.cardinalDirection} Heading",

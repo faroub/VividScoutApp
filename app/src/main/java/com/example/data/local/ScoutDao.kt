@@ -58,6 +58,9 @@ interface ScoutDao {
     @Query("UPDATE scout_spots SET userNotes = :notes WHERE id = :id")
     suspend fun updateUserNotes(id: String, notes: String)
 
+    @Query("UPDATE scout_spots SET imageUrl = :imageUrl WHERE id = :id")
+    suspend fun updateImageUrl(id: String, imageUrl: String)
+
     @Query("UPDATE scout_spots SET upvotes = upvotes + 1 WHERE id = :id")
     suspend fun incrementUpvote(id: String)
 

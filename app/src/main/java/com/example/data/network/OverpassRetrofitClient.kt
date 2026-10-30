@@ -199,25 +199,25 @@ class OverpassRetrofitClient(
             val spotLat = userLat + deltaLat
             val spotLng = userLng + deltaLng
 
-            val images = when (template.second) {
-                "eats" -> bakeryImages
-                "history" -> historicImages
-                "shortcut" -> shortcutImages
-                else -> viewpointImages
-            }
+            val spotTitle = "${template.first} #${index + 1}"
+            val photoResult = com.example.util.LocationPhotoResolver.resolvePhotoSynchronous(
+                title = spotTitle,
+                category = template.second,
+                districtOrLocation = "Lisbon"
+            )
 
             val spotId = "osm_fallback_${(userLat * 10000).toInt()}_${(userLng * 10000).toInt()}_$index"
 
             ScoutSpotEntity(
                 id = spotId,
-                title = "${template.first} #${index + 1}",
+                title = spotTitle,
                 description = "Discovered nearby via live GPS scan. A verified point of interest saved directly to your local map database.",
                 category = template.second,
                 distance = "${distanceMeters.toInt()}m away",
                 walkMinutes = Math.max(1, (distanceMeters / 75.0).toInt()),
                 rating = 4.6 + (Random.nextDouble() * 0.3),
                 reviewCount = "OSM Scout",
-                imageUrl = images[index % images.size],
+                imageUrl = photoResult.url,
                 badgeLabel = template.third,
                 statusBadge = "Live GPS Scout",
                 tagsRaw = "Live GPS|||Scout Verified|||Saved Offline",
@@ -397,39 +397,6 @@ class OverpassRetrofitClient(
 
             val tags = element.tags ?: emptyMap()
 
-            // Determine category and branding
-            val category: String
-            val badgeLabel: String
-            val imageUrl: String
-
-            when {
-                tags["shop"] == "bakery" || tags["amenity"] == "cafe" -> {
-                    category = "eats"
-                    badgeLabel = if (tags["shop"] == "bakery") "WARM BAKERY ALERT" else "LOCAL CAFE FEED"
-                    imageUrl = bakeryImages[index % bakeryImages.size]
-                }
-                tags.containsKey("tourism") && tags["tourism"] == "viewpoint" -> {
-                    category = "sights"
-                    badgeLabel = "OSM VIEWPOINT"
-                    imageUrl = viewpointImages[index % viewpointImages.size]
-                }
-                tags.containsKey("highway") -> {
-                    category = "shortcut"
-                    badgeLabel = "SECRET PASS"
-                    imageUrl = shortcutImages[index % shortcutImages.size]
-                }
-                tags.containsKey("historic") -> {
-                    category = "history"
-                    badgeLabel = "HISTORIC MONUMENT"
-                    imageUrl = historicImages[index % historicImages.size]
-                }
-                else -> {
-                    category = "sights"
-                    badgeLabel = "COMMUNITY GEM"
-                    imageUrl = viewpointImages[index % viewpointImages.size]
-                }
-            }
-
             // Derive title and verify official name requirement
             val rawName = tags["name"] ?: tags["name:en"] ?: tags["name:es"] ?: tags["name:fr"] ?: tags["name:pt"]
             if (rawName.isNullOrBlank()) {
@@ -437,6 +404,42 @@ class OverpassRetrofitClient(
                 return@forEachIndexed
             }
             val title = rawName
+
+            // Determine category and branding
+            val category: String
+            val badgeLabel: String
+
+            when {
+                tags["shop"] == "bakery" || tags["amenity"] == "cafe" -> {
+                    category = "eats"
+                    badgeLabel = if (tags["shop"] == "bakery") "WARM BAKERY ALERT" else "LOCAL CAFE FEED"
+                }
+                tags.containsKey("tourism") && tags["tourism"] == "viewpoint" -> {
+                    category = "sights"
+                    badgeLabel = "OSM VIEWPOINT"
+                }
+                tags.containsKey("highway") -> {
+                    category = "shortcut"
+                    badgeLabel = "SECRET PASS"
+                }
+                tags.containsKey("historic") -> {
+                    category = "history"
+                    badgeLabel = "HISTORIC MONUMENT"
+                }
+                else -> {
+                    category = "sights"
+                    badgeLabel = "COMMUNITY GEM"
+                }
+            }
+
+            val street = tags["addr:street"] ?: tags["addr:city"] ?: tags["addr:suburb"] ?: "Local District"
+            val photoResult = com.example.util.LocationPhotoResolver.resolvePhotoSynchronous(
+                title = title,
+                category = category,
+                districtOrLocation = street,
+                osmTags = tags
+            )
+            val imageUrl = photoResult.url
 
             // Description
             val desc = tags["description"] ?: tags["note"] ?: when (category) {
@@ -447,7 +450,6 @@ class OverpassRetrofitClient(
                 else -> "Geographic node fetched via Retrofit Overpass API client."
             }
 
-            val street = tags["addr:street"] ?: tags["addr:city"] ?: tags["addr:suburb"] ?: "Local District"
             val randomRating = 4.5 + (Random.nextDouble() * 0.4)
             val formattedRating = String.format(Locale.US, "%.1f", randomRating).toDoubleOrNull() ?: 4.8
 

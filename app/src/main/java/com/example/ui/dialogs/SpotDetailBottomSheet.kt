@@ -20,6 +20,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Navigation
@@ -58,6 +59,13 @@ import com.example.ui.theme.Secondary
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.runtime.collectAsState
+import androidx.compose.material.icons.filled.AddComment
+import androidx.compose.material.icons.filled.NotificationsActive
+import com.example.ui.components.CommunityTipCard
+import com.example.ui.components.PostTipDialog
+import com.example.util.TipDecayUtils
+import com.example.ui.theme.BrandTeal
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.runtime.mutableStateOf
@@ -105,6 +113,11 @@ fun SpotDetailBottomSheet(
         val db = AppDatabase.getDatabase(context)
         WeatherRepository(db.weatherDao())
     }
+
+    var isPostTipOpen by remember { mutableStateOf(false) }
+    val db = remember { AppDatabase.getDatabase(context) }
+    val tipsForSpot by db.communityTipDao().getTipsForSpotFlow(spot.id).collectAsState(initial = emptyList())
+    val latestStatus = tipsForSpot.firstOrNull { it.isStatusUpdate }
 
     fun fetchWeather(forceRefresh: Boolean = false) {
         scope.launch {
@@ -198,6 +211,35 @@ fun SpotDetailBottomSheet(
                         )
                     }
                 }
+
+                // Photo attribution badge
+                val photoAttribution = ImageResolver.getAttribution(spot.title, spot.imageUrl, spot.category)
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(16.dp)
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(Color.Black.copy(alpha = 0.65f))
+                        .padding(horizontal = 10.dp, vertical = 5.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.CameraAlt,
+                            contentDescription = null,
+                            tint = Color.White.copy(alpha = 0.9f),
+                            modifier = Modifier.size(12.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = photoAttribution,
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Medium
+                            ),
+                            color = Color.White
+                        )
+                    }
+                }
             }
 
             // Body
@@ -246,6 +288,67 @@ fun SpotDetailBottomSheet(
                             style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
                             color = MaterialTheme.colorScheme.onSurface
                         )
+                    }
+                }
+
+                // Live Community Spot Status Alert (e.g. "Bakery out of bread")
+                if (latestStatus != null) {
+                    val decayTier = TipDecayUtils.calculateDecayTier(latestStatus.timestamp)
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = decayTier.containerColor,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, decayTier.dotColor.copy(alpha = 0.5f)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("spot_detail_live_status_alert")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .clip(CircleShape)
+                                    .background(decayTier.dotColor.copy(alpha = 0.2f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.NotificationsActive,
+                                    contentDescription = null,
+                                    tint = decayTier.dotColor,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                            Column(modifier = Modifier.weight(1f)) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text(
+                                        text = "LIVE STATUS ALERT",
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontWeight = FontWeight.Black,
+                                            letterSpacing = 0.8.sp,
+                                            fontSize = 9.sp
+                                        ),
+                                        color = decayTier.contentColor
+                                    )
+                                    Text(
+                                        text = "• ${TipDecayUtils.formatRelativeTime(latestStatus.timestamp)}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = decayTier.contentColor.copy(alpha = 0.8f),
+                                        fontSize = 9.sp
+                                    )
+                                }
+                                Text(
+                                    text = latestStatus.content,
+                                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
                     }
                 }
 
@@ -319,6 +422,83 @@ fun SpotDetailBottomSheet(
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
+                        }
+                    }
+                }
+
+                // Community Ground Truth & Tips Section
+                Surface(
+                    color = SurfaceContainerLow,
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("spot_detail_community_section")
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(
+                                    text = "COMMUNITY GROUND TRUTH",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontWeight = FontWeight.Black,
+                                        letterSpacing = 0.8.sp
+                                    ),
+                                    color = BrandTeal
+                                )
+                                Text(
+                                    text = "${tipsForSpot.size} Scout Reports in P2P Cache",
+                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+
+                            Button(
+                                onClick = { isPostTipOpen = true },
+                                colors = ButtonDefaults.buttonColors(containerColor = BrandTeal),
+                                shape = RoundedCornerShape(999.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                modifier = Modifier.testTag("spot_detail_post_tip_btn")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.AddComment,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "Leave Tip",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold)
+                                )
+                            }
+                        }
+
+                        if (tipsForSpot.isEmpty()) {
+                            Text(
+                                text = "No community reports for this gem yet. Leave the first tip or status alert!",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        } else {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                tipsForSpot.take(3).forEach { tip ->
+                                    CommunityTipCard(
+                                        tip = tip,
+                                        onUpvoteClick = { tipId ->
+                                            scope.launch {
+                                                db.communityTipDao().incrementUpvote(tipId)
+                                            }
+                                        },
+                                        showSpotHeader = false
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -522,4 +702,16 @@ fun SpotDetailBottomSheet(
             }
         }
     }
+
+    PostTipDialog(
+        isOpen = isPostTipOpen,
+        onDismiss = { isPostTipOpen = false },
+        onSubmit = { spotId, spotTitle, content, isStatus, category ->
+            scope.launch {
+                val repo = com.example.data.repository.CommunityTipRepository(db.communityTipDao())
+                repo.postTip(spotId, spotTitle, content, isStatus, category)
+            }
+        },
+        initialSpot = spot
+    )
 }

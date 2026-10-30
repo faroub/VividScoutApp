@@ -69,6 +69,8 @@ fun VividScoutTopBar(
     onGpsClick: () -> Unit = {},
     onArClick: () -> Unit = {},
     hasLocationPermission: Boolean = true,
+    selectedGlobalCity: com.example.data.model.GlobalCity? = null,
+    isUsingGpsLocation: Boolean = true,
     isPrefetchActive: Boolean = false,
     prefetchedCount: Int = 0,
     prefetchPowerMode: com.example.util.PrefetchPowerMode = com.example.util.PrefetchPowerMode.OPTIMAL_WALKING,
@@ -103,7 +105,7 @@ fun VividScoutTopBar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            // Left: Brand Logo & GPS Status
+            // Left: Brand Logo & GPS/City Status
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
@@ -153,13 +155,23 @@ fun VividScoutTopBar(
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Spacer(modifier = Modifier.width(5.dp))
-                        // Lisbon Live GPS Pill
+
+                        val cityLabel = if (!isUsingGpsLocation && selectedGlobalCity != null) {
+                            "${selectedGlobalCity.name} ${selectedGlobalCity.flagEmoji}"
+                        } else if (hasLocationPermission) {
+                            strings.liveGpsStatus
+                        } else {
+                            "GPS Off"
+                        }
+
+                        // Global Location / City Selector Pill
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
                                 .clip(RoundedCornerShape(999.dp))
                                 .background(
-                                    if (hasLocationPermission) SecondaryContainer.copy(alpha = 0.45f)
+                                    if (!isUsingGpsLocation && selectedGlobalCity != null) BrandTeal.copy(alpha = 0.2f)
+                                    else if (hasLocationPermission) SecondaryContainer.copy(alpha = 0.45f)
                                     else BrandCoral.copy(alpha = 0.15f)
                                 )
                                 .clickable { onGpsClick() }
@@ -171,13 +183,14 @@ fun VividScoutTopBar(
                                     .size(5.dp)
                                     .scale(pulseScale)
                                     .clip(CircleShape)
-                                    .background(if (hasLocationPermission) Secondary else BrandCoral)
+                                    .background(if (!isUsingGpsLocation || hasLocationPermission) Secondary else BrandCoral)
                             )
                             Spacer(modifier = Modifier.width(3.dp))
                             Text(
-                                text = if (hasLocationPermission) strings.liveGpsStatus else "GPS Off",
+                                text = cityLabel,
                                 style = MaterialTheme.typography.labelSmall,
-                                color = if (hasLocationPermission) MaterialTheme.colorScheme.onSecondaryContainer else BrandCoral,
+                                color = if (!isUsingGpsLocation && selectedGlobalCity != null) BrandTeal
+                                       else if (hasLocationPermission) MaterialTheme.colorScheme.onSecondaryContainer else BrandCoral,
                                 fontSize = 9.sp,
                                 fontWeight = FontWeight.Bold
                             )
