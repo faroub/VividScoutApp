@@ -135,6 +135,15 @@
     "description": "Capital of creative arts, historic gates, riverside parks, and vibrant neighborhood cafes."
   },
   {
+    "id": "city_dresden",
+    "name": "Dresden",
+    "country": "Germany",
+    "flagEmoji": "🇩🇪",
+    "latitude": 51.0504,
+    "longitude": 13.7373,
+    "description": "Florence on the Elbe, Frauenkirche, Zwinger Palace, Baroque grandeur, and scenic riverfront vistas."
+  },
+  {
     "id": "city_istanbul",
     "name": "Istanbul",
     "country": "Turkey",

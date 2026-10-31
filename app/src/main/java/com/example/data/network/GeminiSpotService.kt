@@ -346,10 +346,10 @@ class GeminiSpotService {
             )
         )
 
-        val filtered = if (category == "all") {
+        val filtered = if (category.equals("all", ignoreCase = true)) {
             catalog
         } else {
-            val matching = catalog.filter { it.category == category }
+            val matching = catalog.filter { it.category.equals(category, ignoreCase = true) }
             if (matching.isNotEmpty()) matching else catalog
         }
 

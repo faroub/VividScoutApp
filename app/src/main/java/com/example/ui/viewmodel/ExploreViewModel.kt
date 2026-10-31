@@ -24,7 +24,7 @@ data class ExploreUiState(
     val allSpots: List<ScoutSpotEntity> = emptyList(),
     val savedSpots: List<ScoutSpotEntity> = emptyList(),
     val discoveredSpots: List<ScoutSpotEntity> = emptyList(),
-    val selectedCategory: String = "ALL",
+    val selectedCategory: String = "all",
     val searchQuery: String = "",
     val recentSearches: List<RecentSearchEntity> = emptyList(),
     val selectedGlobalCity: String = "Lisbon, Portugal",
@@ -55,7 +55,7 @@ class ExploreViewModel(
     val recentSearches: StateFlow<List<RecentSearchEntity>> = gemRepository.recentSearches
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    private val _selectedCategory = MutableStateFlow("ALL")
+    private val _selectedCategory = MutableStateFlow("all")
     val selectedCategory: StateFlow<String> = _selectedCategory.asStateFlow()
 
     private val _searchQuery = MutableStateFlow("")
@@ -91,7 +91,7 @@ class ExploreViewModel(
         _searchQuery
     ) { spots, category, query ->
         spots.filter { spot ->
-            val matchesCategory = (category == "ALL" || spot.category.equals(category, ignoreCase = true))
+            val matchesCategory = (category.equals("all", ignoreCase = true) || spot.category.equals(category, ignoreCase = true))
             val matchesQuery = query.isBlank() ||
                 spot.title.contains(query, ignoreCase = true) ||
                 spot.description.contains(query, ignoreCase = true) ||
@@ -217,7 +217,7 @@ class ExploreViewModel(
     }
 
     fun filterPreScoutedSpots() {
-        _selectedCategory.value = "ALL"
+        _selectedCategory.value = "all"
         _searchQuery.value = ""
     }
 
@@ -229,7 +229,7 @@ class ExploreViewModel(
         _osmScrapeMessage.value = null
     }
 
-    fun scrapeOsmGems(lat: Double, lng: Double, category: String = "ALL") {
+    fun scrapeOsmGems(lat: Double, lng: Double, category: String = "all") {
         if (_isScrapingOsm.value) return
         _isScrapingOsm.value = true
         _osmScrapeMessage.value = null
