@@ -200,13 +200,13 @@ class OverpassRetrofitClient(
             val spotLng = userLng + deltaLng
 
             val spotTitle = "${template.first} #${index + 1}"
+            val spotId = "osm_fallback_${(userLat * 10000).toInt()}_${(userLng * 10000).toInt()}_$index"
             val photoResult = com.example.util.LocationPhotoResolver.resolvePhotoSynchronous(
                 title = spotTitle,
                 category = template.second,
-                districtOrLocation = "Lisbon"
+                districtOrLocation = "Local District",
+                spotId = spotId
             )
-
-            val spotId = "osm_fallback_${(userLat * 10000).toInt()}_${(userLng * 10000).toInt()}_$index"
 
             ScoutSpotEntity(
                 id = spotId,
@@ -433,11 +433,13 @@ class OverpassRetrofitClient(
             }
 
             val street = tags["addr:street"] ?: tags["addr:city"] ?: tags["addr:suburb"] ?: "Local District"
+            val elementSpotId = "osm_${element.type}_${element.id}"
             val photoResult = com.example.util.LocationPhotoResolver.resolvePhotoSynchronous(
                 title = title,
                 category = category,
                 districtOrLocation = street,
-                osmTags = tags
+                osmTags = tags,
+                spotId = elementSpotId
             )
             val imageUrl = photoResult.url
 

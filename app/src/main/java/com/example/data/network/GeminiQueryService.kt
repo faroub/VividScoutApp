@@ -171,7 +171,8 @@ class GeminiQueryService {
                     imageUrl = com.example.util.LocationPhotoResolver.resolvePhotoSynchronous(
                         title = title,
                         category = mappedCategory,
-                        districtOrLocation = locationName
+                        districtOrLocation = locationName,
+                        spotId = spotId
                     ).url,
                     badgeLabel = "PREFETCHED 5KM VECTOR",
                     statusBadge = "Prefetched AI Cache",
@@ -257,8 +258,9 @@ class GeminiQueryService {
             val interpolatedLng = vector.originLng + (vector.targetLng - vector.originLng) * bp.fraction
             val distanceAheadMeters = (bp.fraction * vector.distanceMeters).toInt()
 
+            val curatedSpotId = "prefetch_curated_${bp.category}_${index}_${(interpolatedLat * 1000).toInt()}"
             ScoutSpotEntity(
-                id = "prefetch_curated_${bp.category}_${index}_${(interpolatedLat * 1000).toInt()}",
+                id = curatedSpotId,
                 title = bp.title,
                 description = bp.description,
                 category = bp.category,
@@ -269,7 +271,8 @@ class GeminiQueryService {
                 imageUrl = com.example.util.LocationPhotoResolver.resolvePhotoSynchronous(
                     title = bp.title,
                     category = bp.category,
-                    districtOrLocation = bp.district
+                    districtOrLocation = bp.district,
+                    spotId = curatedSpotId
                 ).url,
                 badgeLabel = "PREFETCHED 5KM VECTOR",
                 statusBadge = "Prefetched AI Cache",

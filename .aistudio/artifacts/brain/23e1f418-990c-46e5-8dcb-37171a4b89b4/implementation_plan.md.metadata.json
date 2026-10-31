@@ -1,6 +1,6 @@
 {
-  "summary":  "Implementation plan for expanding the spot discovery app globally worldwide with GPS location detection, global city search, and dynamic global photo resolution via Wikipedia REST & OpenStreetMap APIs.",
-  "updatedAt":  "2026-10-30T18:11:13.402185230Z",
+  "summary":  "Implementation plan for the Pre-scout algorithm that tracks search & bookmark category frequencies, detects city boundary crossings (>10km or new city selection), pre-caches 5 high-rated gems in a 10km radius into Room DB, and displays a top-bar ticker alert.",
+  "updatedAt":  "2026-10-31T12:01:14.040290560Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

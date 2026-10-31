@@ -158,6 +158,7 @@ fun VividScoutApp(viewModel: ScoutViewModel) {
     val meshSyncPhase by viewModel.meshSyncPhase.collectAsState()
     val lastMeshSyncResult by viewModel.lastMeshSyncResult.collectAsState()
     val postTipSuccessMessage by viewModel.postTipSuccessMessage.collectAsState()
+    val preScoutBannerState by viewModel.preScoutBannerState.collectAsState()
 
     // Automatically refresh permission state when returning to the app from System Settings
     DisposableEffect(lifecycleOwner) {
@@ -320,7 +321,10 @@ fun VividScoutApp(viewModel: ScoutViewModel) {
                                         onOpenCacheHealth = { viewModel.openCacheHealthDialog() },
                                         isDiscovering = isScrapingOsm,
                                         discoveryMessage = osmScrapeMessage,
-                                        onTriggerDiscover = { viewModel.scrapeOsmGems(userCoordinates.first, userCoordinates.second, category = selectedCategory) }
+                                        onTriggerDiscover = { viewModel.scrapeOsmGems(userCoordinates.first, userCoordinates.second, category = selectedCategory) },
+                                        preScoutState = preScoutBannerState,
+                                        onDismissPreScout = { viewModel.dismissPreScoutBanner() },
+                                        onViewPreScout = { viewModel.filterPreScoutedSpots() }
                                     )
                                 }
 
@@ -501,6 +505,9 @@ fun VividScoutApp(viewModel: ScoutViewModel) {
                         onPlanRoute = {
                             viewModel.openRoutePlanner(destination = spot)
                             viewModel.selectTab(MainTab.RADAR)
+                        },
+                        onReFetchImage = { spotId, callback ->
+                            viewModel.refreshSpotPhoto(spotId, callback)
                         }
                     )
                 }

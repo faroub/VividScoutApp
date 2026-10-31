@@ -184,7 +184,8 @@ class GeminiSpotService {
                 val resolvedPhoto = com.example.util.LocationPhotoResolver.resolvePhotoSynchronous(
                     title = title,
                     category = mappedCategory,
-                    districtOrLocation = locationName
+                    districtOrLocation = locationName,
+                    spotId = spotId
                 )
 
                 val entity = ScoutSpotEntity(

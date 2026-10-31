@@ -641,7 +641,7 @@ fun ScoutMapView(
                     Box(modifier = Modifier.size(54.dp)) {
                         AsyncImage(
                             model = ImageRequest.Builder(LocalContext.current)
-                                .data(ImageResolver.resolveImageModel(spot.imageUrl, spot.category, spot.title))
+                                .data(ImageResolver.resolveImageModel(spot.imageUrl, spot.category, spot.title, spot.id))
                                 .crossfade(true)
                                 .placeholder(ImageResolver.getDrawableResForCategory(spot.category))
                                 .error(ImageResolver.getDrawableResForCategory(spot.category))

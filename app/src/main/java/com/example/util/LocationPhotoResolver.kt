@@ -24,16 +24,16 @@ object LocationPhotoResolver {
     )
 
     /**
-     * Checks if a URL is empty, an icon placeholder (e.g. ic_cat_sights),
-     * or one of the generic stock photos previously hardcoded.
+     * Checks if a URL is empty, an icon placeholder, or one of the generic stock/fallback photos.
      */
     fun isGenericOrStockPhoto(url: String?): Boolean {
         if (url.isNullOrBlank()) return true
         val trimmed = url.trim()
         if (trimmed.startsWith("ic_cat_") || trimmed.startsWith("img_lisbon_")) return true
 
-        // Known repeated generic stock photos
+        // Known repeated generic stock photos and old hardcoded Eiffel Tower fallback
         val genericUnsplashIds = listOf(
+            "1502602898657", // Old Eiffel Tower fallback
             "1509440159596", // bakery
             "1548707309",    // tram/convent
             "1513635269",    // alley/stairs
@@ -56,7 +56,8 @@ object LocationPhotoResolver {
         title: String?,
         category: String?,
         districtOrLocation: String? = null,
-        osmTags: Map<String, String>? = null
+        osmTags: Map<String, String>? = null,
+        spotId: String? = null
     ): EnrichedPhoto {
         // 1. Check OSM image tag
         val osmImage = osmTags?.get("image")
@@ -84,8 +85,13 @@ object LocationPhotoResolver {
             return EnrichedPhoto(lisbonLandmark.imageUrl, lisbonLandmark.attribution, isVerifiedLandmark = true)
         }
 
-        // 4. Fallback to contextual keyword / regional photo
-        val (fallbackUrl, fallbackAttr) = GlobalLandmarkCatalog.resolveGlobalContextualPhoto(title, category, districtOrLocation)
+        // 4. Fallback to contextual keyword / regional photo pool
+        val (fallbackUrl, fallbackAttr) = GlobalLandmarkCatalog.resolveGlobalContextualPhoto(
+            title = title,
+            category = category,
+            districtOrLocation = districtOrLocation,
+            seedKey = spotId ?: title
+        )
         return EnrichedPhoto(fallbackUrl, fallbackAttr, isVerifiedLandmark = false)
     }
 
@@ -97,7 +103,8 @@ object LocationPhotoResolver {
         title: String,
         category: String?,
         districtOrLocation: String? = null,
-        osmTags: Map<String, String>? = null
+        osmTags: Map<String, String>? = null,
+        spotId: String? = null
     ): EnrichedPhoto = withContext(Dispatchers.IO) {
         // 1. Direct OSM image tag
         val osmImage = osmTags?.get("image")
@@ -142,11 +149,12 @@ object LocationPhotoResolver {
             return@withContext EnrichedPhoto(titleWikiResult.photoUrl, titleWikiResult.attribution, true)
         }
 
-        // 6. Contextual Keyword & Category fallback
+        // 6. Contextual Keyword & Category fallback pool
         val (contextualUrl, attribution) = GlobalLandmarkCatalog.resolveGlobalContextualPhoto(
             title = title,
             category = category,
-            districtOrLocation = districtOrLocation
+            districtOrLocation = districtOrLocation,
+            seedKey = spotId ?: title
         )
         EnrichedPhoto(contextualUrl, attribution, false)
     }

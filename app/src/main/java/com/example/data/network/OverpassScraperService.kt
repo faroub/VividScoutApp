@@ -195,11 +195,13 @@ class OverpassScraperService {
                 }
 
                 val street = tags.optString("addr:street").ifBlank { "Local District" }
+                val spotId = "osm_${type}_$id"
                 val photoResult = com.example.util.LocationPhotoResolver.resolvePhotoSynchronous(
                     title = title,
                     category = category,
                     districtOrLocation = street,
-                    osmTags = tagsMap
+                    osmTags = tagsMap,
+                    spotId = spotId
                 )
                 val imageUrl = photoResult.url
 

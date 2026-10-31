@@ -96,7 +96,8 @@ fun SpotDetailBottomSheet(
     onUpvote: () -> Unit,
     onToggleAudio: () -> Unit,
     isPlayingAudio: Boolean,
-    onPlanRoute: (() -> Unit)? = null
+    onPlanRoute: (() -> Unit)? = null,
+    onReFetchImage: (spotId: String, onResult: (Boolean, String) -> Unit) -> Unit = { _, _ -> }
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val strings = LocalAppStrings.current
@@ -158,7 +159,7 @@ fun SpotDetailBottomSheet(
             ) {
                 AsyncImage(
                     model = ImageRequest.Builder(context)
-                        .data(ImageResolver.resolveImageModel(spot.imageUrl, spot.category, spot.title))
+                        .data(ImageResolver.resolveImageModel(spot.imageUrl, spot.category, spot.title, spot.id))
                         .crossfade(true)
                         .placeholder(ImageResolver.getDrawableResForCategory(spot.category))
                         .error(ImageResolver.getDrawableResForCategory(spot.category))
@@ -241,6 +242,12 @@ fun SpotDetailBottomSheet(
                     }
                 }
             }
+
+            // Diagnostic Telemetry & Re-Fetch Visualizer
+            com.example.ui.components.ImageDiagnosticVisualizerCard(
+                spot = spot,
+                onReFetchImage = onReFetchImage
+            )
 
             // Body
             Column(

@@ -87,6 +87,7 @@ fun GemDetailSheet(
     onRoutePlan: (ScoutSpotEntity) -> Unit = {},
     onPostCommunityTip: ((spotId: String, spotTitle: String, content: String, isStatus: Boolean, category: String) -> Unit)? = null,
     onUpvoteCommunityTip: ((String) -> Unit)? = null,
+    onReFetchImage: (spotId: String, onResult: (Boolean, String) -> Unit) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
     if (!isOpen || spot == null) return
@@ -151,7 +152,7 @@ fun GemDetailSheet(
             ) {
                 AsyncImage(
                     model = ImageRequest.Builder(context)
-                        .data(ImageResolver.resolveImageModel(spot.imageUrl, spot.category, spot.title))
+                        .data(ImageResolver.resolveImageModel(spot.imageUrl, spot.category, spot.title, spot.id))
                         .crossfade(true)
                         .placeholder(ImageResolver.getDrawableResForCategory(spot.category))
                         .error(ImageResolver.getDrawableResForCategory(spot.category))
@@ -255,6 +256,12 @@ fun GemDetailSheet(
                     }
                 }
             }
+
+            // Image Source Telemetry & Re-Fetch Diagnostic Card
+            ImageDiagnosticVisualizerCard(
+                spot = spot,
+                onReFetchImage = onReFetchImage
+            )
 
             // Spot Title and Rating
             Row(

@@ -318,7 +318,7 @@ fun SavedScreen(
                         val context = LocalContext.current
                         AsyncImage(
                             model = ImageRequest.Builder(context)
-                                .data(ImageResolver.resolveImageModel(spot.imageUrl, spot.category, spot.title))
+                                .data(ImageResolver.resolveImageModel(spot.imageUrl, spot.category, spot.title, spot.id))
                                 .crossfade(true)
                                 .placeholder(ImageResolver.getDrawableResForCategory(spot.category))
                                 .error(ImageResolver.getDrawableResForCategory(spot.category))

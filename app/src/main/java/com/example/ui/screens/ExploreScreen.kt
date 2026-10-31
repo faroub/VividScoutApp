@@ -148,6 +148,9 @@ fun ExploreScreen(
     isDiscovering: Boolean = false,
     discoveryMessage: String? = null,
     onTriggerDiscover: () -> Unit = {},
+    preScoutState: com.example.engine.PreScoutBannerState = com.example.engine.PreScoutBannerState(),
+    onDismissPreScout: () -> Unit = {},
+    onViewPreScout: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val strings = LocalAppStrings.current
@@ -160,7 +163,7 @@ fun ExploreScreen(
             contentPadding = PaddingValues(bottom = 120.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // 1. Offline Alert Banner (if visible)
+            // 1a. Offline Alert Banner (if visible)
             if (isOfflineBannerVisible) {
                 item {
                     Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
@@ -168,6 +171,19 @@ fun ExploreScreen(
                             draftCount = offlineDraftCount,
                             onQueueClick = onOpenQueueDialog,
                             onDismissClick = onDismissOfflineBanner
+                        )
+                    }
+                }
+            }
+
+            // 1b. Pre-Scout City Boundary Entry Ticker Banner (if visible)
+            if (preScoutState.isVisible) {
+                item {
+                    Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                        com.example.ui.components.PreScoutTickerBanner(
+                            state = preScoutState,
+                            onViewClick = onViewPreScout,
+                            onDismissClick = onDismissPreScout
                         )
                     }
                 }
@@ -1094,7 +1110,7 @@ fun ScoutSpotCard(
                 val context = LocalContext.current
                 AsyncImage(
                     model = ImageRequest.Builder(context)
-                        .data(ImageResolver.resolveImageModel(spot.imageUrl, spot.category, spot.title))
+                        .data(ImageResolver.resolveImageModel(spot.imageUrl, spot.category, spot.title, spot.id))
                         .crossfade(true)
                         .placeholder(ImageResolver.getDrawableResForCategory(spot.category))
                         .error(ImageResolver.getDrawableResForCategory(spot.category))

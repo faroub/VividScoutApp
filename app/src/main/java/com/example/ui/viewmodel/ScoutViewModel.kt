@@ -65,6 +65,15 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
     val communityRepository: com.example.data.repository.CommunityTipRepository =
         com.example.data.repository.CommunityTipRepository(db.communityTipDao())
 
+    val preScoutEngine: com.example.engine.PreScoutEngine = com.example.engine.PreScoutEngine(
+        scoutDao = db.scoutDao(),
+        recentSearchDao = db.recentSearchDao(),
+        gemRepository = gemRepository
+    )
+
+    private val _preScoutBannerState = MutableStateFlow(com.example.engine.PreScoutBannerState())
+    val preScoutBannerState: StateFlow<com.example.engine.PreScoutBannerState> = _preScoutBannerState.asStateFlow()
+
     val allCommunityTips: StateFlow<List<com.example.data.local.CommunityTipEntity>> =
         communityRepository.allTipsFlow
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -531,11 +540,33 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
         _showGlobalCityDialog.value = false
     }
 
+    fun dismissPreScoutBanner() {
+        _preScoutBannerState.value = _preScoutBannerState.value.copy(isVisible = false)
+    }
+
+    fun triggerPreScout(cityName: String? = null) {
+        val coords = userCoordinates.value
+        val currentCity = cityName ?: _selectedGlobalCity.value?.name ?: "Lisbon"
+        viewModelScope.launch(Dispatchers.IO) {
+            if (preScoutEngine.shouldTriggerPreScout(coords.first, coords.second, currentCity)) {
+                val banner = preScoutEngine.executePreScout(coords.first, coords.second, currentCity)
+                _preScoutBannerState.value = banner
+            }
+        }
+    }
+
+    fun filterPreScoutedSpots() {
+        _searchQuery.value = ""
+        _selectedCategory.value = "all"
+        _preScoutBannerState.value = _preScoutBannerState.value.copy(isVisible = false)
+    }
+
     fun selectGlobalCity(city: com.example.data.model.GlobalCity) {
         _selectedGlobalCity.value = city
         _isUsingGpsLocation.value = false
         _showGlobalCityDialog.value = false
         scrapeOsmGems(city.latitude, city.longitude, radiusMeters = 3000)
+        triggerPreScout(city.name)
     }
 
     fun selectCurrentGpsLocation() {
@@ -545,6 +576,7 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
         val loc = userLocation.value
         if (loc != null) {
             scrapeOsmGems(loc.latitude, loc.longitude, radiusMeters = 3000)
+            triggerPreScout("Current Location")
         } else {
             requestStartTracking()
         }
@@ -680,7 +712,8 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
                     val resolved = com.example.util.LocationPhotoResolver.resolveEnrichedPhoto(
                         title = spot.title,
                         category = spot.category,
-                        districtOrLocation = spot.locationName
+                        districtOrLocation = spot.locationName,
+                        spotId = spot.id
                     )
                     if (resolved.url.isNotBlank() && resolved.url != spot.imageUrl) {
                         db.scoutDao().updateImageUrl(spot.id, resolved.url)
@@ -693,16 +726,37 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
     /**
      * Force-refreshes the authentic photo for a specific spot using Wikipedia / Wikimedia Commons.
      */
-    fun refreshSpotPhoto(spotId: String) {
+    fun refreshSpotPhoto(spotId: String, onComplete: (Boolean, String) -> Unit = { _, _ -> }) {
         viewModelScope.launch(Dispatchers.IO) {
-            val spot = db.scoutDao().getSpotById(spotId) ?: return@launch
-            val resolved = com.example.util.LocationPhotoResolver.resolveEnrichedPhoto(
-                title = spot.title,
-                category = spot.category,
-                districtOrLocation = spot.locationName
-            )
-            if (resolved.url.isNotBlank()) {
-                db.scoutDao().updateImageUrl(spot.id, resolved.url)
+            val spot = db.scoutDao().getSpotById(spotId)
+            if (spot == null) {
+                kotlinx.coroutines.withContext(Dispatchers.Main) { onComplete(false, "Spot not found in database") }
+                return@launch
+            }
+            val wikiService = com.example.data.network.WikipediaPhotoService()
+            val wikiResult = wikiService.fetchWikipediaPhotoByTitle(spot.title)
+            if (wikiResult != null && wikiResult.photoUrl.isNotBlank()) {
+                db.scoutDao().updateImageUrl(spot.id, wikiResult.photoUrl)
+                kotlinx.coroutines.withContext(Dispatchers.Main) {
+                    onComplete(true, "Fetched authentic photo from ${wikiResult.attribution}")
+                }
+            } else {
+                val resolved = com.example.util.LocationPhotoResolver.resolveEnrichedPhoto(
+                    title = spot.title,
+                    category = spot.category,
+                    districtOrLocation = spot.locationName,
+                    spotId = spot.id
+                )
+                if (resolved.url.isNotBlank()) {
+                    db.scoutDao().updateImageUrl(spot.id, resolved.url)
+                    kotlinx.coroutines.withContext(Dispatchers.Main) {
+                        onComplete(true, "Resolved photo via ${resolved.attribution}")
+                    }
+                } else {
+                    kotlinx.coroutines.withContext(Dispatchers.Main) {
+                        onComplete(false, "No direct Wikipedia photo found for '${spot.title}'")
+                    }
+                }
             }
         }
     }
