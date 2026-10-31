@@ -31,7 +31,6 @@ class GeminiQueryService {
             "audioLore" to Schema.string(description = "Brief 2-sentence narration for audio listening"),
             "latitude" to Schema.double(description = "Latitude along the 5km corridor"),
             "longitude" to Schema.double(description = "Longitude along the 5km corridor"),
-            "upvotes" to Schema.integer(description = "Community upvote count between 80 and 650"),
             "rating" to Schema.double(description = "Rating out of 5.0 between 4.3 and 5.0"),
             "distanceText" to Schema.string(description = "Distance along corridor e.g. 1.2km ahead"),
             "tags" to Schema.array(
@@ -144,7 +143,7 @@ class GeminiQueryService {
             val rawCategory = item.optString("category", "gems").lowercase()
             val description = item.optString("description", "Prefetched point of interest along your path.")
             val audioLore = item.optString("audioLore", description)
-            val upvotes = if (item.has("upvotes")) item.optInt("upvotes") else null
+            val upvotes: Int? = null // AI recommendations do not generate artificial upvote metrics; reserved for actual user activity
             val rating = if (item.has("rating")) item.optDouble("rating").takeIf { !it.isNaN() } else null
             val reviewCount: Int? = if (item.has("reviewCount")) {
                 val raw = item.opt("reviewCount")

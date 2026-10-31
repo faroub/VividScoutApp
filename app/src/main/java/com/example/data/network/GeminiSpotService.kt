@@ -32,7 +32,6 @@ class GeminiSpotService {
             "audioLore" to Schema.string(description = "Immersive 2-3 sentence audio guide narrative"),
             "latitude" to Schema.double(description = "Latitude coordinate close to requested location"),
             "longitude" to Schema.double(description = "Longitude coordinate close to requested location"),
-            "upvotes" to Schema.integer(description = "Popularity upvote count between 50 and 800"),
             "rating" to Schema.double(description = "Rating out of 5.0 between 4.0 and 5.0"),
             "distanceText" to Schema.string(description = "Human readable distance string e.g. 300m away"),
             "tags" to Schema.array(
@@ -187,7 +186,7 @@ class GeminiSpotService {
             val category = item.optString("category", "gems").lowercase()
             val description = item.optString("description", "A discovered local spot.")
             val audioLore = item.optString("audioLore", description)
-            val upvotes = if (item.has("upvotes")) item.optInt("upvotes") else null
+            val upvotes: Int? = null // AI recommendations do not generate artificial upvote metrics; reserved for actual user activity
             val rating = if (item.has("rating")) item.optDouble("rating").takeIf { !it.isNaN() } else null
             val reviewCount: Int? = if (item.has("reviewCount")) {
                 val raw = item.opt("reviewCount")
