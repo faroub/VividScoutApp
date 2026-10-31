@@ -19,8 +19,8 @@ import kotlinx.coroutines.launch
         AchievementEntity::class,
         CommunityTipEntity::class
     ],
-    version = 6,
-    exportSchema = false
+    version = 7,
+    exportSchema = true
 )
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
@@ -42,7 +42,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "vivid_scout_database"
                 )
-                    .fallbackToDestructiveMigration(dropAllTables = true)
+                    .addMigrations(*DatabaseMigrations.ALL_MIGRATIONS)
                     .addCallback(DatabaseCallback())
                     .build()
                 INSTANCE = instance
@@ -101,7 +101,7 @@ abstract class AppDatabase : RoomDatabase() {
                     distance = "350m walk",
                     walkMinutes = 5,
                     rating = 4.9,
-                    reviewCount = "1.8k",
+                    reviewCount = 1800,
                     imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/c/cd/MiradouroSantaLuzia.JPG/800px-MiradouroSantaLuzia.JPG",
                     badgeLabel = "SIGHTS",
                     statusBadge = "Scraped 8m ago",
@@ -125,7 +125,7 @@ abstract class AppDatabase : RoomDatabase() {
                     distance = "180m walk",
                     walkMinutes = 3,
                     rating = 4.8,
-                    reviewCount = "950",
+                    reviewCount = 950,
                     imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/3/30/Pastel_de_nata_em_Lisboa.jpg/800px-Pastel_de_nata_em_Lisboa.jpg",
                     badgeLabel = "WARM BAKERY ALERT",
                     statusBadge = "Oven: 4m ago",
@@ -146,7 +146,7 @@ abstract class AppDatabase : RoomDatabase() {
                     distance = "0.4 km away",
                     walkMinutes = 6,
                     rating = 4.9,
-                    reviewCount = "1.4k",
+                    reviewCount = 1400,
                     imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d4/Convento_do_Carmo_Lisbon.jpg/800px-Convento_do_Carmo_Lisbon.jpg",
                     badgeLabel = "HISTORY",
                     statusBadge = "Audio Clip 1m30s",
@@ -168,7 +168,7 @@ abstract class AppDatabase : RoomDatabase() {
                     distance = "520m walk",
                     walkMinutes = 7,
                     rating = 4.9,
-                    reviewCount = "88",
+                    reviewCount = 88,
                     imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6b/Escadinhas_da_Sa%C3%BAde_Mouraria.jpg/800px-Escadinhas_da_Sa%C3%BAde_Mouraria.jpg",
                     badgeLabel = "COMMUNITY GEM",
                     statusBadge = "94% Verified",
@@ -193,7 +193,7 @@ abstract class AppDatabase : RoomDatabase() {
                     distance = "0.8 km away",
                     walkMinutes = 11,
                     rating = 4.8,
-                    reviewCount = "1.2k",
+                    reviewCount = 1200,
                     imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/2/24/Pastel_de_Nata_Manteigaria.jpg/800px-Pastel_de_Nata_Manteigaria.jpg",
                     badgeLabel = "STREET EATS · WARM BATCH",
                     statusBadge = "Fresh out oven 3m ago",
@@ -214,7 +214,7 @@ abstract class AppDatabase : RoomDatabase() {
                     distance = "1.2 km away",
                     walkMinutes = 18,
                     rating = 4.9,
-                    reviewCount = "3.2k",
+                    reviewCount = 3200,
                     imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4b/Miradouro_da_Senhora_do_Monte%2C_Lisbon%2C_Portugal_%2848835849883%29.jpg/800px-Miradouro_da_Senhora_do_Monte%2C_Lisbon%2C_Portugal_%2848835849883%29.jpg",
                     badgeLabel = "PANORAMIC SUNSET",
                     statusBadge = "Golden Hour 19:42",
@@ -235,7 +235,7 @@ abstract class AppDatabase : RoomDatabase() {
                     distance = "1.6 km away",
                     walkMinutes = 22,
                     rating = 4.8,
-                    reviewCount = "2.1k",
+                    reviewCount = 2100,
                     imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/6/69/Castelo_de_S%C3%A3o_Jorge_by_Augusto_Cabrita.jpg/800px-Castelo_de_S%C3%A3o_Jorge_by_Augusto_Cabrita.jpg",
                     badgeLabel = "HIDDEN HISTORY",
                     statusBadge = "Pine Shaded Trail",
@@ -256,7 +256,7 @@ abstract class AppDatabase : RoomDatabase() {
                     distance = "310m walk",
                     walkMinutes = 4,
                     rating = 5.0,
-                    reviewCount = "Offline Draft",
+                    reviewCount = null,
                     imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/3/36/Alfama_Lisbon_street_scene.jpg/800px-Alfama_Lisbon_street_scene.jpg",
                     badgeLabel = "OFFLINE SCOUT DRAFT",
                     statusBadge = "Pending Auto-Sync",

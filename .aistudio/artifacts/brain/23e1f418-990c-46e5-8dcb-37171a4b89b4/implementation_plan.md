@@ -1,66 +1,108 @@
-# Pre-Scout City Boundary Algorithm & Proactive Gem Prefetching
+# Architecture Refactoring: AppContainer DI & Feature ViewModels
 
-Implement an intelligent **Pre-scout Algorithm** that monitors the user's past search category frequencies (`RecentSearchEntity`) and saved bookmark history (`ScoutSpotEntity`), detects when the device enters a new city boundary or switches global regions (>10km movement), and proactively pre-caches **5 high-rated gems (rating >= 4.5)** within a **10km radius** directly into Room DB, featuring a non-intrusive top-bar notification ticker.
+Decompose the 1,036-line `ScoutViewModel` god-object into focused feature ViewModels with manual dependency injection via `AppContainer`, and streamline `MainActivity` to collect unified, immutable screen UI states.
 
-> [!IMPORTANT] User Preferences Confirmed in Phase 1
-> - **Category Analysis Engine**: Ranks categories by combining frequency from past search history (`RecentSearchEntity`) and saved bookmark categories (`isSaved = true`), prioritizing the user's top-rated interests.
-> - **Boundary Detection**: Triggers whenever the GPS moves to a new city/region boundary (>10km from last anchor) or when a new city is selected in the Global Destination picker.
-> - **Notification Ticker**: Displays a sleek top-bar ticker (e.g. `✨ Pre-scouted 5 top gems in Paris!`) with a quick badge in Profile & TopBar.
+## User Review & Critical Decisions
 
----
+> [!IMPORTANT]
+> The following design decisions were confirmed during clarification:
+> - **ViewModel Instantiation**: Dedicated `ViewModelProvider.Factory` reading from `AppContainer` via custom `VividScoutApplication`.
+> - **Screen State Consumption**: Each screen composable receives a single unified immutable `UiState` data class and action lambdas, eliminating the ~50 separate flow collections in `MainActivity`.
 
-## 1. Overview & Architectural Goal
-
-- **Goal**: Ensure zero cold-boot wait times and instant offline availability of top tourist spots whenever traveling to a new city or switching regions.
-- **Algorithm Strategy**:
-  1. **Category Weight Evaluator**: Computes weight `W(cat) = 2 * count(recent_searches) + 3 * count(saved_bookmarks)`.
-  2. **City Anchor Tracker**: Stores `lastPreScoutLat`, `lastPreScoutLng`, and `lastPreScoutCity`. If distance to current GPS or selected city > 10,000m, triggers Pre-scout.
-  3. **High-Rated Prefetch Pipeline**: Queries Overpass API & Wikipedia REST / Gemini Services for 5 top-rated spots (>= 4.5 stars) matching top weighted categories within 10km radius.
-  4. **Room DB Ingestion**: Saves entities with `statusBadge = "Pre-scouted Local"` and `offlineCached = true`.
-  5. **UI Notification Ticker**: Displays ticker banner at top of Explore screen and updates top-bar pill with pre-scout count badge.
+- **Confirmed Decision 1**: Manual DI via `AppContainer` and `DefaultAppContainer` (no Hilt, keeping build times fast and lean).
+- **Confirmed Decision 2**: Six feature ViewModels, each under 400 lines: `LocationViewModel`, `ExploreViewModel`, `RadarViewModel`, `CommunityViewModel`, `OfflineMapsViewModel`, and `ProfileViewModel` (plus a lightweight navigation/app shell controller).
+- **Confirmed Decision 3**: Location coordinates and tracking are managed by `LocationViewModel` and shared via Flow/StateFlow without cross-repository coupling.
+- **Confirmed Decision 4**: All inline fully-qualified imports (`com.example.*`) eliminated in favor of standard Kotlin import statements.
 
 ---
 
-## 2. User Experience & Visual Design
+## 1. Overview & Core Concept
 
-- **Top-Bar Ticker Banner**:
-  - Displays a vibrant gradient pill: `✨ Pre-scouted 5 top gems in Tokyo (Sights & Eats)`
-  - Includes a "View Gems" tap target that filters Explore feed to newly pre-scouted places.
-- **Pre-Scout Badge on Cards**:
-  - Pre-scouted cards showcase a distinct teal/purple badge: `✨ PRE-SCOUTED 10KM`.
+- **What It Does**: Transitions the app from an anti-pattern monolithic ViewModel to a clean, scalable Clean Architecture/MVVM pattern with single-responsibility feature ViewModels, manual constructor injection, and unidirectional data flow (UDF).
+- **Target Audience / Developer Value**: Drastically faster compile and test cycles, eliminated race conditions between unrelated features, improved testability, and adherence to Android architectural best practices.
 
 ---
 
-## 3. Technical Architecture & Data Strategy
+## 2. Technical Architecture & Component Mapping
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
-│                     PreScoutEngine (Coroutines)                        │
-│ - Category Weight Evaluator: RecentSearches + Saved Spot Categories    │
-│ - Geodesic City Anchor Listener (>10km delta or City Selection)        │
+│                        VividScoutApplication                           │
+│                                   │                                    │
+│                         DefaultAppContainer                            │
+│    ┌──────────────────┬───────────┴───────────┬──────────────────┐     │
+│    ▼                  ▼                       ▼                  ▼     │
+│ AppDatabase     LocationTracker      OfflineMapManager   CommunityRepo │
+│ (DAOs, Room)    (FusedLocation)      OfflineStorage      ScoutRepo     │
 └───────────────────────────────────┬────────────────────────────────────┘
                                     │
-                                    ▼
-┌────────────────────────────────────────────────────────────────────────┐
-│                      Proactive Gem Prefetcher                          │
-│ - Fetches 5 high-rated gems (rating >= 4.5) within 10km radius         │
-│ - Resolves authentic Wikipedia/Commons photos via LocationPhotoResolver│
-│ - Inserts into Room DB (scoutDao.insertSpots)                          │
-└───────────────────────────────────┬────────────────────────────────────┘
+                         AppViewModelProvider.Factory
                                     │
+         ┌──────────────┬───────────┼───────────┬──────────────┐
+         ▼              ▼           ▼           ▼              ▼
+   LocationVM      ExploreVM     RadarVM   CommunityVM   OfflineMapsVM & ProfileVM
+         │              │           │           │              │
+    LocationState  ExploreState RadarState CommunityState OfflineState & ProfileState
+         └──────────────┴───────────┼───────────┴──────────────┘
+                                    │ (Collected once per screen)
                                     ▼
-┌────────────────────────────────────────────────────────────────────────┐
-│                      Top-Bar Ticker & UI Flow                          │
-│ - StateFlow<PreScoutBannerState> in ScoutViewModel                     │
-│ - Animated ticker in VividScoutTopBar & ExploreScreen                  │
-└────────────────────────────────────────────────────────────────────────┘
+                               MainActivity
+                   (VividScoutApp & Screen Composables)
 ```
 
-- **Step-by-Step Implementation Steps**:
-  1. **Category Weight Evaluator (`PreScoutEngine.kt`)**: Implement class that queries `RecentSearchDao` and `ScoutDao` to calculate top preferred categories.
-  2. **Pre-scout ViewModel Flow in `ScoutViewModel.kt`**:
-     - Monitor `userCoordinates` and `selectedGlobalCity`.
-     - When delta distance > 10,000m or new city selected: trigger `executePreScoutPipeline(lat, lng, cityName)`.
-  3. **High-Rated Prefetch Query**: Query Overpass API & Wikipedia REST for 5 top-rated spots matching top categories around current coordinates.
-  4. **Top-Bar Ticker UI**: Update `VividScoutTopBar.kt` and `ExploreScreen.kt` with the pre-scout notification ticker banner.
-  5. **Verification**: Run `compile_applet`.
+### Module & Class Structure
+
+1. **`com.example.di.AppContainer` & `DefaultAppContainer`**:
+   - Owns `AppDatabase` singleton.
+   - Lazy instantiations of `ScoutRepository`, `ScoutGemRepository`, `LocationTracker`, `OfflineMapManager`, `OfflineRegionStorage`, `CommunityTipRepository`, `PreScoutEngine`, and `CompassSensorManager`.
+2. **`com.example.VividScoutApplication`**:
+   - Custom `Application` subclass holding `lateinit var container: AppContainer`.
+   - Registered in `AndroidManifest.xml` via `android:name=".VividScoutApplication"`.
+3. **Feature ViewModels & UiState classes (`com.example.ui.viewmodel.*`)**:
+   - **`LocationViewModel`** (`LocationUiState`): GPS coordinates, telemetry, accuracy status, permission requests/rationale.
+   - **`ExploreViewModel`** (`ExploreUiState`): Spots catalog, text search, category filters, recent searches, global city selector, pre-scout banner, OSM scraper status.
+   - **`RadarViewModel`** (`RadarUiState`): Proximity radius filtering, orientation/azimuth, nearby pings, sensor status.
+   - **`CommunityViewModel`** (`CommunityUiState`): Community tips, live spot alerts, peer sync state, tip posting modal state.
+   - **`OfflineMapsViewModel`** (`OfflineMapsUiState`): Region downloads, map packs, bounding box selection, offline queue drafts, cache health diagnostics.
+   - **`ProfileViewModel`** (`ProfileUiState`): Achievements, badges, points, language selection, prefetch telemetry, cache clear dialogs.
+   - **`AppViewModelProvider`**: Companion factory creating ViewModels via `AppContainer`.
+4. **`MainActivity.kt`**:
+   - Replaces ~50 `collectAsState()` lines with one `collectAsState()` per screen UI state.
+   - Passes clean immutable UI state objects and action lambdas to screens.
+   - Replaces all inline FQCNs with imports.
+
+---
+
+## 3. Key Product & Architectural Decisions
+
+### Decision 1: Manual Constructor Injection via AppContainer
+- **Chosen Approach**: `AppContainer` interface with `DefaultAppContainer` implementation.
+- **Why**: Standard Android recommendation for medium-sized apps without Hilt overhead; no reflection or annotation processing delay during incremental compilation.
+
+### Decision 2: Location Sharing Pattern
+- **Chosen Approach**: `LocationViewModel` exposes `userCoordinates: StateFlow<Pair<Double, Double>>`. Other ViewModels that need proximity calculations (e.g. `ExploreViewModel`, `RadarViewModel`) accept coordinates as parameters to their query/filtering functions or observe the flow.
+- **Why**: Keeps ViewModels loosely coupled and independently testable without circular dependencies.
+
+### Decision 3: Backward Compatibility & Preservation of ScoutViewModel
+- **Chosen Approach**: Retire `ScoutViewModel` in favor of feature ViewModels. Any existing references (e.g. in tests) are replaced or cleanly migrated.
+
+---
+
+## 4. Acceptance Criteria & Verification Plan
+
+1. **Acceptance Criteria**:
+   - No ViewModel file exceeds 400 lines (verified via `wc -l`).
+   - No ViewModel constructs its own repositories or database instances.
+   - Every ViewModel receives dependencies via constructor injection.
+   - `MainActivity.kt` uses single `UiState` collections per screen.
+   - All inline FQCN references removed.
+2. **Testing**:
+   - Unit tests: Add smoke tests for each new ViewModel:
+     - `LocationViewModelTest`
+     - `ExploreViewModelTest`
+     - `RadarViewModelTest`
+     - `CommunityViewModelTest`
+     - `OfflineMapsViewModelTest`
+     - `ProfileViewModelTest`
+   - Run full unit test suite: `gradle :app:testDebugUnitTest`.
+   - Build verification: `compile_applet`.

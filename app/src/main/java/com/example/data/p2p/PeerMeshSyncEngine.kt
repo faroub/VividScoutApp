@@ -32,7 +32,10 @@ data class PeerMeshSyncResult(
  */
 object PeerMeshSyncEngine {
 
-    val simulatedPeers = listOf(
+    val simulatedPeers: List<PeerNode>
+        get() = if (DemoModeProvider.isDemoPeerSyncEnabled) DEMO_PEERS else emptyList()
+
+    private val DEMO_PEERS = listOf(
         PeerNode(
             nodeId = "peer_alfama_88",
             scoutHandle = "@clara_alfama",
@@ -57,20 +60,28 @@ object PeerMeshSyncEngine {
     )
 
     /**
-     * Simulates an ad-hoc peer mesh gossip round:
-     * 1. Broadcasts node presence.
-     * 2. Reconciles gossip vector clock.
-     * 3. Returns new peer-contributed community tips.
+     * Executes peer mesh gossip round if demo mode is explicitly enabled.
+     * In release/default mode, completes immediately with 0 simulated peers and no network claims.
      */
     suspend fun performGossipRound(
         existingTipIds: Set<String>,
         onPhaseChanged: (MeshSyncPhase) -> Unit = {}
     ): Pair<PeerMeshSyncResult, List<CommunityTipEntity>> {
+        if (!DemoModeProvider.isDemoPeerSyncEnabled) {
+            onPhaseChanged(MeshSyncPhase.IDLE)
+            val result = PeerMeshSyncResult(
+                connectedPeers = emptyList(),
+                tipsReceived = 0,
+                tipsTransmitted = 0
+            )
+            return Pair(result, emptyList())
+        }
+
         onPhaseChanged(MeshSyncPhase.DISCOVERING_PEERS)
-        delay(600) // Simulated discovery handshake
+        delay(600) // Simulated discovery handshake (demo mode only)
 
         onPhaseChanged(MeshSyncPhase.EXCHANGING_GOSSIP)
-        delay(700) // Simulated packet exchange
+        delay(700) // Simulated packet exchange (demo mode only)
 
         val now = System.currentTimeMillis()
         val candidateTips = listOf(
@@ -144,7 +155,7 @@ object PeerMeshSyncEngine {
         onPhaseChanged(MeshSyncPhase.IDLE)
 
         val result = PeerMeshSyncResult(
-            connectedPeers = simulatedPeers,
+            connectedPeers = DEMO_PEERS,
             tipsReceived = newIncomingTips.size,
             tipsTransmitted = 2
         )

@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.sp
 import com.example.data.local.ScoutSpotEntity
 import com.example.ui.theme.BrandCoral
 import com.example.ui.theme.BrandTeal
+import com.example.ui.theme.LocalAppStrings
 import com.example.ui.theme.PrimaryContainer
 import com.example.ui.theme.SurfaceContainerLow
 
@@ -69,6 +70,7 @@ fun PostTipDialog(
 ) {
     if (!isOpen) return
 
+    val strings = LocalAppStrings.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var selectedSpot by remember(initialSpot) { mutableStateOf(initialSpot ?: availableSpots.firstOrNull()) }
     var isStatusUpdate by remember { mutableStateOf(true) }
@@ -105,7 +107,7 @@ fun PostTipDialog(
             ) {
                 Column {
                     Text(
-                        text = "COMMUNITY BULLETIN",
+                        text = strings.communityNotesTitle,
                         style = MaterialTheme.typography.labelMedium.copy(
                             fontWeight = FontWeight.Black,
                             letterSpacing = 1.sp
@@ -113,7 +115,7 @@ fun PostTipDialog(
                         color = PrimaryContainer
                     )
                     Text(
-                        text = if (isStatusUpdate) "Broadcast Spot Status" else "Share Wanderer Tip",
+                        text = if (isStatusUpdate) "Record Spot Status" else "Save Wanderer Tip",
                         style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
                         color = MaterialTheme.colorScheme.onSurface
                     )
@@ -217,13 +219,13 @@ fun PostTipDialog(
                 value = tipText,
                 onValueChange = { if (it.length <= 140) tipText = it },
                 label = { Text(if (isStatusUpdate) "Status details (e.g., 'Bakery out of bread')" else "Your insider recommendation") },
-                placeholder = { Text("Short, timely update for nearby scouts...") },
+                placeholder = { Text("Short, timely update or recommendation...") },
                 supportingText = {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("Cached in local peer mesh")
+                        Text(strings.communityFutureSharingNote)
                         Text("${tipText.length}/140")
                     }
                 },
@@ -265,7 +267,7 @@ fun PostTipDialog(
                 Icon(imageVector = Icons.Default.Send, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "Broadcast to Local Mesh Cache",
+                    text = strings.communitySaveLocallyAction,
                     style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
                 )
             }

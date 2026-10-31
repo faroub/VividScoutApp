@@ -9,6 +9,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -53,7 +54,7 @@ class RoomDatabaseTest {
             distance = "350m walk",
             walkMinutes = 5,
             rating = 4.9,
-            reviewCount = "1.8k",
+            reviewCount = 1800,
             imageUrl = "https://example.com/photo.jpg",
             badgeLabel = "SIGHTS",
             statusBadge = "Scraped 8m ago",
@@ -80,7 +81,7 @@ class RoomDatabaseTest {
             distance = "180m walk",
             walkMinutes = 3,
             rating = 4.8,
-            reviewCount = "950",
+            reviewCount = 950,
             imageUrl = "https://example.com/photo2.jpg",
             badgeLabel = "WARM BAKERY ALERT",
             statusBadge = "Oven: 4m ago",
@@ -108,7 +109,7 @@ class RoomDatabaseTest {
             distance = "520m walk",
             walkMinutes = 7,
             rating = 4.9,
-            reviewCount = "88",
+            reviewCount = 88,
             imageUrl = "https://example.com/photo3.jpg",
             badgeLabel = "COMMUNITY GEM",
             statusBadge = "94% Verified",
@@ -176,7 +177,7 @@ class RoomDatabaseTest {
             distance = "200m",
             walkMinutes = 2,
             rating = 4.5,
-            reviewCount = "10",
+            reviewCount = 10,
             imageUrl = "https://example.com/stale.jpg",
             badgeLabel = "STALE",
             statusBadge = "Stale",
@@ -196,7 +197,7 @@ class RoomDatabaseTest {
             distance = "500m",
             walkMinutes = 6,
             rating = 4.9,
-            reviewCount = "500",
+            reviewCount = 500,
             imageUrl = "https://example.com/castle.jpg",
             badgeLabel = "FAVORITE",
             statusBadge = "Saved",
@@ -216,7 +217,7 @@ class RoomDatabaseTest {
             distance = "300m",
             walkMinutes = 4,
             rating = 4.8,
-            reviewCount = "50",
+            reviewCount = 50,
             imageUrl = "https://example.com/steps.jpg",
             badgeLabel = "VISITED",
             statusBadge = "Discovered",
@@ -236,7 +237,7 @@ class RoomDatabaseTest {
             distance = "100m",
             walkMinutes = 1,
             rating = 4.7,
-            reviewCount = "80",
+            reviewCount = 80,
             imageUrl = "https://example.com/fresh.jpg",
             badgeLabel = "FRESH",
             statusBadge = "Recent",
@@ -281,7 +282,7 @@ class RoomDatabaseTest {
             distance = "300m",
             walkMinutes = 3,
             rating = 4.5,
-            reviewCount = "12",
+            reviewCount = 12,
             imageUrl = "",
             badgeLabel = "",
             statusBadge = "",
@@ -302,7 +303,7 @@ class RoomDatabaseTest {
             distance = "275km",
             walkMinutes = 999,
             rating = 4.9,
-            reviewCount = "5k",
+            reviewCount = 5000,
             imageUrl = "",
             badgeLabel = "",
             statusBadge = "",
@@ -323,7 +324,7 @@ class RoomDatabaseTest {
             distance = "275km",
             walkMinutes = 999,
             rating = 4.8,
-            reviewCount = "4k",
+            reviewCount = 4000,
             imageUrl = "",
             badgeLabel = "",
             statusBadge = "",
@@ -344,7 +345,7 @@ class RoomDatabaseTest {
             distance = "500m",
             walkMinutes = 6,
             rating = 4.9,
-            reviewCount = "3k",
+            reviewCount = 3000,
             imageUrl = "",
             badgeLabel = "",
             statusBadge = "",
@@ -386,7 +387,7 @@ class RoomDatabaseTest {
             distance = "150m",
             walkMinutes = 2,
             rating = 4.3,
-            reviewCount = "12",
+            reviewCount = 12,
             imageUrl = "",
             badgeLabel = "",
             statusBadge = "",
@@ -405,7 +406,7 @@ class RoomDatabaseTest {
             distance = "300m",
             walkMinutes = 4,
             rating = 4.6,
-            reviewCount = "45",
+            reviewCount = 45,
             imageUrl = "",
             badgeLabel = "",
             statusBadge = "",
@@ -424,7 +425,7 @@ class RoomDatabaseTest {
             distance = "500m",
             walkMinutes = 6,
             rating = 4.9,
-            reviewCount = "800",
+            reviewCount = 800,
             imageUrl = "",
             badgeLabel = "SAVED",
             statusBadge = "Bookmarked",
@@ -443,7 +444,7 @@ class RoomDatabaseTest {
             distance = "400m",
             walkMinutes = 5,
             rating = 4.8,
-            reviewCount = "150",
+            reviewCount = 150,
             imageUrl = "",
             badgeLabel = "DISCOVERED",
             statusBadge = "Discovered",
@@ -462,7 +463,7 @@ class RoomDatabaseTest {
             distance = "50m",
             walkMinutes = 1,
             rating = 5.0,
-            reviewCount = "1",
+            reviewCount = 1,
             imageUrl = "",
             badgeLabel = "DRAFT",
             statusBadge = "Offline Draft",
@@ -569,6 +570,35 @@ class RoomDatabaseTest {
         val cleared = repository.clearAllRecentSearches()
         assertEquals(2, cleared)
         assertEquals(0, recentSearchDao.getCount())
+    }
+
+    @Test
+    fun testNullableStatisticsHandling() = runTest {
+        val spotWithNullStats = ScoutSpotEntity(
+            id = "spot_null_stats",
+            title = "Authentic Hidden Corner",
+            description = "Spot without community ratings or reviews",
+            category = "gems",
+            distance = "120m walk",
+            walkMinutes = 2,
+            rating = null,
+            reviewCount = null,
+            imageUrl = "https://example.com/corner.jpg",
+            badgeLabel = "AUTHENTIC GEM",
+            statusBadge = "Verified",
+            tagsRaw = "unreviewed,authentic",
+            upvotes = null,
+            isSaved = true
+        )
+        scoutDao.insertSpot(spotWithNullStats)
+
+        val retrieved = scoutDao.getSpotById("spot_null_stats")
+        assertNotNull(retrieved)
+        assertEquals("Authentic Hidden Corner", retrieved?.title)
+        assertNull(retrieved?.rating)
+        assertNull(retrieved?.reviewCount)
+        assertNull(retrieved?.upvotes)
+        assertTrue(retrieved?.isSaved ?: false)
     }
 }
 

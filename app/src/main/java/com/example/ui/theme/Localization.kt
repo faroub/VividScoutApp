@@ -147,7 +147,19 @@ data class AppStringsData(
     val bookmarkedLabel: String,
     val scrapeOsmButton: String,
     val scrapingOsmProgress: String,
-    val osmScrapeSuccess: String
+    val osmScrapeSuccess: String,
+    val communityNotesTitle: String,
+    val communityNotesSubtitle: String,
+    val communitySavedLocally: String,
+    val communityStorageReady: String,
+    val communitySampleTipBadge: String,
+    val communityRefreshLocal: String,
+    val communityPostSuccess: String,
+    val communityFutureSharingNote: String,
+    val communitySaveLocallyAction: String,
+    val communityEmptyNotesDesc: String,
+    val communityDemoModeActive: String,
+    val communityDemoPeersConnected: String
 )
 
 val EnglishStrings = AppStringsData(
@@ -281,7 +293,19 @@ val EnglishStrings = AppStringsData(
     bookmarkedLabel = "Bookmarked",
     scrapeOsmButton = "Scrape Live OSM Web Gems",
     scrapingOsmProgress = "Scraping OpenStreetMap for viewpoints, bakeries & shortcuts...",
-    osmScrapeSuccess = "real gems scraped from OpenStreetMap into Room!"
+    osmScrapeSuccess = "real gems scraped from OpenStreetMap into Room!",
+    communityNotesTitle = "LOCAL COMMUNITY NOTES",
+    communityNotesSubtitle = "Decentralized, crowd-sourced ground truth & spot alerts saved on this device. Future updates will support scout sharing.",
+    communitySavedLocally = "Saved on this device",
+    communityStorageReady = "Local storage ready",
+    communitySampleTipBadge = "Sample Tip",
+    communityRefreshLocal = "Refresh",
+    communityPostSuccess = "Tip saved locally on this device! (Sharing coming in a future release)",
+    communityFutureSharingNote = "Stored locally and will be shared in a future release",
+    communitySaveLocallyAction = "Save Tip Locally",
+    communityEmptyNotesDesc = "Save notes and live updates for Lisbon gems on this device.",
+    communityDemoModeActive = "Demo Mode Active",
+    communityDemoPeersConnected = "Demo Peers: 3 sample nodes simulated"
 )
 
 val FrenchStrings = AppStringsData(
@@ -415,7 +439,19 @@ val FrenchStrings = AppStringsData(
     bookmarkedLabel = "Enregistré",
     scrapeOsmButton = "Extraire les pépites web OSM",
     scrapingOsmProgress = "Extraction OpenStreetMap des points de vue et boulangeries...",
-    osmScrapeSuccess = "pépites extraites depuis OpenStreetMap dans Room !"
+    osmScrapeSuccess = "pépites extraites depuis OpenStreetMap dans Room !",
+    communityNotesTitle = "NOTES COMMUNAUTAIRES LOCALES",
+    communityNotesSubtitle = "Informations de terrain et alertes de lieux enregistrées sur cet appareil. Le partage sera disponible dans une prochaine version.",
+    communitySavedLocally = "Enregistré sur cet appareil",
+    communityStorageReady = "Stockage local prêt",
+    communitySampleTipBadge = "Exemple de conseil",
+    communityRefreshLocal = "Actualiser",
+    communityPostSuccess = "Conseil enregistré localement sur cet appareil ! (Partage à venir dans une prochaine version)",
+    communityFutureSharingNote = "Stocké localement et sera partagé dans une prochaine version",
+    communitySaveLocallyAction = "Enregistrer le conseil localement",
+    communityEmptyNotesDesc = "Enregistrez des notes et alertes en direct pour les pépites de Lisbonne sur cet appareil.",
+    communityDemoModeActive = "Mode Démo Actif",
+    communityDemoPeersConnected = "Pairs de démo : 3 nœuds simulés"
 )
 
 val ArabicStrings = AppStringsData(
@@ -549,7 +585,19 @@ val ArabicStrings = AppStringsData(
     bookmarkedLabel = "محفوظ",
     scrapeOsmButton = "جلب الأماكن الحية من خريطة الشارع المفتوحة",
     scrapingOsmProgress = "جارٍ جلب المعالم والمخابز والممرات من OpenStreetMap...",
-    osmScrapeSuccess = "أماكن حقيقية تم جلبها وحفظها في قاعدة البيانات!"
+    osmScrapeSuccess = "أماكن حقيقية تم جلبها وحفظها في قاعدة البيانات!",
+    communityNotesTitle = "ملاحظات المجتمع المحلي",
+    communityNotesSubtitle = "معلومات وتنبيهات حية للأماكن محفوظة على هذا الجهاز. ستتوفر ميزة المشاركة في إصدار قادم.",
+    communitySavedLocally = "محفوظ على هذا الجهاز",
+    communityStorageReady = "التخزين المحلي جاهز",
+    communitySampleTipBadge = "نصيحة نموذجية",
+    communityRefreshLocal = "تحديث",
+    communityPostSuccess = "تم حفظ النصيحة محليًا على هذا الجهاز! (المشاركة قادمة في إصدار مستقبلي)",
+    communityFutureSharingNote = "مخزن محليًا وسيتم مشاركته في إصدار مستقبلي",
+    communitySaveLocallyAction = "حفظ النصيحة محليًا",
+    communityEmptyNotesDesc = "احفظ الملاحظات والتحديثات الحية لمعالم لشبونة على هذا الجهاز.",
+    communityDemoModeActive = "وضع العرض التوضيحي مفعّل",
+    communityDemoPeersConnected = "عقد تجريبية: 3 عقد تمثيلية"
 )
 
 val LocalAppLanguage = staticCompositionLocalOf { AppLanguage.ENGLISH }

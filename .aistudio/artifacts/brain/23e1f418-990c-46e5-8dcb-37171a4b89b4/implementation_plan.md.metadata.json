@@ -1,6 +1,6 @@
 {
-  "summary":  "Implementation plan for the Pre-scout algorithm that tracks search & bookmark category frequencies, detects city boundary crossings (>10km or new city selection), pre-caches 5 high-rated gems in a 10km radius into Room DB, and displays a top-bar ticker alert.",
-  "updatedAt":  "2026-10-31T12:01:14.040290560Z",
+  "summary":  "Architectural refactoring plan: introducing manual DI via AppContainer and VividScoutApplication, decomposing the 1,036-line ScoutViewModel into 6 focused feature ViewModels (<400 lines each) using constructor injection, creating unified immutable UiState data classes per screen, refactoring MainActivity to collect single screen states, and adding smoke tests for each ViewModel.",
+  "updatedAt":  "2026-10-31T13:49:17.484636897Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

@@ -218,9 +218,6 @@ class OverpassScraperService {
                         }
                     }
 
-                val randomRating = 4.5 + (Random.nextDouble() * 0.4)
-                val formattedRating = String.format(Locale.US, "%.1f", randomRating).toDoubleOrNull() ?: 4.8
-
                 val spot = ScoutSpotEntity(
                     id = "osm_${type}_$id",
                     title = title,
@@ -228,15 +225,15 @@ class OverpassScraperService {
                     category = category,
                     distance = "Calculating...",
                     walkMinutes = 5,
-                    rating = formattedRating,
-                    reviewCount = "OSM Scout",
+                    rating = null,
+                    reviewCount = null,
                     imageUrl = imageUrl,
                     badgeLabel = badgeLabel,
                     statusBadge = "Live OSM Scout",
                     tagsRaw = "OpenStreetMap|||LiveScout|||OSM Verified",
                     proTip = "Discovered via OpenStreetMap real-time Overpass API. Tap bookmark to store offline.",
                     contributor = "@osm_community",
-                    upvotes = 20 + (i * 7) % 80,
+                    upvotes = null,
                     isSaved = false,
                     isOfflineDraft = false,
                     isDiscovered = false,

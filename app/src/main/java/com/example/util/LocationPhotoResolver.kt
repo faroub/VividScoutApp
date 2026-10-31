@@ -85,7 +85,17 @@ object LocationPhotoResolver {
             return EnrichedPhoto(lisbonLandmark.imageUrl, lisbonLandmark.attribution, isVerifiedLandmark = true)
         }
 
-        // 4. Fallback to contextual keyword / regional photo pool
+        // 4. Contextual keyword & district matching from Lisbon catalog
+        val (lisbonUrl, lisbonAttr) = LisbonLandmarkCatalog.resolveContextualPhoto(
+            title = title,
+            category = category,
+            districtOrLocation = districtOrLocation
+        )
+        if (!lisbonAttr.endsWith("Lisbon Street Exploration")) {
+            return EnrichedPhoto(lisbonUrl, lisbonAttr, isVerifiedLandmark = false)
+        }
+
+        // 5. Fallback to contextual keyword / regional photo pool
         val (fallbackUrl, fallbackAttr) = GlobalLandmarkCatalog.resolveGlobalContextualPhoto(
             title = title,
             category = category,
@@ -149,7 +159,17 @@ object LocationPhotoResolver {
             return@withContext EnrichedPhoto(titleWikiResult.photoUrl, titleWikiResult.attribution, true)
         }
 
-        // 6. Contextual Keyword & Category fallback pool
+        // 6. Contextual keyword & district matching from Lisbon catalog
+        val (lisbonUrl, lisbonAttr) = LisbonLandmarkCatalog.resolveContextualPhoto(
+            title = title,
+            category = category,
+            districtOrLocation = districtOrLocation
+        )
+        if (!lisbonAttr.endsWith("Lisbon Street Exploration")) {
+            return@withContext EnrichedPhoto(lisbonUrl, lisbonAttr, isVerifiedLandmark = false)
+        }
+
+        // 7. Contextual Keyword & Category fallback pool
         val (contextualUrl, attribution) = GlobalLandmarkCatalog.resolveGlobalContextualPhoto(
             title = title,
             category = category,

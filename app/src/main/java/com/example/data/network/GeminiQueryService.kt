@@ -127,15 +127,33 @@ class GeminiQueryService {
 
         for (i in 0 until spotsArray.length()) {
             val item = spotsArray.getJSONObject(i)
+            if (!item.has("latitude") || !item.has("longitude")) {
+                continue
+            }
+            val spotLat = item.optDouble("latitude")
+            val spotLng = item.optDouble("longitude")
+            if (spotLat.isNaN() || spotLng.isNaN() || (spotLat == 0.0 && spotLng == 0.0)) {
+                continue
+            }
+            if (spotLat < -90.0 || spotLat > 90.0 || spotLng < -180.0 || spotLng > 180.0) {
+                continue
+            }
+
             val title = item.optString("title", "Lisbon Gem")
             val locationName = item.optString("locationName", "Movement Corridor")
             val rawCategory = item.optString("category", "gems").lowercase()
             val description = item.optString("description", "Prefetched point of interest along your path.")
             val audioLore = item.optString("audioLore", description)
-            val spotLat = item.optDouble("latitude", vector.originLat + (vector.targetLat - vector.originLat) * (0.2 + 0.1 * i))
-            val spotLng = item.optDouble("longitude", vector.originLng + (vector.targetLng - vector.originLng) * (0.2 + 0.1 * i))
-            val upvotes = item.optInt("upvotes", 150 + i * 40)
-            val rating = item.optDouble("rating", 4.8)
+            val upvotes = if (item.has("upvotes")) item.optInt("upvotes") else null
+            val rating = if (item.has("rating")) item.optDouble("rating").takeIf { !it.isNaN() } else null
+            val reviewCount: Int? = if (item.has("reviewCount")) {
+                val raw = item.opt("reviewCount")
+                when (raw) {
+                    is Number -> raw.toInt()
+                    is String -> raw.filter { it.isDigit() }.toIntOrNull()
+                    else -> null
+                }
+            } else null
             val distanceText = item.optString("distanceText", "${(i + 1) * 800}m ahead")
 
             val tagsArray = item.optJSONArray("tags")
@@ -167,7 +185,7 @@ class GeminiQueryService {
                     distance = distanceText,
                     walkMinutes = ((i + 1) * 10).coerceAtLeast(3),
                     rating = rating,
-                    reviewCount = "(${(60..300).random()})",
+                    reviewCount = reviewCount,
                     imageUrl = com.example.util.LocationPhotoResolver.resolvePhotoSynchronous(
                         title = title,
                         category = mappedCategory,
@@ -266,8 +284,8 @@ class GeminiQueryService {
                 category = bp.category,
                 distance = "${distanceAheadMeters}m ahead",
                 walkMinutes = (distanceAheadMeters / 80).coerceAtLeast(2),
-                rating = 4.8,
-                reviewCount = "(${(80..320).random()})",
+                rating = null,
+                reviewCount = null,
                 imageUrl = com.example.util.LocationPhotoResolver.resolvePhotoSynchronous(
                     title = bp.title,
                     category = bp.category,
@@ -279,7 +297,7 @@ class GeminiQueryService {
                 tagsRaw = "${bp.category}|||5km Vector Corridor|||Prefetched|||${vector.cardinalDirection} Heading",
                 proTip = bp.audioLore,
                 contributor = "@GeminiAI (Vector Corridor)",
-                upvotes = 200 + index * 45,
+                upvotes = null,
                 isSaved = false,
                 isOfflineDraft = false,
                 isDiscovered = false,

@@ -16,7 +16,7 @@ class CacheHealthTest {
             distance = "100m",
             walkMinutes = 2,
             rating = 4.8,
-            reviewCount = "10",
+            reviewCount = 10,
             imageUrl = "",
             badgeLabel = "GEM",
             statusBadge = "VERIFIED",

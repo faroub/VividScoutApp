@@ -276,25 +276,36 @@ fun SpotDetailBottomSheet(
                         )
                     }
 
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(999.dp))
-                            .background(SurfaceContainerLow)
-                            .padding(horizontal = 10.dp, vertical = 5.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Star,
-                            contentDescription = null,
-                            tint = PrimaryContainer,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "${spot.rating} (${spot.reviewCount})",
-                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
+                    if (spot.rating != null || spot.reviewCount != null) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(999.dp))
+                                .background(SurfaceContainerLow)
+                                .padding(horizontal = 10.dp, vertical = 5.dp)
+                        ) {
+                            if (spot.rating != null) {
+                                Icon(
+                                    imageVector = Icons.Default.Star,
+                                    contentDescription = null,
+                                    tint = PrimaryContainer,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                            }
+                            val ratingReviewText = when {
+                                spot.rating != null && spot.reviewCount != null -> "${spot.rating} (${spot.reviewCount})"
+                                spot.rating != null -> "${spot.rating}"
+                                else -> ""
+                            }
+                            if (ratingReviewText.isNotEmpty()) {
+                                Text(
+                                    text = ratingReviewText,
+                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
                     }
                 }
 
@@ -666,14 +677,16 @@ fun SpotDetailBottomSheet(
                     ) {
                         Icon(
                             imageVector = Icons.Default.ThumbUp,
-                            contentDescription = null,
+                            contentDescription = "Upvote",
                             modifier = Modifier.size(16.dp)
                         )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "${spot.upvotes}",
-                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
-                        )
+                        if (spot.upvotes != null) {
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "${spot.upvotes}",
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                            )
+                        }
                     }
 
                     // Start Navigation CTA

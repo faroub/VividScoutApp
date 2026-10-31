@@ -60,7 +60,7 @@ class LocationTrackerTest {
             distance = "350m walk",
             walkMinutes = 5,
             rating = 4.8,
-            reviewCount = "100",
+            reviewCount = 100,
             imageUrl = "https://example.com/image.jpg",
             badgeLabel = "SIGHTS",
             statusBadge = "Verified",

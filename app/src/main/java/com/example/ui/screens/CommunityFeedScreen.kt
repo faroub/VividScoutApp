@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.NearMe
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Radar
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -63,12 +64,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.local.CommunityTipEntity
 import com.example.data.local.ScoutSpotEntity
+import com.example.data.p2p.DemoModeProvider
 import com.example.data.p2p.MeshSyncPhase
 import com.example.data.p2p.PeerMeshSyncResult
 import com.example.ui.components.CommunityTipCard
 import com.example.ui.components.PostTipDialog
 import com.example.ui.theme.BrandCoral
 import com.example.ui.theme.BrandTeal
+import com.example.ui.theme.LocalAppStrings
 import com.example.ui.theme.PrimaryContainer
 import com.example.ui.theme.SurfaceContainerLow
 import com.example.ui.theme.SurfaceContainerLowest
@@ -96,6 +99,7 @@ fun CommunityFeedScreen(
     successMessage: String? = null,
     modifier: Modifier = Modifier
 ) {
+    val strings = LocalAppStrings.current
     var activeFilter by remember { mutableStateOf(CommunityFilter.ALL) }
     var isPostModalOpen by remember { mutableStateOf(false) }
 
@@ -131,7 +135,7 @@ fun CommunityFeedScreen(
             item {
                 Column(modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)) {
                     Text(
-                        text = "LOCAL COMMUNITY FEED",
+                        text = strings.communityNotesTitle,
                         style = MaterialTheme.typography.labelMedium.copy(
                             fontWeight = FontWeight.Black,
                             letterSpacing = 1.2.sp
@@ -139,12 +143,12 @@ fun CommunityFeedScreen(
                         color = PrimaryContainer
                     )
                     Text(
-                        text = "Lisbon Scout Mesh Intelligence",
+                        text = "Lisbon Scout Notes & Insights",
                         style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = "Decentralized, crowd-sourced ground truth & real-time spot alerts stored in local peer-to-peer cache.",
+                        text = strings.communityNotesSubtitle,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -277,12 +281,12 @@ fun CommunityFeedScreen(
                                 modifier = Modifier.size(36.dp)
                             )
                             Text(
-                                text = "No Community Updates Found",
+                                text = "No Community Notes Yet",
                                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                             Text(
-                                text = "Be the first scout to broadcast a live status update or sync with nearby peers over mesh.",
+                                text = strings.communityEmptyNotesDesc,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -318,9 +322,9 @@ fun CommunityFeedScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Icon(imageVector = Icons.Default.Add, contentDescription = "Broadcast Status")
+                Icon(imageVector = Icons.Default.Add, contentDescription = "Post Note")
                 Text(
-                    text = "Post Update",
+                    text = "Post Note",
                     style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
                 )
             }
@@ -345,6 +349,8 @@ fun PeerMeshRadarCard(
     onTriggerSync: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val strings = LocalAppStrings.current
+    val isDemoActive = DemoModeProvider.isDemoPeerSyncEnabled
     val isSyncing = syncPhase == MeshSyncPhase.DISCOVERING_PEERS || syncPhase == MeshSyncPhase.EXCHANGING_GOSSIP
 
     val infiniteTransition = rememberInfiniteTransition(label = "meshPulse")
@@ -389,19 +395,19 @@ fun PeerMeshRadarCard(
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Radar,
+                            imageVector = if (isDemoActive) Icons.Default.Radar else Icons.Default.Storage,
                             contentDescription = null,
                             tint = BrandTeal,
                             modifier = Modifier
                                 .size(24.dp)
-                                .then(if (isSyncing) Modifier.rotate(rotation) else Modifier)
+                                .then(if (isSyncing && isDemoActive) Modifier.rotate(rotation) else Modifier)
                         )
                     }
 
                     Column {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                text = "PEER-TO-PEER MESH",
+                                text = if (isDemoActive) strings.communityDemoModeActive else strings.communitySavedLocally.uppercase(),
                                 style = MaterialTheme.typography.labelSmall.copy(
                                     fontWeight = FontWeight.Black,
                                     letterSpacing = 1.sp
@@ -417,11 +423,15 @@ fun PeerMeshRadarCard(
                             )
                         }
                         Text(
-                            text = when (syncPhase) {
-                                MeshSyncPhase.DISCOVERING_PEERS -> "Scanning BLE / Wi-Fi Mesh..."
-                                MeshSyncPhase.EXCHANGING_GOSSIP -> "Exchanging Tip Vectors..."
-                                MeshSyncPhase.SYNC_SUCCESS -> "Mesh Synchronized!"
-                                MeshSyncPhase.IDLE -> "3 Nearby Scouts in Range"
+                            text = if (isDemoActive) {
+                                when (syncPhase) {
+                                    MeshSyncPhase.DISCOVERING_PEERS -> "Scanning BLE / Wi-Fi Mesh..."
+                                    MeshSyncPhase.EXCHANGING_GOSSIP -> "Exchanging Tip Vectors..."
+                                    MeshSyncPhase.SYNC_SUCCESS -> "Mesh Synchronized!"
+                                    MeshSyncPhase.IDLE -> strings.communityDemoPeersConnected
+                                }
+                            } else {
+                                strings.communityStorageReady
                             },
                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                             color = MaterialTheme.colorScheme.onSurface
@@ -446,7 +456,10 @@ fun PeerMeshRadarCard(
                     } else {
                         Icon(imageVector = Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Sync Mesh", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
+                        Text(
+                            text = if (isDemoActive) "Sync Demo" else strings.communityRefreshLocal,
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                        )
                     }
                 }
             }
@@ -463,14 +476,22 @@ fun PeerMeshRadarCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Peers: @clara (18m) • @miguel (34m) • @tiago (55m)",
+                        text = if (isDemoActive) {
+                            "Demo Peers: @clara (18m) • @miguel (34m) • @tiago (55m)"
+                        } else {
+                            strings.communityFutureSharingNote
+                        },
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 11.sp,
                         maxLines = 1
                     )
                     Text(
-                        text = if (lastSyncResult != null) "+${lastSyncResult.tipsReceived} tips" else "Mesh Ready",
+                        text = if (isDemoActive && lastSyncResult != null) {
+                            "+${lastSyncResult.tipsReceived} tips"
+                        } else {
+                            strings.communitySavedLocally
+                        },
                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                         color = BrandTeal,
                         fontSize = 11.sp

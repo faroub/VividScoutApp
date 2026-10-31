@@ -463,7 +463,7 @@ private fun ARSpatialMarkerPin(
                         modifier = Modifier.width(110.dp)
                     )
                     Text(
-                        text = "$distanceText • ★ ${spot.rating}",
+                        text = if (spot.rating != null) "$distanceText • ★ ${spot.rating}" else distanceText,
                         style = MaterialTheme.typography.labelSmall,
                         color = Color.White.copy(alpha = 0.85f)
                     )
@@ -606,7 +606,7 @@ private fun ARSpotQuickInfoCard(
                             overflow = TextOverflow.Ellipsis
                         )
                         Text(
-                            text = "${spot.distance} • ★ ${spot.rating}",
+                            text = if (spot.rating != null) "${spot.distance} • ★ ${spot.rating}" else spot.distance,
                             style = MaterialTheme.typography.bodySmall,
                             color = Color.White.copy(alpha = 0.8f)
                         )

@@ -161,7 +161,7 @@ fun AnimatedAchievementMarker(
                             overflow = TextOverflow.Ellipsis
                         )
                         Text(
-                            text = "${tierStyle.badgeLabel} • ★ ${spot.rating}",
+                            text = if (spot.rating != null) "${tierStyle.badgeLabel} • ★ ${spot.rating}" else tierStyle.badgeLabel,
                             style = MaterialTheme.typography.labelSmall,
                             color = tierStyle.auraColor.takeIf { it != Color.Transparent } ?: BrandTeal,
                             fontSize = 9.sp

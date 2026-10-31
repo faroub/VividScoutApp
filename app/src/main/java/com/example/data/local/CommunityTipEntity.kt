@@ -28,4 +28,17 @@ data class CommunityTipEntity(
     val upvotes: Int = 0,
     val peerNodeId: String = "local-device",
     val isLocallyAuthored: Boolean = false
-)
+) {
+    /**
+     * Flags pre-seeded or demo simulated tips so they are clearly presented
+     * as sample content rather than real live users' posts.
+     */
+    val isSampleContent: Boolean
+        get() = !isLocallyAuthored && (
+            id.startsWith("seed_tip_") ||
+            peerNodeId.startsWith("peer_seed_") ||
+            id.startsWith("p2p_") ||
+            peerNodeId.startsWith("peer_") ||
+            peerNodeId.startsWith("demo_")
+        )
+}

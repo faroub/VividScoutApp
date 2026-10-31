@@ -148,15 +148,34 @@ class GeminiSpotService {
 
         for (i in 0 until spotsArray.length()) {
             val item = spotsArray.getJSONObject(i)
+            if (!item.has("latitude") || !item.has("longitude")) {
+                // Drop spot if no coordinates provided by AI
+                continue
+            }
+            val spotLat = item.optDouble("latitude")
+            val spotLng = item.optDouble("longitude")
+            if (spotLat.isNaN() || spotLng.isNaN() || (spotLat == 0.0 && spotLng == 0.0)) {
+                continue
+            }
+            if (spotLat < -90.0 || spotLat > 90.0 || spotLng < -180.0 || spotLng > 180.0) {
+                continue
+            }
+
             val title = item.optString("title", "Local Gem")
             val locationName = item.optString("locationName", "Vicinity")
             val category = item.optString("category", "gems").lowercase()
             val description = item.optString("description", "A discovered local spot.")
             val audioLore = item.optString("audioLore", description)
-            val spotLat = item.optDouble("latitude", userLat + (Math.random() - 0.5) * 0.01)
-            val spotLng = item.optDouble("longitude", userLng + (Math.random() - 0.5) * 0.01)
-            val upvotes = item.optInt("upvotes", (100..400).random())
-            val rating = item.optDouble("rating", 4.7)
+            val upvotes = if (item.has("upvotes")) item.optInt("upvotes") else null
+            val rating = if (item.has("rating")) item.optDouble("rating").takeIf { !it.isNaN() } else null
+            val reviewCount: Int? = if (item.has("reviewCount")) {
+                val raw = item.opt("reviewCount")
+                when (raw) {
+                    is Number -> raw.toInt()
+                    is String -> raw.filter { it.isDigit() }.toIntOrNull()
+                    else -> null
+                }
+            } else null
             val distanceText = item.optString("distanceText", "350m away")
             
             val tagsArray = item.optJSONArray("tags")
@@ -179,32 +198,32 @@ class GeminiSpotService {
                 else -> "gems"
             }
 
-                val spotId = "gemini_${title.lowercase().replace(Regex("[^a-z0-9]"), "_")}_${spotLat.toString().take(6)}"
+            val spotId = "gemini_${title.lowercase().replace(Regex("[^a-z0-9]"), "_")}_${spotLat.toString().take(6)}"
 
-                val resolvedPhoto = com.example.util.LocationPhotoResolver.resolvePhotoSynchronous(
-                    title = title,
-                    category = mappedCategory,
-                    districtOrLocation = locationName,
-                    spotId = spotId
-                )
+            val resolvedPhoto = com.example.util.LocationPhotoResolver.resolvePhotoSynchronous(
+                title = title,
+                category = mappedCategory,
+                districtOrLocation = locationName,
+                spotId = spotId
+            )
 
-                val entity = ScoutSpotEntity(
-                    id = spotId,
-                    title = title,
-                    description = description,
-                    category = mappedCategory,
-                    distance = distanceText,
-                    walkMinutes = (distanceText.filter { it.isDigit() }.toIntOrNull() ?: 300) / 80 + 1,
-                    rating = rating,
-                    reviewCount = "(${(50..350).random()})",
-                    imageUrl = resolvedPhoto.url,
-                    badgeLabel = when (mappedCategory) {
-                        "touristic" -> "TOP ATTRACTION"
-                        "restaurant" -> "FOOD GEM"
-                        "historical" -> "HISTORIC SITE"
-                        "events" -> "CULTURAL EVENT"
-                        else -> "VERIFIED GEM"
-                    },
+            val entity = ScoutSpotEntity(
+                id = spotId,
+                title = title,
+                description = description,
+                category = mappedCategory,
+                distance = distanceText,
+                walkMinutes = (distanceText.filter { it.isDigit() }.toIntOrNull() ?: 300) / 80 + 1,
+                rating = rating,
+                reviewCount = reviewCount,
+                imageUrl = resolvedPhoto.url,
+                badgeLabel = when (mappedCategory) {
+                    "touristic" -> "TOP ATTRACTION"
+                    "restaurant" -> "FOOD GEM"
+                    "historical" -> "HISTORIC SITE"
+                    "events" -> "CULTURAL EVENT"
+                    else -> "VERIFIED GEM"
+                },
                 statusBadge = "VERIFIED SPOT",
                 tagsRaw = tagsList.joinToString(","),
                 proTip = audioLore,
@@ -348,13 +367,13 @@ class GeminiSpotService {
                 distance = "${distMeters}m away",
                 walkMinutes = (distMeters / 80).coerceAtLeast(1),
                 rating = spot.rating,
-                reviewCount = "(${(120..480).random()})",
+                reviewCount = null,
                 imageUrl = spot.imageUrl,
                 badgeLabel = spot.badgeLabel,
                 statusBadge = "VERIFIED SPOT",
                 tagsRaw = spot.tags,
                 proTip = spot.audioLore,
-                upvotes = 200 + idx * 45,
+                upvotes = null,
                 isSaved = false,
                 isOfflineDraft = false,
                 isDiscovered = false,

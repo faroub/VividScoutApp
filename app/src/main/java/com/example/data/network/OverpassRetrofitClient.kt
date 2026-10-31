@@ -191,8 +191,8 @@ class OverpassRetrofitClient(
         val timestamp = System.currentTimeMillis()
         return (0 until count).map { index ->
             val template = spotTemplates[index % spotTemplates.size]
-            val angle = (2.0 * Math.PI * index) / count + (Random.nextDouble() * 0.3)
-            val distanceMeters = 150.0 + (index * 90.0) + (Random.nextDouble() * 50.0)
+            val angle = (2.0 * Math.PI * index) / count
+            val distanceMeters = 150.0 + (index * 90.0)
             val deltaLat = (distanceMeters / 111000.0) * Math.cos(angle)
             val deltaLng = (distanceMeters / (111000.0 * Math.cos(Math.toRadians(userLat)))) * Math.sin(angle)
 
@@ -215,15 +215,15 @@ class OverpassRetrofitClient(
                 category = template.second,
                 distance = "${distanceMeters.toInt()}m away",
                 walkMinutes = Math.max(1, (distanceMeters / 75.0).toInt()),
-                rating = 4.6 + (Random.nextDouble() * 0.3),
-                reviewCount = "OSM Scout",
+                rating = null,
+                reviewCount = null,
                 imageUrl = photoResult.url,
                 badgeLabel = template.third,
                 statusBadge = "Live GPS Scout",
                 tagsRaw = "Live GPS|||Scout Verified|||Saved Offline",
                 proTip = "Discovered around your current coordinates. Tap bookmark to keep permanently.",
                 contributor = "@osm_scout_bot",
-                upvotes = 12 + index * 5,
+                upvotes = null,
                 isSaved = false,
                 isOfflineDraft = false,
                 isDiscovered = false,
@@ -452,9 +452,6 @@ class OverpassRetrofitClient(
                 else -> "Geographic node fetched via Retrofit Overpass API client."
             }
 
-            val randomRating = 4.5 + (Random.nextDouble() * 0.4)
-            val formattedRating = String.format(Locale.US, "%.1f", randomRating).toDoubleOrNull() ?: 4.8
-
             entities.add(
                 ScoutSpotEntity(
                     id = "osm_${element.type}_${element.id}",
@@ -463,15 +460,15 @@ class OverpassRetrofitClient(
                     category = category,
                     distance = "Calculating...",
                     walkMinutes = 5,
-                    rating = formattedRating,
-                    reviewCount = "Retrofit OSM",
+                    rating = null,
+                    reviewCount = null,
                     imageUrl = imageUrl,
                     badgeLabel = badgeLabel,
                     statusBadge = "Live OSM Scout",
                     tagsRaw = "Retrofit|||OpenStreetMap|||Nodes Verified",
                     proTip = "Fetched via Retrofit Overpass API client. Tap Bookmark to store permanently in Room DB.",
                     contributor = "@osm_contributor",
-                    upvotes = 15 + (index * 6) % 75,
+                    upvotes = null,
                     isSaved = false,
                     isOfflineDraft = false,
                     isDiscovered = false,

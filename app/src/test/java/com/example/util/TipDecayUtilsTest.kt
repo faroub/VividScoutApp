@@ -78,28 +78,33 @@ class TipDecayUtilsTest {
 
     @Test
     fun testPeerMeshSyncGossipRound() = runBlocking {
-        val phasesRecorded = mutableListOf<MeshSyncPhase>()
+        com.example.data.p2p.DemoModeProvider.isDemoPeerSyncEnabled = true
+        try {
+            val phasesRecorded = mutableListOf<MeshSyncPhase>()
 
-        // 1. First sync with empty local cache -> receives all peer tips
-        val (result1, newTips1) = PeerMeshSyncEngine.performGossipRound(
-            existingTipIds = emptySet(),
-            onPhaseChanged = { phasesRecorded.add(it) }
-        )
+            // 1. First sync with empty local cache -> receives all peer tips
+            val (result1, newTips1) = PeerMeshSyncEngine.performGossipRound(
+                existingTipIds = emptySet(),
+                onPhaseChanged = { phasesRecorded.add(it) }
+            )
 
-        assertEquals(3, result1.connectedPeers.size)
-        assertTrue(newTips1.isNotEmpty())
-        assertEquals(newTips1.size, result1.tipsReceived)
-        assertTrue(phasesRecorded.contains(MeshSyncPhase.DISCOVERING_PEERS))
-        assertTrue(phasesRecorded.contains(MeshSyncPhase.EXCHANGING_GOSSIP))
+            assertEquals(3, result1.connectedPeers.size)
+            assertTrue(newTips1.isNotEmpty())
+            assertEquals(newTips1.size, result1.tipsReceived)
+            assertTrue(phasesRecorded.contains(MeshSyncPhase.DISCOVERING_PEERS))
+            assertTrue(phasesRecorded.contains(MeshSyncPhase.EXCHANGING_GOSSIP))
 
-        // 2. Second sync when tips already exist -> receives 0 duplicates
-        val allIds = newTips1.map { it.id }.toSet()
-        val (result2, newTips2) = PeerMeshSyncEngine.performGossipRound(
-            existingTipIds = allIds
-        )
+            // 2. Second sync when tips already exist -> receives 0 duplicates
+            val allIds = newTips1.map { it.id }.toSet()
+            val (result2, newTips2) = PeerMeshSyncEngine.performGossipRound(
+                existingTipIds = allIds
+            )
 
-        assertEquals(0, newTips2.size)
-        assertEquals(0, result2.tipsReceived)
+            assertEquals(0, newTips2.size)
+            assertEquals(0, result2.tipsReceived)
+        } finally {
+            com.example.data.p2p.DemoModeProvider.reset()
+        }
     }
 
     @Test

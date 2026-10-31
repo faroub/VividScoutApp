@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.sp
 import com.example.data.local.CommunityTipEntity
 import com.example.ui.theme.BrandCoral
 import com.example.ui.theme.BrandTeal
+import com.example.ui.theme.LocalAppStrings
 import com.example.ui.theme.PrimaryContainer
 import com.example.ui.theme.SurfaceContainerLow
 import com.example.ui.theme.SurfaceContainerLowest
@@ -55,6 +56,7 @@ fun CommunityTipCard(
     showSpotHeader: Boolean = true,
     modifier: Modifier = Modifier
 ) {
+    val strings = LocalAppStrings.current
     val decayTier = TipDecayUtils.calculateDecayTier(tip.timestamp)
     val decayBadgeText = TipDecayUtils.getDecayBadgeText(tip.timestamp)
 
@@ -107,10 +109,32 @@ fun CommunityTipCard(
                             if (tip.isLocallyAuthored) {
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = "• You",
+                                    text = "• You (${strings.communitySavedLocally})",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = PrimaryContainer
                                 )
+                            }
+                            if (tip.isSampleContent) {
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Surface(
+                                    shape = RoundedCornerShape(4.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant,
+                                    border = androidx.compose.foundation.BorderStroke(
+                                        1.dp,
+                                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                                    ),
+                                    modifier = Modifier.testTag("sample_content_badge_${tip.id}")
+                                ) {
+                                    Text(
+                                        text = strings.communitySampleTipBadge,
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.SemiBold
+                                        ),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
                             }
                         }
                     }
@@ -203,12 +227,14 @@ fun CommunityTipCard(
                         tint = PrimaryContainer,
                         modifier = Modifier.size(14.dp)
                     )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = "${tip.upvotes}",
-                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                        color = PrimaryContainer
-                    )
+                    if (tip.upvotes > 0) {
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "${tip.upvotes}",
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                            color = PrimaryContainer
+                        )
+                    }
                 }
             }
         }

@@ -1057,7 +1057,7 @@ class ScoutViewModel(application: Application) : AndroidViewModel(application) {
                 isStatusUpdate = isStatusUpdate,
                 statusCategory = statusCategory
             )
-            _postTipSuccessMessage.value = if (isStatusUpdate) "Status update broadcasted to local cache!" else "Tip posted to community!"
+            _postTipSuccessMessage.value = "Tip saved locally on this device! (Sharing coming in a future release)"
             delay(3000)
             _postTipSuccessMessage.value = null
         }

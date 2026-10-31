@@ -18,7 +18,9 @@ data class ScoutGem(
     val distanceMeters: Float = 0f,
     val isDiscovered: Boolean = false,
     val isSaved: Boolean = false,
-    val rating: Double = 4.8,
+    val rating: Double? = null,
+    val reviewCount: Int? = null,
+    val upvotes: Int? = null,
     val imageUrl: String = "",
     val statusBadge: String = "Secret Corner"
 )
@@ -39,6 +41,8 @@ fun ScoutSpotEntity.toScoutGem(userLat: Double = 38.7112, userLng: Double = -9.1
         isDiscovered = isDiscovered,
         isSaved = isSaved,
         rating = rating,
+        reviewCount = reviewCount,
+        upvotes = upvotes,
         imageUrl = imageUrl,
         statusBadge = statusBadge
     )
@@ -56,11 +60,12 @@ fun ScoutGem.toEntity(): ScoutSpotEntity {
         distance = distanceText,
         walkMinutes = 5,
         rating = rating,
-        reviewCount = "42 reviews",
+        reviewCount = reviewCount,
         imageUrl = imageUrl,
         badgeLabel = "Secret Corner",
         statusBadge = statusBadge,
         tagsRaw = "scout,hidden,$category",
+        upvotes = upvotes,
         isDiscovered = isDiscovered,
         isSaved = isSaved,
         latitude = latitude,
