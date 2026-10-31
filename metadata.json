@@ -1,6 +1,0 @@
-{
-  "name": "VividScout",
-  "description": "Real-time travel scout for secret viewpoints, alley shortcuts, warm bakery batches, and hidden city gems with offline saving.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}
