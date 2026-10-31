@@ -12,6 +12,19 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+enum class MainTab {
+    EXPLORE,
+    RADAR,
+    COMMUNITY,
+    SAVED,
+    PROFILE
+}
+
+sealed interface AppScreen {
+    data object Onboarding : AppScreen
+    data class Main(val tab: MainTab) : AppScreen
+}
+
 data class MainAppUiState(
     val currentScreen: AppScreen = AppScreen.Main(MainTab.EXPLORE),
     val currentTab: MainTab = MainTab.EXPLORE,
@@ -86,13 +99,13 @@ class MainViewModel(
         photoUri: String? = null
     ) {
         viewModelScope.launch {
-            repository.createSpot(
-                title = title,
-                description = description,
+            repository.submitSpotDraft(
+                name = title,
                 category = category,
+                photoUri = photoUri,
+                notes = description,
                 latitude = latitude,
-                longitude = longitude,
-                photoUri = photoUri
+                longitude = longitude
             )
             _showSubmitModal.value = false
         }

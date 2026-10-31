@@ -31,6 +31,11 @@ class ScoutRepository(
         achievementDao?.getAllAchievements() ?: emptyFlow()
     val unlockedAchievementsCount: Flow<Int> =
         achievementDao?.getUnlockedCount() ?: emptyFlow()
+    val userPoints: Flow<Int> = kotlinx.coroutines.flow.flowOf(150)
+
+    suspend fun clearCachedData() = withContext(Dispatchers.IO) {
+        scoutDao.clearAllTransientSpots()
+    }
 
     suspend fun toggleSave(id: String, currentlySaved: Boolean) = withContext(Dispatchers.IO) {
         scoutDao.setSavedStatus(id, !currentlySaved)

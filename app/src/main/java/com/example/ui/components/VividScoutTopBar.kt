@@ -69,7 +69,7 @@ fun VividScoutTopBar(
     onGpsClick: () -> Unit = {},
     onArClick: () -> Unit = {},
     hasLocationPermission: Boolean = true,
-    selectedGlobalCity: com.example.data.model.GlobalCity? = null,
+    selectedGlobalCity: String? = null,
     isUsingGpsLocation: Boolean = true,
     isPrefetchActive: Boolean = false,
     prefetchedCount: Int = 0,
@@ -156,8 +156,8 @@ fun VividScoutTopBar(
                         )
                         Spacer(modifier = Modifier.width(5.dp))
 
-                        val cityLabel = if (!isUsingGpsLocation && selectedGlobalCity != null) {
-                            "${selectedGlobalCity.name} ${selectedGlobalCity.flagEmoji}"
+                        val cityLabel = if (!isUsingGpsLocation && !selectedGlobalCity.isNullOrBlank()) {
+                            selectedGlobalCity
                         } else if (hasLocationPermission) {
                             strings.liveGpsStatus
                         } else {

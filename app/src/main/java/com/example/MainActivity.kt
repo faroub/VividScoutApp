@@ -38,7 +38,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import com.example.data.offline.OfflineSyncStatus
+import com.example.ui.components.OfflineSyncStatus
 import com.example.engine.ScoutVectorEngine
 import com.example.ui.components.ARNavigationOverlay
 import com.example.ui.components.BottomNavigationDock
@@ -275,7 +275,7 @@ fun VividScoutApp(
                                         onRadarClick = { mainViewModel.navigateToTab(MainTab.RADAR) },
                                         onDismissOfflineBanner = { profileViewModel.toggleOfflineBanner() },
                                         onOpenQueueDialog = { offlineMapsViewModel.openQueueDialog() },
-                                        syncStatus = offlineMapsState.offlineMapPacks.firstOrNull()?.status ?: OfflineSyncStatus.SYNCED,
+                                        syncStatus = OfflineSyncStatus(totalLocalGems = exploreState.allSpots.size, pendingDraftsCount = offlineMapsState.offlineDrafts.size, isSyncing = exploreState.isScrapingOsm),
                                         onOpenDiagnostics = { offlineMapsViewModel.openDiagnosticDialog() },
                                         cacheHealth = offlineMapsState.vicinityCacheHealth,
                                         onOpenCacheHealth = { offlineMapsViewModel.openCacheHealthDialog() },
@@ -314,8 +314,8 @@ fun VividScoutApp(
                                             )
                                         },
                                         onDismissOsmMessage = { exploreViewModel.dismissOsmMessage() },
-                                        syncStatus = offlineMapsState.offlineMapPacks.firstOrNull()?.status ?: OfflineSyncStatus.SYNCED,
-                                        activeTrail = offlineMapsState.activeTrail,
+                                        syncStatus = OfflineSyncStatus(totalLocalGems = exploreState.allSpots.size, pendingDraftsCount = offlineMapsState.offlineDrafts.size, isSyncing = exploreState.isScrapingOsm),
+                                        activeTrail = offlineMapsState.plannedRoute,
                                         onPlanWalkingTrail = { offlineMapsViewModel.openRoutePlanner() },
                                         onClearWalkingTrail = { offlineMapsViewModel.clearWalkingTrail() },
                                         cacheHealth = offlineMapsState.vicinityCacheHealth,
@@ -327,7 +327,7 @@ fun VividScoutApp(
                                         onCancelRegionDownload = { offlineMapsViewModel.exitRegionDownloadMode() },
                                         onConfirmRegionDownload = { offlineMapsViewModel.openRegionDownloadDialog() },
                                         recentSearches = exploreState.recentSearches,
-                                        onSelectRecentSearch = { exploreViewModel.executeRecentSearch(it) },
+                                        onSelectRecentSearch = { exploreViewModel.executeRecentSearch(it.queryText) },
                                         onDeleteRecentSearch = { exploreViewModel.deleteRecentSearch(it) },
                                         onClearAllRecentSearches = { exploreViewModel.clearAllRecentSearches() },
                                         achievements = profileState.achievements
@@ -484,7 +484,7 @@ fun VividScoutApp(
                             offlineMapsViewModel.openRoutePlanner(destination = spot)
                             mainViewModel.navigateToTab(MainTab.RADAR)
                         },
-                        onReFetchImage = { _, callback -> callback(null) }
+                        onReFetchImage = { _, callback -> callback(false, "") }
                     )
                 }
 
@@ -504,7 +504,7 @@ fun VividScoutApp(
                 )
 
                 // Active Offline Walking Trail Bottom Sheet
-                offlineMapsState.activeTrail?.let { trail ->
+                offlineMapsState.plannedRoute?.let { trail ->
                     OfflineTrailBottomSheet(
                         trail = trail,
                         onDismiss = { offlineMapsViewModel.clearWalkingTrail() },
@@ -569,9 +569,9 @@ fun VividScoutApp(
                 // Global City / Destination Selector Dialog
                 if (exploreState.showGlobalCityDialog) {
                     GlobalCitySelectionDialog(
-                        selectedCity = exploreState.selectedGlobalCity,
+                        selectedCity = com.example.data.model.GlobalCityCatalog.POPULAR_WORLD_CITIES.find { exploreState.selectedGlobalCity.contains(it.name, ignoreCase = true) },
                         isUsingGps = locationState.isUsingGpsLocation,
-                        onSelectCity = { city -> exploreViewModel.selectGlobalCity(city) },
+                        onSelectCity = { city -> exploreViewModel.selectGlobalCity("${city.name}, ${city.country}") },
                         onSelectGpsLocation = {
                             locationViewModel.enableGpsMode()
                             exploreViewModel.dismissGlobalCityDialog()

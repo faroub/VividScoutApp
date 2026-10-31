@@ -78,8 +78,9 @@ fun GlobalCitySelectionDialog(
     var isSearchingGeocode by remember { mutableStateOf(false) }
     var geocodedResults by remember { mutableStateOf<List<GlobalCity>>(emptyList()) }
 
-    val popularCities = remember {
-        GlobalCityCatalog.POPULAR_WORLD_CITIES.filter { it.id != "gps_current" }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val popularCities = remember(context) {
+        GlobalCityCatalog.loadCitiesFromAssets(context).filter { it.id != "gps_current" }
     }
 
     LaunchedEffect(searchQuery) {

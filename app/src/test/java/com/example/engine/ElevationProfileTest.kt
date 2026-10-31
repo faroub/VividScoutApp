@@ -31,7 +31,8 @@ class ElevationProfileTest {
             destLat = 38.7122,
             destLng = -9.1404,
             originName = "Praça do Comércio",
-            destName = "Largo do Carmo"
+            destName = "Largo do Carmo",
+            elevationModel = LisbonElevationModel
         )
 
         val profile = trail.elevationProfile

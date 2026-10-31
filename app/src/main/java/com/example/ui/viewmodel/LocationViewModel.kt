@@ -120,6 +120,25 @@ class LocationViewModel(
         }
     }
 
+    fun refreshLocationPermissions() {
+        val fineGranted = locationTracker.hasFinePermission()
+        val coarseGranted = locationTracker.hasCoarsePermission()
+        if (fineGranted || coarseGranted) {
+            _hasLocationPermission.value = true
+            _isPreciseLocation.value = fineGranted
+            _isUsingGpsLocation.value = true
+            locationTracker.startTracking()
+        }
+    }
+
+    fun openLocationSettingsDialog() {
+        _showLocationSettingsDialog.value = true
+    }
+
+    fun openLocationRationaleDialog() {
+        _showLocationRationaleDialog.value = true
+    }
+
     fun dismissLocationRationale() {
         _showLocationRationaleDialog.value = false
     }

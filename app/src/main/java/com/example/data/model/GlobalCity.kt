@@ -1,5 +1,7 @@
 package com.example.data.model
 
+import android.content.Context
+import com.example.R
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -25,7 +27,52 @@ data class GlobalCity(
 
 object GlobalCityCatalog {
 
-    val POPULAR_WORLD_CITIES = listOf(
+    private var cachedCities: List<GlobalCity>? = null
+
+    val POPULAR_WORLD_CITIES: List<GlobalCity>
+        get() = cachedCities ?: fallbackCities
+
+    fun loadCitiesFromAssets(context: Context): List<GlobalCity> {
+        cachedCities?.let { return it }
+        return try {
+            val jsonString = context.resources.openRawResource(R.raw.global_cities)
+                .bufferedReader().use { it.readText() }
+            val parsed = parseCitiesJson(jsonString)
+            if (parsed.isNotEmpty()) {
+                cachedCities = parsed
+                parsed
+            } else {
+                fallbackCities
+            }
+        } catch (_: Exception) {
+            fallbackCities
+        }
+    }
+
+    private fun parseCitiesJson(jsonString: String): List<GlobalCity> {
+        val list = mutableListOf<GlobalCity>()
+        try {
+            val array = JSONArray(jsonString)
+            for (i in 0 until array.length()) {
+                val obj = array.optJSONObject(i) ?: continue
+                list.add(
+                    GlobalCity(
+                        id = obj.optString("id"),
+                        name = obj.optString("name"),
+                        country = obj.optString("country"),
+                        flagEmoji = obj.optString("flagEmoji"),
+                        latitude = obj.optDouble("latitude"),
+                        longitude = obj.optDouble("longitude"),
+                        description = obj.optString("description")
+                    )
+                )
+            }
+        } catch (_: Exception) {
+        }
+        return list
+    }
+
+    private val fallbackCities = listOf(
         GlobalCity(
             id = "gps_current",
             name = "Live GPS Location",
@@ -45,114 +92,6 @@ object GlobalCityCatalog {
             description = "Capital of seven hills, tile-clad alleyways, historic funiculars, and scenic miradouros."
         ),
         GlobalCity(
-            id = "city_paris",
-            name = "Paris",
-            country = "France",
-            flagEmoji = "🇫🇷",
-            latitude = 48.8566,
-            longitude = 2.3522,
-            description = "City of light, iconic iron towers, Seine riverbanks, historic bistros, and grand boulevards."
-        ),
-        GlobalCity(
-            id = "city_tokyo",
-            name = "Tokyo",
-            country = "Japan",
-            flagEmoji = "🇯🇵",
-            latitude = 35.6762,
-            longitude = 139.6503,
-            description = "Futuristic metropolis, ancient shrines, hidden ramen alleys, and vibrant neon districts."
-        ),
-        GlobalCity(
-            id = "city_nyc",
-            name = "New York",
-            country = "United States",
-            flagEmoji = "🇺🇸",
-            latitude = 40.7128,
-            longitude = -74.0060,
-            description = "The Big Apple, Central Park trails, iconic skyscrapers, and historic neighborhood eateries."
-        ),
-        GlobalCity(
-            id = "city_london",
-            name = "London",
-            country = "United Kingdom",
-            flagEmoji = "🇬🇧",
-            latitude = 51.5074,
-            longitude = -0.1278,
-            description = "Thames riverbank walks, royal parks, historic pubs, and centuries-old architecture."
-        ),
-        GlobalCity(
-            id = "city_rome",
-            name = "Rome",
-            country = "Italy",
-            flagEmoji = "🇮🇹",
-            latitude = 41.9028,
-            longitude = 12.4964,
-            description = "Eternal City of ancient arenas, marble fountains, cobblestone piazzas, and gelato spots."
-        ),
-        GlobalCity(
-            id = "city_sydney",
-            name = "Sydney",
-            country = "Australia",
-            flagEmoji = "🇦🇺",
-            latitude = -33.8688,
-            longitude = 151.2093,
-            description = "Harbor vistas, iconic sails, coastal cliff walks, and sunny ocean coves."
-        ),
-        GlobalCity(
-            id = "city_rio",
-            name = "Rio de Janeiro",
-            country = "Brazil",
-            flagEmoji = "🇧🇷",
-            latitude = -22.9068,
-            longitude = -43.1729,
-            description = "Marvelous city of dramatic granite peaks, golden beaches, and lively samba plazas."
-        ),
-        GlobalCity(
-            id = "city_cairo",
-            name = "Cairo",
-            country = "Egypt",
-            flagEmoji = "🇪🇬",
-            latitude = 30.0444,
-            longitude = 31.2357,
-            description = "City of a thousand minarets, Nile river banks, historic bazaars, and ancient wonders."
-        ),
-        GlobalCity(
-            id = "city_dubai",
-            name = "Dubai",
-            country = "UAE",
-            flagEmoji = "🇦🇪",
-            latitude = 25.2048,
-            longitude = 55.2708,
-            description = "Modern desert metropolis of towering spires, coastal promenades, and historic souks."
-        ),
-        GlobalCity(
-            id = "city_singapore",
-            name = "Singapore",
-            country = "Singapore",
-            flagEmoji = "🇸🇬",
-            latitude = 1.3521,
-            longitude = 103.8198,
-            description = "Garden city of supertrees, vibrant hawker centers, and waterfront promenades."
-        ),
-        GlobalCity(
-            id = "city_kyoto",
-            name = "Kyoto",
-            country = "Japan",
-            flagEmoji = "🇯🇵",
-            latitude = 35.0116,
-            longitude = 135.7681,
-            description = "Cultural heart of Japan, bamboo groves, wooden teahouses, and serene zen gardens."
-        ),
-        GlobalCity(
-            id = "city_barcelona",
-            name = "Barcelona",
-            country = "Spain",
-            flagEmoji = "🇪🇸",
-            latitude = 41.3851,
-            longitude = 2.1734,
-            description = "Mediterranean gem of Modernist spires, Gothic alleyways, and sunny seaside promenades."
-        ),
-        GlobalCity(
             id = "city_berlin",
             name = "Berlin",
             country = "Germany",
@@ -160,15 +99,6 @@ object GlobalCityCatalog {
             latitude = 52.5200,
             longitude = 13.4050,
             description = "Capital of creative arts, historic gates, riverside parks, and vibrant neighborhood cafes."
-        ),
-        GlobalCity(
-            id = "city_istanbul",
-            name = "Istanbul",
-            country = "Turkey",
-            flagEmoji = "🇹🇷",
-            latitude = 41.0082,
-            longitude = 28.9784,
-            description = "Crossroads of continents, Bosphorus views, domed mosques, and grand historic markets."
         )
     )
 

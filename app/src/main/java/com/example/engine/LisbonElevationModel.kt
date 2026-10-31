@@ -49,7 +49,8 @@ data class RouteElevationProfile(
  * 100% offline interpolation of Lisbon's iconic "Seven Hills" (Sete Colinas) topography.
  * Accurately models the elevation contrast from Tagus riverbank (2m) up to Castelo & Bairro Alto (104m).
  */
-object LisbonElevationModel {
+object LisbonElevationModel : ElevationModel {
+    override val isSupported: Boolean = true
 
     private data class TopoAnchor(
         val lat: Double,
@@ -108,7 +109,7 @@ object LisbonElevationModel {
     /**
      * Interpolates elevation in meters for any GPS coordinate using inverse distance weighting.
      */
-    fun getElevationForCoordinate(lat: Double, lng: Double): Double {
+    override fun getElevationForCoordinate(lat: Double, lng: Double): Double {
         // Find 4 nearest topo anchors
         val nearest = topoAnchors.map { anchor ->
             val dist = haversineMeters(lat, lng, anchor.lat, anchor.lng)
@@ -134,7 +135,7 @@ object LisbonElevationModel {
     /**
      * Constructs a continuous elevation profile from path points.
      */
-    fun buildElevationProfile(pathPoints: List<Pair<Double, Double>>): RouteElevationProfile {
+    override fun buildElevationProfile(pathPoints: List<Pair<Double, Double>>): RouteElevationProfile {
         if (pathPoints.isEmpty()) {
             return RouteElevationProfile(
                 points = emptyList(),

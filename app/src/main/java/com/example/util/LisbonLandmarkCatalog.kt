@@ -7,7 +7,9 @@ import java.util.Locale
  * Curated registry of 50+ iconic Lisbon landmarks, historic viewpoints, artisan bakeries,
  * funiculars, and cultural spots with verified Wikimedia Commons photo URLs and district metadata.
  */
-object LisbonLandmarkCatalog {
+object LisbonLandmarkCatalog : LandmarkCatalog {
+    override val isSupported: Boolean = true
+    override val landmarks: List<LandmarkEntry> get() = LANDMARKS
 
     data class LandmarkEntry(
         val canonicalName: String,
@@ -453,7 +455,7 @@ object LisbonLandmarkCatalog {
      * Finds a matching verified landmark in the catalog using fuzzy canonical name, alias,
      * or token overlap matching.
      */
-    fun findLandmark(title: String?): LandmarkEntry? {
+    override fun findLandmark(title: String?): LandmarkEntry? {
         if (title.isNullOrBlank()) return null
         val normalizedTitle = normalize(title)
 
@@ -488,10 +490,10 @@ object LisbonLandmarkCatalog {
      * Resolves a contextual photo URL for a spot based on landmark catalog, keywords, district,
      * or category.
      */
-    fun resolveContextualPhoto(
+    override fun resolveContextualPhoto(
         title: String?,
         category: String?,
-        districtOrLocation: String? = null
+        districtOrLocation: String?
     ): Pair<String, String> {
         // 1. Try curated catalog
         val landmark = findLandmark(title)

@@ -28,6 +28,7 @@ data class ExploreUiState(
     val searchQuery: String = "",
     val recentSearches: List<RecentSearchEntity> = emptyList(),
     val selectedGlobalCity: String = "Lisbon, Portugal",
+    val cityProfile: com.example.data.model.CityProfile = com.example.data.model.CityProfileRegistry.LISBON_PROFILE,
     val showGlobalCityDialog: Boolean = false,
     val preScoutBannerState: PreScoutBannerState = PreScoutBannerState(),
     val exploreHeaderStyle: Int = 0,
@@ -62,6 +63,9 @@ class ExploreViewModel(
 
     private val _selectedGlobalCity = MutableStateFlow("Lisbon, Portugal")
     val selectedGlobalCity: StateFlow<String> = _selectedGlobalCity.asStateFlow()
+
+    private val _cityProfile = MutableStateFlow(com.example.data.model.CityProfileRegistry.LISBON_PROFILE)
+    val cityProfile: StateFlow<com.example.data.model.CityProfile> = _cityProfile.asStateFlow()
 
     private val _showGlobalCityDialog = MutableStateFlow(false)
     val showGlobalCityDialog: StateFlow<Boolean> = _showGlobalCityDialog.asStateFlow()
@@ -118,6 +122,7 @@ class ExploreViewModel(
             searchQuery = vals[5] as String,
             recentSearches = vals[6] as List<RecentSearchEntity>,
             selectedGlobalCity = vals[7] as String,
+            cityProfile = _cityProfile.value,
             showGlobalCityDialog = vals[8] as Boolean,
             preScoutBannerState = vals[9] as PreScoutBannerState,
             exploreHeaderStyle = _exploreHeaderStyle.value,
@@ -129,10 +134,9 @@ class ExploreViewModel(
 
     init {
         viewModelScope.launch(Dispatchers.IO) {
-            repository.ensureInitialGemsSeeded()
-            preScoutEngine.preScoutCity(_selectedGlobalCity.value) { bannerState ->
-                _preScoutBannerState.value = bannerState
-            }
+            repository.initializeIfEmpty()
+            val banner = preScoutEngine.executePreScout(38.7112, -9.1423, _selectedGlobalCity.value)
+            _preScoutBannerState.value = banner
         }
     }
 
@@ -167,13 +171,13 @@ class ExploreViewModel(
 
     fun toggleSave(spot: ScoutSpotEntity) {
         viewModelScope.launch {
-            repository.toggleSaveSpot(spot)
+            repository.toggleSave(spot.id, spot.isSaved)
         }
     }
 
     fun toggleDiscovered(spot: ScoutSpotEntity) {
         viewModelScope.launch {
-            repository.markDiscovered(spot.id, spot.isDiscovered)
+            repository.toggleDiscovered(spot.id, spot.isDiscovered)
         }
     }
 
@@ -197,11 +201,14 @@ class ExploreViewModel(
 
     fun selectGlobalCity(cityName: String) {
         _selectedGlobalCity.value = cityName
+        _cityProfile.value = com.example.data.model.CityProfileRegistry.getProfileForCity(cityName)
         _showGlobalCityDialog.value = false
         viewModelScope.launch(Dispatchers.IO) {
-            preScoutEngine.preScoutCity(cityName) { bannerState ->
-                _preScoutBannerState.value = bannerState
-            }
+            val profile = _cityProfile.value
+            val lat = if (profile.lat != 0.0) profile.lat else 38.7112
+            val lng = if (profile.lng != 0.0) profile.lng else -9.1423
+            val banner = preScoutEngine.executePreScout(lat, lng, cityName)
+            _preScoutBannerState.value = banner
         }
     }
 
@@ -229,15 +236,15 @@ class ExploreViewModel(
 
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val rawSpots = OverpassRetrofitClient.fetchLiveOverpassSpots(lat, lng, 2000.0)
-                if (rawSpots.isNotEmpty()) {
-                    rawSpots.forEach { spot ->
-                        repository.insertSpot(spot)
+                val result = gemRepository.syncLiveOsmGems(lat, lng, 2000, category)
+                result.fold(
+                    onSuccess = { count ->
+                        _osmScrapeMessage.value = "$count gems discovered from OpenStreetMap"
+                    },
+                    onFailure = { e ->
+                        _osmScrapeMessage.value = "OSM Scrape failed: ${e.message}"
                     }
-                    _osmScrapeMessage.value = "${rawSpots.size} gems scraped from OSM"
-                } else {
-                    _osmScrapeMessage.value = "No new OSM gems found"
-                }
+                )
             } catch (e: Exception) {
                 _osmScrapeMessage.value = "OSM Scrape failed: ${e.message}"
             } finally {

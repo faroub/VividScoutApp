@@ -62,7 +62,8 @@ object OfflineRouteEngine {
     fun calculateTrail(
         startLat: Double,
         startLng: Double,
-        spots: List<ScoutSpotEntity>
+        spots: List<ScoutSpotEntity>,
+        elevationModel: ElevationModel = NullElevationModel
     ): OfflineWalkingTrail? {
         if (spots.isEmpty()) return null
 
@@ -107,7 +108,7 @@ object OfflineRouteEngine {
         }
 
         val minutes = (totalDist / WALKING_SPEED_METERS_PER_MIN).roundToInt().coerceAtLeast(1)
-        val elevationProfile = LisbonElevationModel.buildElevationProfile(pathPoints)
+        val elevationProfile = elevationModel.buildElevationProfile(pathPoints)
 
         return OfflineWalkingTrail(
             waypoints = orderedWaypoints,
@@ -132,7 +133,8 @@ object OfflineRouteEngine {
         originName: String = "Starting Point",
         destName: String = "Destination",
         originEntity: ScoutSpotEntity? = null,
-        destEntity: ScoutSpotEntity? = null
+        destEntity: ScoutSpotEntity? = null,
+        elevationModel: ElevationModel = NullElevationModel
     ): OfflineWalkingTrail {
         val result = AStarPathfinder.findShortestPath(
             startLat = originLat,
@@ -147,7 +149,7 @@ object OfflineRouteEngine {
         originEntity?.let { waypoints.add(it) }
         destEntity?.let { waypoints.add(it) }
 
-        val elevationProfile = LisbonElevationModel.buildElevationProfile(result.pathPoints)
+        val elevationProfile = elevationModel.buildElevationProfile(result.pathPoints)
 
         return OfflineWalkingTrail(
             waypoints = waypoints,

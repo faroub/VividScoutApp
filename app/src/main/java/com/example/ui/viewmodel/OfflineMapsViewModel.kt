@@ -3,14 +3,20 @@ package com.example.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.local.ScoutSpotEntity
+import com.example.data.model.CacheHealthCalculator
+import com.example.data.model.CacheHealthLevel
+import com.example.data.model.VicinityCacheHealth
 import com.example.data.offline.DownloadedRegionPack
 import com.example.data.offline.GeoBoundingBox
 import com.example.data.offline.OfflineMapManager
 import com.example.data.offline.OfflineMapPack
 import com.example.data.offline.OfflineRegionStorage
+import com.example.data.repository.ScoutGemRepository
 import com.example.data.repository.ScoutRepository
-import com.example.engine.WalkingRoute
-import com.example.util.VicinityCacheReport
+import com.example.engine.ElevationModel
+import com.example.engine.NullElevationModel
+import com.example.engine.OfflineRouteEngine
+import com.example.engine.OfflineWalkingTrail
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -31,14 +37,14 @@ data class OfflineMapsUiState(
     val showRegionDownloadDialog: Boolean = false,
     val showQueueDialog: Boolean = false,
     val showDiagnosticDialog: Boolean = false,
-    val diagnosticLog: String = "",
+    val diagnosticLog: com.example.data.network.OverpassDiagnosticLog? = null,
     val isDiagnosticRunning: Boolean = false,
-    val vicinityCacheHealth: VicinityCacheReport = VicinityCacheReport(0, 0, 0f),
+    val vicinityCacheHealth: VicinityCacheHealth = VicinityCacheHealth(100, 0, 0, 0, CacheHealthLevel.OPTIMAL),
     val showCacheHealthDialog: Boolean = false,
     val isRoutePlannerOpen: Boolean = false,
     val routePlannerOrigin: ScoutSpotEntity? = null,
     val routePlannerDestination: ScoutSpotEntity? = null,
-    val plannedRoute: WalkingRoute? = null,
+    val plannedRoute: OfflineWalkingTrail? = null,
     val isCalculatingRoute: Boolean = false,
     val activeTrail: ScoutSpotEntity? = null,
     val databaseSizeBytes: Long = 0L
@@ -47,7 +53,8 @@ data class OfflineMapsUiState(
 class OfflineMapsViewModel(
     val offlineMapManager: OfflineMapManager,
     val regionStorage: OfflineRegionStorage,
-    private val repository: ScoutRepository
+    private val repository: ScoutRepository,
+    private val gemRepository: ScoutGemRepository? = null
 ) : ViewModel() {
 
     val offlineMapPacks: StateFlow<List<OfflineMapPack>> = offlineMapManager.packsState
@@ -77,14 +84,14 @@ class OfflineMapsViewModel(
     private val _showDiagnosticDialog = MutableStateFlow(false)
     val showDiagnosticDialog: StateFlow<Boolean> = _showDiagnosticDialog.asStateFlow()
 
-    private val _diagnosticLog = MutableStateFlow("")
-    val diagnosticLog: StateFlow<String> = _diagnosticLog.asStateFlow()
+    private val _diagnosticLog = MutableStateFlow<com.example.data.network.OverpassDiagnosticLog?>(null)
+    val diagnosticLog: StateFlow<com.example.data.network.OverpassDiagnosticLog?> = _diagnosticLog.asStateFlow()
 
     private val _isDiagnosticRunning = MutableStateFlow(false)
     val isDiagnosticRunning: StateFlow<Boolean> = _isDiagnosticRunning.asStateFlow()
 
-    private val _vicinityCacheHealth = MutableStateFlow(VicinityCacheReport(0, 0, 0f))
-    val vicinityCacheHealth: StateFlow<VicinityCacheReport> = _vicinityCacheHealth.asStateFlow()
+    private val _vicinityCacheHealth = MutableStateFlow(VicinityCacheHealth(100, 0, 0, 0, CacheHealthLevel.OPTIMAL))
+    val vicinityCacheHealth: StateFlow<VicinityCacheHealth> = _vicinityCacheHealth.asStateFlow()
 
     private val _showCacheHealthDialog = MutableStateFlow(false)
     val showCacheHealthDialog: StateFlow<Boolean> = _showCacheHealthDialog.asStateFlow()
@@ -98,8 +105,8 @@ class OfflineMapsViewModel(
     private val _routePlannerDestination = MutableStateFlow<ScoutSpotEntity?>(null)
     val routePlannerDestination: StateFlow<ScoutSpotEntity?> = _routePlannerDestination.asStateFlow()
 
-    private val _plannedRoute = MutableStateFlow<WalkingRoute?>(null)
-    val plannedRoute: StateFlow<WalkingRoute?> = _plannedRoute.asStateFlow()
+    private val _plannedRoute = MutableStateFlow<OfflineWalkingTrail?>(null)
+    val plannedRoute: StateFlow<OfflineWalkingTrail?> = _plannedRoute.asStateFlow()
 
     private val _isCalculatingRoute = MutableStateFlow(false)
     val isCalculatingRoute: StateFlow<Boolean> = _isCalculatingRoute.asStateFlow()
@@ -150,18 +157,11 @@ class OfflineMapsViewModel(
 
     init {
         refreshDownloadedRegions()
-        refreshDatabaseSize()
     }
 
     fun refreshDownloadedRegions() {
         viewModelScope.launch(Dispatchers.IO) {
-            _downloadedRegions.value = regionStorage.getAllPacks()
-        }
-    }
-
-    fun refreshDatabaseSize() {
-        viewModelScope.launch(Dispatchers.IO) {
-            _databaseSizeBytes.value = repository.calculateDatabaseSize()
+            _downloadedRegions.value = regionStorage.getAllRegions()
         }
     }
 
@@ -174,12 +174,6 @@ class OfflineMapsViewModel(
     fun deleteOfflinePack(packId: String) {
         viewModelScope.launch {
             offlineMapManager.deletePack(packId)
-        }
-    }
-
-    fun downloadCurrentGpsPack() {
-        viewModelScope.launch {
-            offlineMapManager.downloadGpsPack()
         }
     }
 
@@ -201,7 +195,7 @@ class OfflineMapsViewModel(
 
     fun deleteCustomRegion(regionId: String) {
         viewModelScope.launch(Dispatchers.IO) {
-            regionStorage.deletePack(regionId)
+            regionStorage.deleteRegion(regionId)
             refreshDownloadedRegions()
         }
     }
@@ -234,10 +228,38 @@ class OfflineMapsViewModel(
         _activeTrail.value = spot
     }
 
-    fun openRoutePlanner(origin: ScoutSpotEntity? = null, destination: ScoutSpotEntity? = null) {
+    fun openRoutePlanner(
+        origin: ScoutSpotEntity? = null,
+        destination: ScoutSpotEntity? = null,
+        elevationModel: ElevationModel = NullElevationModel
+    ) {
         _routePlannerOrigin.value = origin
         _routePlannerDestination.value = destination
         _isRoutePlannerOpen.value = true
+        if (origin != null && destination != null) {
+            calculateRoute(elevationModel)
+        }
+    }
+
+    fun calculateRoute(elevationModel: ElevationModel = NullElevationModel) {
+        val orig = _routePlannerOrigin.value ?: return
+        val dest = _routePlannerDestination.value ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            _isCalculatingRoute.value = true
+            val trail = OfflineRouteEngine.calculateShortestAStarRoute(
+                originLat = orig.latitude,
+                originLng = orig.longitude,
+                destLat = dest.latitude,
+                destLng = dest.longitude,
+                originName = orig.title,
+                destName = dest.title,
+                originEntity = orig,
+                destEntity = dest,
+                elevationModel = elevationModel
+            )
+            _plannedRoute.value = trail
+            _isCalculatingRoute.value = false
+        }
     }
 
     fun closeRoutePlanner() {
@@ -287,12 +309,21 @@ class OfflineMapsViewModel(
         val bounds = _activeSelectionBounds.value ?: return
         viewModelScope.launch(Dispatchers.IO) {
             _isDownloadingRegion.value = true
-            regionStorage.savePack(
+            val (segments, elevAnchors) = regionStorage.synthesizeRoadNetworkForBounds(
+                bounds = bounds,
+                regionName = name,
+                cachedSpots = emptyList()
+            )
+            regionStorage.saveRegion(
                 DownloadedRegionPack(
                     id = "region_${System.currentTimeMillis()}",
-                    regionName = name,
+                    name = name,
                     bounds = bounds,
-                    downloadDateMillis = System.currentTimeMillis()
+                    roadSegments = segments,
+                    elevationAnchors = elevAnchors,
+                    spotsCount = 0,
+                    totalSizeBytes = 500_000L,
+                    timestamp = System.currentTimeMillis()
                 )
             )
             refreshDownloadedRegions()
@@ -303,8 +334,21 @@ class OfflineMapsViewModel(
         }
     }
 
-    fun runDiagnosticQuery() {
-        _diagnosticLog.value = "Running Overpass diagnostic query..."
+    fun downloadCurrentGpsPack(lat: Double = 38.7112, lng: Double = -9.1423) {
+        viewModelScope.launch {
+            offlineMapManager.downloadPack("custom_gps_pack", lat, lng)
+            refreshDownloadedRegions()
+        }
+    }
+
+    fun runDiagnosticQuery(lat: Double = 38.7112, lng: Double = -9.1423) {
+        val repo = gemRepository ?: return
+        viewModelScope.launch {
+            _isDiagnosticRunning.value = true
+            val log = repo.runDiagnosticQuery(lat, lng)
+            _diagnosticLog.value = log
+            _isDiagnosticRunning.value = false
+        }
     }
 
     fun prefetchVicinityCache() {
@@ -313,7 +357,9 @@ class OfflineMapsViewModel(
 
     fun syncAllDrafts() {
         viewModelScope.launch {
-            repository.syncDrafts()
+            repository.offlineDrafts.stateIn(viewModelScope).value.forEach { draft ->
+                repository.syncDraft(draft)
+            }
             _showQueueDialog.value = false
         }
     }

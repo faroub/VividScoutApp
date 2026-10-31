@@ -1,91 +1,53 @@
-# Global City Consistency & Engine Refactoring
+# Implementation Plan - Release Build Minification & ProGuard Keep Rules
 
-Unify the city model and engine components behind clean, profile-aware abstractions so non-Lisbon global cities do not silently fall back to Lisbon elevation models, curated landmarks, or demo seed data, while keeping coordinate-based Overpass/AI spot discovery fully functional worldwide.
+## User Intent
+Enable `isMinifyEnabled = true` and `isShrinkResources = true` in the release build type and configure comprehensive, documented R8/ProGuard keep rules in `app/proguard-rules.pro` to ensure the release APK is properly obfuscated, minified, and fully functional without runtime reflection or serialization crashes.
 
-## User Review & Critical Decisions
+---
+
+## User Review Required
 
 > [!IMPORTANT]
-> The following decisions were confirmed based on your choices:
-
-- **Confirmed Decision 1**: Store the global city catalog as a typed JSON asset at `res/raw/global_cities.json` and parse it via Moshi inside `GlobalCityCatalog`.
-- **Confirmed Decision 2**: Display explicit "Not available for this city yet" notices and disable/annotate elevation and landmark controls when an unsupported city (like Berlin or Tokyo) is selected.
-- **Confirmed Decision 3**: Provide city profiles and interfaces through a central `CityProfileRegistry` managed by `AppContainer` and injected into feature ViewModels.
+> The release build will have R8 minification and resource shrinking enabled. All data models, Room entities, Moshi adapters, Retrofit interfaces, and dynamic reflection lookups will be protected via keep rules.
 
 ---
 
-## 1. Overview & Core Concept
+## Proposed Changes
 
-Currently, selecting a global city outside Lisbon in the UI still uses `LisbonElevationModel` and `LisbonLandmarkCatalog`. This refactoring introduces a `CityProfile` abstraction, extracts interfaces `ElevationModel` and `LandmarkCatalog`, and loads global cities dynamically from JSON.
+### 1. Build Configuration (`app/build.gradle.kts`)
+- In `android.buildTypes.release`:
+  - Set `isMinifyEnabled = true`
+  - Set `isShrinkResources = true`
+  - Keep standard `proguard-rules.pro` reference.
 
-- **Supported Profile (Lisbon)**: Full feature set including local elevation profiles, curated Lisbon landmarks, and rich seed data.
-- **Unsupported Global Cities (Berlin, Tokyo, Paris, etc.)**: Coordinate-based Overpass & Gemini AI discovery continue working seamlessly, while city-specific features (elevation graph, curated landmarks) show an honest "Not available for this city yet" state.
+### 2. ProGuard Configuration (`app/proguard-rules.pro`)
+Write documented keep rules explaining why each rule is required:
+- **Keep Stack Traces & Annotations**: Preserve `SourceFile`, `LineNumberTable`, `*Annotation*`, `Signature`, `InnerClasses`.
+- **Moshi Models & Codegen Adapters**:
+  - Keep `@com.squareup.moshi.JsonClass` annotated classes and generated `*JsonAdapter` classes.
+  - Keep Moshi internal reflection and model fields.
+- **Room Database & DAOs**:
+  - Keep classes annotated with `@androidx.room.Entity`, `@androidx.room.Dao`, `@androidx.room.Database`.
+  - Keep Room generated implementation classes (`*_Impl`).
+- **Retrofit & OkHttp Interfaces**:
+  - Keep network interfaces and data classes in `com.example.data.network.**`.
+  - Keep OkHttp and Retrofit annotations and method signatures.
+- **Kotlin Coroutines & Serialization**:
+  - Keep coroutines internal continuation handlers and exception handlers.
+- **Firebase AI & App Check**:
+  - Keep Firebase AI Logic and App Check Recaptcha provider entry points.
+- **Reflection & Dynamic Resource Lookups**:
+  - Keep `com.example.util.ImageResolver` and `@Keep` annotated classes.
+  - Keep `com.example.data.model.**` and `com.example.data.local.**` entity models.
+
+### 3. Resource Shrinking Protection (`app/src/main/res/raw/keep.xml`)
+- Create `res/raw/keep.xml` to instruct resource shrinker to keep dynamic drawables accessed via `Resources.getIdentifier(...)` (e.g. `ic_spot_*`, `ic_category_*`, `img_*`).
 
 ---
 
-## 2. User Experience & Visual Design
+## Verification Plan
 
-- **Global City Selector**: Loads city entries dynamically from `res/raw/global_cities.json`.
-- **Elevation Sparkline & Route Planner**: When a route is planned in Lisbon, elevation profiles render as usual. In an unsupported city, the elevation card displays an informative banner: `"Elevation profile not available for [City Name] yet"`.
-- **Landmarks & Sights**: In Lisbon, curated historical landmarks display with custom imagery and lore. In unsupported cities, generic/OSM landmarks are discovered via Overpass/AI, while curated lists clearly communicate that curated local landmark packs are Lisbon-only.
-
----
-
-## 3. Key Product Decisions & Trade-Offs
-
-- **Abstraction via Interfaces (`ElevationModel`, `LandmarkCatalog`)**:
-  - *Chosen Approach*: `LisbonElevationModel` implements `ElevationModel`, `LisbonLandmarkCatalog` implements `LandmarkCatalog`. `NullElevationModel` and `EmptyLandmarkCatalog` provide safe null-object fallbacks for unsupported cities.
-  - *Why*: Prevents null pointer exceptions and avoids hardcoded `if (city == "Lisbon")` checks scattered across Composables and ViewModels.
-- **JSON Asset Storage (`res/raw/global_cities.json`)**:
-  - *Chosen Approach*: Move ~260 lines of hardcoded Kotlin objects into a clean JSON array resource parsed by Moshi at runtime.
-  - *Why*: Reduces codebase bloat, enables easy addition of new cities without recompiling Kotlin code, and improves startup performance.
-
----
-
-## 4. Technical Architecture & Data Strategy
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    res/raw/global_cities.json               │
-└──────────────────────────────┬──────────────────────────────┘
-                               │ Moshi Json
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│                   GlobalCityCatalog                         │
-└──────────────────────────────┬──────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│                  CityProfileRegistry                        │
-│  - Lisbon -> LisbonCityProfile (LisbonElevation, Landmark)  │
-│  - Other -> GenericCityProfile (NullElevation, EmptyLandmark)│
-└──────────────────────────────┬──────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│                   AppContainer / ViewModels                 │
-│  (ExploreViewModel, OfflineMapsViewModel, MainViewModel)    │
-└──────────────────────────────┬──────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│                Jetpack Compose UI Screens                   │
-│  (Displays "Not available for this city yet" when null)    │
-└──────────────────────────────┴──────────────────────────────┘
-```
-
-### Component & Entity Changes
-
-1. **New Interfaces & Null Implementations**:
-   - `interface ElevationModel`: `buildElevationProfile(pathPoints: List<Pair<Double, Double>>): RouteElevationProfile?`
-   - `object NullElevationModel : ElevationModel`: returns `null`.
-   - `class LisbonElevationModel : ElevationModel`
-   - `interface LandmarkCatalog`: `getLandmarks(): List<LandmarkEntity>`
-   - `object EmptyLandmarkCatalog : LandmarkCatalog`: returns empty list.
-   - `class LisbonLandmarkCatalog : LandmarkCatalog`
-2. **`CityProfile` Data Model & Registry**:
-   - `data class CityProfile(val id: String, val name: String, val country: String, val centerLat: Double, val centerLng: Double, val elevationModel: ElevationModel, val landmarkCatalog: LandmarkCatalog, val isCuratedSupported: Boolean)`
-   - `class CityProfileRegistry(context: Context)`
-3. **JSON Asset**:
-   - `app/src/main/res/raw/global_cities.json` containing city definitions.
-4. **Unit Test Coverage**:
-   - `app/src/test/java/com/example/CityProfileRegistryTest.kt`: Asserts Lisbon profile provides non-null elevation profile and non-empty landmarks, while an unknown city (e.g. Berlin) returns `isCuratedSupported = false`, `null` elevation profile, and empty landmark catalog.
+### Automated Tests & Build Verification
+1. Run `compile_applet` to verify compilation state.
+2. Run `run_command(CommandLine="gradle :app:assembleRelease", Cwd=".", WaitMsBeforeAsync=10000)` to verify the minified release APK builds successfully without R8 shrinker errors.
+3. Run `run_command(CommandLine="gradle :app:testDebugUnitTest", Cwd=".", WaitMsBeforeAsync=10000)` to ensure all 106 unit tests pass.

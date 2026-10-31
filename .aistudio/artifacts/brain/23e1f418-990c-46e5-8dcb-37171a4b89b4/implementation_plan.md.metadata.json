@@ -1,6 +1,6 @@
 {
-  "summary":  "Plan for introducing CityProfile abstraction, refactoring LisbonElevationModel and LisbonLandmarkCatalog behind interfaces, moving global city catalog to JSON asset, and asserting honest unavailable UI state for unsupported cities.",
-  "updatedAt":  "2026-10-31T14:16:20.176439241Z",
+  "summary":  "Implementation plan for enabling R8/ProGuard release minification and resource shrinking with comprehensive keep rules.",
+  "updatedAt":  "2026-10-31T14:39:33.918655177Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

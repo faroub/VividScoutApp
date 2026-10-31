@@ -41,7 +41,8 @@ object AppViewModelProvider {
             OfflineMapsViewModel(
                 offlineMapManager = container.offlineMapManager,
                 regionStorage = container.regionStorage,
-                repository = container.scoutRepository
+                repository = container.scoutRepository,
+                gemRepository = container.gemRepository
             )
         }
         initializer {
