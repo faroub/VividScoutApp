@@ -1,6 +1,6 @@
 {
-  "summary":  "Architectural refactoring plan: introducing manual DI via AppContainer and VividScoutApplication, decomposing the 1,036-line ScoutViewModel into 6 focused feature ViewModels (<400 lines each) using constructor injection, creating unified immutable UiState data classes per screen, refactoring MainActivity to collect single screen states, and adding smoke tests for each ViewModel.",
-  "updatedAt":  "2026-10-31T13:49:17.484636897Z",
+  "summary":  "Plan for introducing CityProfile abstraction, refactoring LisbonElevationModel and LisbonLandmarkCatalog behind interfaces, moving global city catalog to JSON asset, and asserting honest unavailable UI state for unsupported cities.",
+  "updatedAt":  "2026-10-31T14:16:20.176439241Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

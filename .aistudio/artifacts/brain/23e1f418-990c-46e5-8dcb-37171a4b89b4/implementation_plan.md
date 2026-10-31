@@ -1,108 +1,91 @@
-# Architecture Refactoring: AppContainer DI & Feature ViewModels
+# Global City Consistency & Engine Refactoring
 
-Decompose the 1,036-line `ScoutViewModel` god-object into focused feature ViewModels with manual dependency injection via `AppContainer`, and streamline `MainActivity` to collect unified, immutable screen UI states.
+Unify the city model and engine components behind clean, profile-aware abstractions so non-Lisbon global cities do not silently fall back to Lisbon elevation models, curated landmarks, or demo seed data, while keeping coordinate-based Overpass/AI spot discovery fully functional worldwide.
 
 ## User Review & Critical Decisions
 
 > [!IMPORTANT]
-> The following design decisions were confirmed during clarification:
-> - **ViewModel Instantiation**: Dedicated `ViewModelProvider.Factory` reading from `AppContainer` via custom `VividScoutApplication`.
-> - **Screen State Consumption**: Each screen composable receives a single unified immutable `UiState` data class and action lambdas, eliminating the ~50 separate flow collections in `MainActivity`.
+> The following decisions were confirmed based on your choices:
 
-- **Confirmed Decision 1**: Manual DI via `AppContainer` and `DefaultAppContainer` (no Hilt, keeping build times fast and lean).
-- **Confirmed Decision 2**: Six feature ViewModels, each under 400 lines: `LocationViewModel`, `ExploreViewModel`, `RadarViewModel`, `CommunityViewModel`, `OfflineMapsViewModel`, and `ProfileViewModel` (plus a lightweight navigation/app shell controller).
-- **Confirmed Decision 3**: Location coordinates and tracking are managed by `LocationViewModel` and shared via Flow/StateFlow without cross-repository coupling.
-- **Confirmed Decision 4**: All inline fully-qualified imports (`com.example.*`) eliminated in favor of standard Kotlin import statements.
+- **Confirmed Decision 1**: Store the global city catalog as a typed JSON asset at `res/raw/global_cities.json` and parse it via Moshi inside `GlobalCityCatalog`.
+- **Confirmed Decision 2**: Display explicit "Not available for this city yet" notices and disable/annotate elevation and landmark controls when an unsupported city (like Berlin or Tokyo) is selected.
+- **Confirmed Decision 3**: Provide city profiles and interfaces through a central `CityProfileRegistry` managed by `AppContainer` and injected into feature ViewModels.
 
 ---
 
 ## 1. Overview & Core Concept
 
-- **What It Does**: Transitions the app from an anti-pattern monolithic ViewModel to a clean, scalable Clean Architecture/MVVM pattern with single-responsibility feature ViewModels, manual constructor injection, and unidirectional data flow (UDF).
-- **Target Audience / Developer Value**: Drastically faster compile and test cycles, eliminated race conditions between unrelated features, improved testability, and adherence to Android architectural best practices.
+Currently, selecting a global city outside Lisbon in the UI still uses `LisbonElevationModel` and `LisbonLandmarkCatalog`. This refactoring introduces a `CityProfile` abstraction, extracts interfaces `ElevationModel` and `LandmarkCatalog`, and loads global cities dynamically from JSON.
+
+- **Supported Profile (Lisbon)**: Full feature set including local elevation profiles, curated Lisbon landmarks, and rich seed data.
+- **Unsupported Global Cities (Berlin, Tokyo, Paris, etc.)**: Coordinate-based Overpass & Gemini AI discovery continue working seamlessly, while city-specific features (elevation graph, curated landmarks) show an honest "Not available for this city yet" state.
 
 ---
 
-## 2. Technical Architecture & Component Mapping
+## 2. User Experience & Visual Design
+
+- **Global City Selector**: Loads city entries dynamically from `res/raw/global_cities.json`.
+- **Elevation Sparkline & Route Planner**: When a route is planned in Lisbon, elevation profiles render as usual. In an unsupported city, the elevation card displays an informative banner: `"Elevation profile not available for [City Name] yet"`.
+- **Landmarks & Sights**: In Lisbon, curated historical landmarks display with custom imagery and lore. In unsupported cities, generic/OSM landmarks are discovered via Overpass/AI, while curated lists clearly communicate that curated local landmark packs are Lisbon-only.
+
+---
+
+## 3. Key Product Decisions & Trade-Offs
+
+- **Abstraction via Interfaces (`ElevationModel`, `LandmarkCatalog`)**:
+  - *Chosen Approach*: `LisbonElevationModel` implements `ElevationModel`, `LisbonLandmarkCatalog` implements `LandmarkCatalog`. `NullElevationModel` and `EmptyLandmarkCatalog` provide safe null-object fallbacks for unsupported cities.
+  - *Why*: Prevents null pointer exceptions and avoids hardcoded `if (city == "Lisbon")` checks scattered across Composables and ViewModels.
+- **JSON Asset Storage (`res/raw/global_cities.json`)**:
+  - *Chosen Approach*: Move ~260 lines of hardcoded Kotlin objects into a clean JSON array resource parsed by Moshi at runtime.
+  - *Why*: Reduces codebase bloat, enables easy addition of new cities without recompiling Kotlin code, and improves startup performance.
+
+---
+
+## 4. Technical Architecture & Data Strategy
 
 ```
-┌────────────────────────────────────────────────────────────────────────┐
-│                        VividScoutApplication                           │
-│                                   │                                    │
-│                         DefaultAppContainer                            │
-│    ┌──────────────────┬───────────┴───────────┬──────────────────┐     │
-│    ▼                  ▼                       ▼                  ▼     │
-│ AppDatabase     LocationTracker      OfflineMapManager   CommunityRepo │
-│ (DAOs, Room)    (FusedLocation)      OfflineStorage      ScoutRepo     │
-└───────────────────────────────────┬────────────────────────────────────┘
-                                    │
-                         AppViewModelProvider.Factory
-                                    │
-         ┌──────────────┬───────────┼───────────┬──────────────┐
-         ▼              ▼           ▼           ▼              ▼
-   LocationVM      ExploreVM     RadarVM   CommunityVM   OfflineMapsVM & ProfileVM
-         │              │           │           │              │
-    LocationState  ExploreState RadarState CommunityState OfflineState & ProfileState
-         └──────────────┴───────────┼───────────┴──────────────┘
-                                    │ (Collected once per screen)
-                                    ▼
-                               MainActivity
-                   (VividScoutApp & Screen Composables)
+┌─────────────────────────────────────────────────────────────┐
+│                    res/raw/global_cities.json               │
+└──────────────────────────────┬──────────────────────────────┘
+                               │ Moshi Json
+                               ▼
+┌─────────────────────────────────────────────────────────────┐
+│                   GlobalCityCatalog                         │
+└──────────────────────────────┬──────────────────────────────┘
+                               │
+                               ▼
+┌─────────────────────────────────────────────────────────────┐
+│                  CityProfileRegistry                        │
+│  - Lisbon -> LisbonCityProfile (LisbonElevation, Landmark)  │
+│  - Other -> GenericCityProfile (NullElevation, EmptyLandmark)│
+└──────────────────────────────┬──────────────────────────────┘
+                               │
+                               ▼
+┌─────────────────────────────────────────────────────────────┐
+│                   AppContainer / ViewModels                 │
+│  (ExploreViewModel, OfflineMapsViewModel, MainViewModel)    │
+└──────────────────────────────┬──────────────────────────────┘
+                               │
+                               ▼
+┌─────────────────────────────────────────────────────────────┐
+│                Jetpack Compose UI Screens                   │
+│  (Displays "Not available for this city yet" when null)    │
+└──────────────────────────────┴──────────────────────────────┘
 ```
 
-### Module & Class Structure
+### Component & Entity Changes
 
-1. **`com.example.di.AppContainer` & `DefaultAppContainer`**:
-   - Owns `AppDatabase` singleton.
-   - Lazy instantiations of `ScoutRepository`, `ScoutGemRepository`, `LocationTracker`, `OfflineMapManager`, `OfflineRegionStorage`, `CommunityTipRepository`, `PreScoutEngine`, and `CompassSensorManager`.
-2. **`com.example.VividScoutApplication`**:
-   - Custom `Application` subclass holding `lateinit var container: AppContainer`.
-   - Registered in `AndroidManifest.xml` via `android:name=".VividScoutApplication"`.
-3. **Feature ViewModels & UiState classes (`com.example.ui.viewmodel.*`)**:
-   - **`LocationViewModel`** (`LocationUiState`): GPS coordinates, telemetry, accuracy status, permission requests/rationale.
-   - **`ExploreViewModel`** (`ExploreUiState`): Spots catalog, text search, category filters, recent searches, global city selector, pre-scout banner, OSM scraper status.
-   - **`RadarViewModel`** (`RadarUiState`): Proximity radius filtering, orientation/azimuth, nearby pings, sensor status.
-   - **`CommunityViewModel`** (`CommunityUiState`): Community tips, live spot alerts, peer sync state, tip posting modal state.
-   - **`OfflineMapsViewModel`** (`OfflineMapsUiState`): Region downloads, map packs, bounding box selection, offline queue drafts, cache health diagnostics.
-   - **`ProfileViewModel`** (`ProfileUiState`): Achievements, badges, points, language selection, prefetch telemetry, cache clear dialogs.
-   - **`AppViewModelProvider`**: Companion factory creating ViewModels via `AppContainer`.
-4. **`MainActivity.kt`**:
-   - Replaces ~50 `collectAsState()` lines with one `collectAsState()` per screen UI state.
-   - Passes clean immutable UI state objects and action lambdas to screens.
-   - Replaces all inline FQCNs with imports.
-
----
-
-## 3. Key Product & Architectural Decisions
-
-### Decision 1: Manual Constructor Injection via AppContainer
-- **Chosen Approach**: `AppContainer` interface with `DefaultAppContainer` implementation.
-- **Why**: Standard Android recommendation for medium-sized apps without Hilt overhead; no reflection or annotation processing delay during incremental compilation.
-
-### Decision 2: Location Sharing Pattern
-- **Chosen Approach**: `LocationViewModel` exposes `userCoordinates: StateFlow<Pair<Double, Double>>`. Other ViewModels that need proximity calculations (e.g. `ExploreViewModel`, `RadarViewModel`) accept coordinates as parameters to their query/filtering functions or observe the flow.
-- **Why**: Keeps ViewModels loosely coupled and independently testable without circular dependencies.
-
-### Decision 3: Backward Compatibility & Preservation of ScoutViewModel
-- **Chosen Approach**: Retire `ScoutViewModel` in favor of feature ViewModels. Any existing references (e.g. in tests) are replaced or cleanly migrated.
-
----
-
-## 4. Acceptance Criteria & Verification Plan
-
-1. **Acceptance Criteria**:
-   - No ViewModel file exceeds 400 lines (verified via `wc -l`).
-   - No ViewModel constructs its own repositories or database instances.
-   - Every ViewModel receives dependencies via constructor injection.
-   - `MainActivity.kt` uses single `UiState` collections per screen.
-   - All inline FQCN references removed.
-2. **Testing**:
-   - Unit tests: Add smoke tests for each new ViewModel:
-     - `LocationViewModelTest`
-     - `ExploreViewModelTest`
-     - `RadarViewModelTest`
-     - `CommunityViewModelTest`
-     - `OfflineMapsViewModelTest`
-     - `ProfileViewModelTest`
-   - Run full unit test suite: `gradle :app:testDebugUnitTest`.
-   - Build verification: `compile_applet`.
+1. **New Interfaces & Null Implementations**:
+   - `interface ElevationModel`: `buildElevationProfile(pathPoints: List<Pair<Double, Double>>): RouteElevationProfile?`
+   - `object NullElevationModel : ElevationModel`: returns `null`.
+   - `class LisbonElevationModel : ElevationModel`
+   - `interface LandmarkCatalog`: `getLandmarks(): List<LandmarkEntity>`
+   - `object EmptyLandmarkCatalog : LandmarkCatalog`: returns empty list.
+   - `class LisbonLandmarkCatalog : LandmarkCatalog`
+2. **`CityProfile` Data Model & Registry**:
+   - `data class CityProfile(val id: String, val name: String, val country: String, val centerLat: Double, val centerLng: Double, val elevationModel: ElevationModel, val landmarkCatalog: LandmarkCatalog, val isCuratedSupported: Boolean)`
+   - `class CityProfileRegistry(context: Context)`
+3. **JSON Asset**:
+   - `app/src/main/res/raw/global_cities.json` containing city definitions.
+4. **Unit Test Coverage**:
+   - `app/src/test/java/com/example/CityProfileRegistryTest.kt`: Asserts Lisbon profile provides non-null elevation profile and non-empty landmarks, while an unknown city (e.g. Berlin) returns `isCuratedSupported = false`, `null` elevation profile, and empty landmark catalog.
