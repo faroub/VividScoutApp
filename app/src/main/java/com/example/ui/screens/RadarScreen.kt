@@ -212,198 +212,25 @@ fun RadarScreen(
         // 1. Permission Rationale Banner (if permission not yet granted)
         if (!hasLocationPermission) {
             item {
-                Surface(
-                    shape = RoundedCornerShape(20.dp),
-                    color = BrandCoral.copy(alpha = 0.12f),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, BrandCoral.copy(alpha = 0.3f)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.padding(14.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Row(
-                            modifier = Modifier.weight(1f),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(38.dp)
-                                    .clip(CircleShape)
-                                    .background(BrandCoral),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.LocationOn,
-                                    contentDescription = null,
-                                    tint = Color.White,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Column {
-                                Text(
-                                    text = strings.locationPermissionTitle,
-                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Text(
-                                    text = strings.locationPermissionDesc,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-
-                        Button(
-                            onClick = onRequestLocationPermission,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = BrandCoral,
-                                contentColor = Color.White
-                            ),
-                            shape = RoundedCornerShape(999.dp),
-                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
-                            modifier = Modifier.testTag("grant_location_permission_button")
-                        ) {
-                            Text("Enable", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
-                        }
-                    }
-                }
+                RadarLocationPermissionBanner(
+                    onRequestLocationPermission = onRequestLocationPermission
+                )
             }
         } else if (!isPreciseLocation) {
             // Approximate GPS Active - Offer upgrade to Precise
             item {
-                Surface(
-                    shape = RoundedCornerShape(18.dp),
-                    color = BrandTeal.copy(alpha = 0.12f),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, BrandTeal.copy(alpha = 0.35f)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Row(
-                            modifier = Modifier.weight(1f),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(34.dp)
-                                    .clip(CircleShape)
-                                    .background(BrandTeal),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.GpsFixed,
-                                    contentDescription = null,
-                                    tint = Color.White,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Column {
-                                Text(
-                                    text = strings.approximateGpsActive,
-                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Text(
-                                    text = "Enable Precise Location for 1m walking accuracy",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-
-                        Button(
-                            onClick = onRequestLocationPermission,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Secondary,
-                                contentColor = Color.White
-                            ),
-                            shape = RoundedCornerShape(999.dp),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                            modifier = Modifier.testTag("upgrade_precise_location_button")
-                        ) {
-                            Text("Precise", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
-                        }
-                    }
-                }
+                RadarApproximateGpsBanner(
+                    onRequestLocationPermission = onRequestLocationPermission
+                )
             }
         }
 
         // 2. Mode Selector: [ 🗺️ Live Gem Map ] | [ 📡 On-Foot Radar ]
         item {
-            Surface(
-                shape = RoundedCornerShape(999.dp),
-                color = SurfaceContainerLowest,
-                shadowElevation = 4.dp,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(4.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly
-                ) {
-                    val isMap = viewMode == RadarViewMode.MAP
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(999.dp))
-                            .background(if (isMap) PrimaryContainer else Color.Transparent)
-                            .clickable { viewMode = RadarViewMode.MAP }
-                            .padding(vertical = 10.dp)
-                            .testTag("mode_toggle_map"),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.Map,
-                                contentDescription = null,
-                                tint = if (isMap) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "Live Gem Map",
-                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                                color = if (isMap) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-
-                    val isRadar = viewMode == RadarViewMode.RADAR
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(999.dp))
-                            .background(if (isRadar) PrimaryContainer else Color.Transparent)
-                            .clickable { viewMode = RadarViewMode.RADAR }
-                            .padding(vertical = 10.dp)
-                            .testTag("mode_toggle_radar"),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.Radar,
-                                contentDescription = null,
-                                tint = if (isRadar) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "On-Foot Radar",
-                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                                color = if (isRadar) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                }
-            }
+            RadarViewModeSelector(
+                viewMode = viewMode,
+                onViewModeChange = { viewMode = it }
+            )
         }
 
         // 2.5 Floating Category Chips Ribbon for Map Screen
@@ -478,160 +305,23 @@ fun RadarScreen(
 
         // 3b. OpenStreetMap Web Scraper Action Card
         item {
-            Surface(
-                shape = RoundedCornerShape(20.dp),
-                color = SurfaceContainerLowest,
-                border = BorderStroke(1.dp, BrandTeal.copy(alpha = 0.35f)),
-                shadowElevation = 3.dp,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("radar_scrape_osm_card")
-            ) {
-                Column(modifier = Modifier.padding(12.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Row(
-                            modifier = Modifier.weight(1f),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(38.dp)
-                                    .clip(CircleShape)
-                                    .background(BrandTeal.copy(alpha = 0.15f)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Public,
-                                    contentDescription = null,
-                                    tint = BrandTeal,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Column {
-                                Text(
-                                    text = "✨ Discover Gems with Gemini AI",
-                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Text(
-                                    text = "Generate verified landmarks & viewpoints using Gemini 3.8 Flash",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-
-                        Button(
-                            onClick = onScrapeOsm,
-                            enabled = !isScrapingOsm,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = PrimaryContainer,
-                                contentColor = Color.White
-                            ),
-                            shape = RoundedCornerShape(999.dp),
-                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
-                            modifier = Modifier.testTag("radar_scrape_osm_button")
-                        ) {
-                            if (isScrapingOsm) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(13.dp),
-                                    strokeWidth = 2.dp,
-                                    color = Color.White
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    "Discovering...",
-                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold)
-                                )
-                            } else {
-                                Icon(
-                                    imageVector = Icons.Default.AutoAwesome,
-                                    contentDescription = null,
-                                    tint = Color.White,
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    "Discover",
-                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold)
-                                )
-                            }
-                        }
-                    }
-
-                    if (isScrapingOsm) {
-                        Spacer(modifier = Modifier.height(14.dp))
-                        DiscoverGemsLoadingState(
-                            category = selectedCategory,
-                            userCoordinates = Pair(userLat, userLng),
-                            gpsAccuracyMeters = userAccuracy,
-                            statusMessage = osmScrapeMessage
-                        )
-                    } else if (osmScrapeMessage != null) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = BrandTeal.copy(alpha = 0.1f),
-                            border = BorderStroke(1.dp, BrandTeal.copy(alpha = 0.35f)),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onDismissOsmMessage() }
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(
-                                    text = osmScrapeMessage.orEmpty(),
-                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                Icon(
-                                    imageVector = Icons.Default.Close,
-                                    contentDescription = "Dismiss",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(14.dp)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
+            RadarOsmScraperCard(
+                isScrapingOsm = isScrapingOsm,
+                osmScrapeMessage = osmScrapeMessage,
+                selectedCategory = selectedCategory,
+                userCoordinates = Pair(userLat, userLng),
+                userAccuracy = userAccuracy,
+                onScrapeOsm = onScrapeOsm,
+                onDismissOsmMessage = onDismissOsmMessage
+            )
         }
 
         // 4. Radius Filter Pills
         item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center
-            ) {
-                listOf("200m", "500m", "1km", "3km", "All").forEach { radius ->
-                    val isSelected = selectedRadius == radius
-                    Box(
-                        modifier = Modifier
-                            .padding(horizontal = 4.dp)
-                            .clip(RoundedCornerShape(999.dp))
-                            .background(if (isSelected) PrimaryContainer else SurfaceContainerLowest)
-                            .shadow(if (isSelected) 4.dp else 1.dp, RoundedCornerShape(999.dp))
-                            .clickable { selectedRadius = radius }
-                            .padding(horizontal = 14.dp, vertical = 7.dp)
-                            .testTag("radius_pill_$radius")
-                    ) {
-                        Text(
-                            text = radius,
-                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                            color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                }
-            }
+            RadarRadiusSelector(
+                selectedRadius = selectedRadius,
+                onRadiusSelected = { selectedRadius = it }
+            )
         }
 
         // 5. Section Title: Nearby Detected Gems
@@ -656,113 +346,16 @@ fun RadarScreen(
 
         // 6. List of Detections with Real GPS Distance
         items(sortedSpots, key = { it.id }) { spot ->
-            val distStr = spot.computedDistanceString(userLat, userLng)
-            val walkMins = spot.computedWalkMinutes(userLat, userLng)
-
-            Surface(
-                shape = RoundedCornerShape(18.dp),
-                color = SurfaceContainerLowest,
-                shadowElevation = 4.dp,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable {
-                        selectedSpot = spot
-                        onSpotClick(spot)
-                    }
-                    .testTag("radar_detected_spot_${spot.id}")
-            ) {
-                Row(
-                    modifier = Modifier.padding(14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(
-                        modifier = Modifier.weight(1f),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(46.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(
-                                    when (spot.category) {
-                                        "eats" -> BrandCoral.copy(alpha = 0.15f)
-                                        "history" -> Color(0xFFC084FC).copy(alpha = 0.15f)
-                                        else -> BrandTeal.copy(alpha = 0.15f)
-                                    }
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.GpsFixed,
-                                contentDescription = null,
-                                tint = when (spot.category) {
-                                    "eats" -> BrandCoral
-                                    "history" -> Color(0xFF7C3AED)
-                                    else -> Secondary
-                                },
-                                modifier = Modifier.size(22.dp)
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.width(12.dp))
-
-                        Column {
-                            Text(
-                                text = spot.title,
-                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                color = MaterialTheme.colorScheme.onSurface,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = "$distStr ($walkMins min)",
-                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                    color = Secondary
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = "• ${spot.statusBadge}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                    }
-
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(
-                            onClick = { onToggleSave(spot) },
-                            modifier = Modifier
-                                .size(36.dp)
-                                .testTag("radar_bookmark_button_${spot.id}")
-                        ) {
-                            Icon(
-                                imageVector = if (spot.isSaved) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
-                                contentDescription = if (spot.isSaved) "Remove bookmark" else "Bookmark",
-                                tint = if (spot.isSaved) BrandCoral else MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.width(4.dp))
-
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(999.dp))
-                                .background(SecondaryContainer.copy(alpha = 0.6f))
-                                .padding(horizontal = 12.dp, vertical = 6.dp)
-                        ) {
-                            Text(
-                                text = strings.track,
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                color = MaterialTheme.colorScheme.onSecondaryContainer
-                            )
-                        }
-                    }
-                }
-            }
+            RadarDetectedSpotItem(
+                spot = spot,
+                userLat = userLat,
+                userLng = userLng,
+                onSpotClick = {
+                    selectedSpot = spot
+                    onSpotClick(spot)
+                },
+                onToggleSave = onToggleSave
+            )
         }
     }
 }
