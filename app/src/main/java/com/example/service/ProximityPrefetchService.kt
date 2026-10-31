@@ -178,11 +178,20 @@ class ProximityPrefetchService : Service() {
                 startForeground(
                     NOTIFICATION_ID,
                     notification,
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION or ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
                 )
             } catch (e: Exception) {
-                Log.e(TAG, "Failed startForeground with type DATA_SYNC: ${e.message}")
-                startForeground(NOTIFICATION_ID, notification)
+                Log.e(TAG, "Failed startForeground with type LOCATION|DATA_SYNC: ${e.message}")
+                try {
+                    startForeground(
+                        NOTIFICATION_ID,
+                        notification,
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
+                    )
+                } catch (e2: Exception) {
+                    Log.e(TAG, "Failed startForeground fallback: ${e2.message}")
+                    startForeground(NOTIFICATION_ID, notification)
+                }
             }
         } else {
             startForeground(NOTIFICATION_ID, notification)
