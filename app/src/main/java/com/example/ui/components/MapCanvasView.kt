@@ -679,451 +679,67 @@ fun MapCanvasView(
         )
 
         // Preset Zoom Level Selector Chips (Bottom Floating above controls)
-        Row(
+        MapZoomPresetSelector(
+            zoomPreset = zoomPreset,
+            activeZoomScale = activeZoomScale,
+            onSetZoomPreset = onSetZoomPreset,
             modifier = Modifier
                 .align(Alignment.BottomStart)
-                .padding(start = 12.dp, bottom = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            ZoomPreset.entries.forEach { preset ->
-                val isSelected = (zoomPreset == preset) || Math.abs(preset.scale - activeZoomScale) < 0.1f
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(999.dp))
-                        .background(if (isSelected) BrandTeal else Color(0xF2080B1E))
-                        .border(
-                            1.dp,
-                            if (isSelected) BrandTeal else Color.White.copy(alpha = 0.2f),
-                            RoundedCornerShape(999.dp)
-                        )
-                        .clickable { onSetZoomPreset(preset) }
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                        .testTag("zoom_preset_chip_${preset.name.lowercase()}"),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = preset.label,
-                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                        color = if (isSelected) Color.White else Color.White.copy(alpha = 0.85f),
-                        fontSize = 10.sp
-                    )
-                }
-            }
-        }
+                .padding(start = 12.dp, bottom = 12.dp)
+        )
 
         // Floating Active Route HUD Card
         if (activeTrail != null) {
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = Color(0xF2080B1E),
-                border = BorderStroke(1.dp, BrandCoral.copy(alpha = 0.6f)),
-                shadowElevation = 8.dp,
+            MapRouteHud(
+                activeTrail = activeTrail,
+                onPlanTrailClick = onPlanTrailClick,
+                onClearTrailClick = onClearTrailClick,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .padding(start = 12.dp, end = 12.dp, bottom = 44.dp)
-                    .fillMaxWidth()
-                    .testTag("vector_route_hud")
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(34.dp)
-                            .clip(CircleShape)
-                            .background(BrandCoral.copy(alpha = 0.2f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.DirectionsWalk,
-                            contentDescription = null,
-                            tint = BrandCoral,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = "${activeTrail.originTitle} → ${activeTrail.destinationTitle}",
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                color = Color.White,
-                                maxLines = 1,
-                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                            )
-                        }
-                        Text(
-                            text = "${activeTrail.formattedDistance} • ${activeTrail.formattedDuration}" +
-                                    (activeTrail.steps.firstOrNull()?.let { " • ${it.instruction}" } ?: ""),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color(0xFF94A3B8),
-                            maxLines = 1,
-                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(6.dp))
-                    if (onPlanTrailClick != null) {
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(BrandTeal.copy(alpha = 0.25f))
-                                .border(1.dp, BrandTeal.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
-                                .clickable { onPlanTrailClick() }
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
-                                .testTag("vector_route_steps_btn"),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "Steps",
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                color = Color.White
-                            )
-                        }
-                    }
-                    if (onClearTrailClick != null) {
-                        Spacer(modifier = Modifier.width(4.dp))
-                        IconButton(
-                            onClick = onClearTrailClick,
-                            modifier = Modifier
-                                .size(28.dp)
-                                .testTag("vector_route_clear_btn")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Close,
-                                contentDescription = "Clear Route",
-                                tint = Color(0xFFEF4444),
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-                    }
-                }
-            }
+            )
         }
 
         // Region Downloader Floating Controller Banner
         if (isRegionDownloadMode && selectionBounds != null) {
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = Color(0xF2080B1E),
-                border = BorderStroke(1.5.dp, BrandTeal.copy(alpha = 0.85f)),
-                shadowElevation = 12.dp,
+            MapRegionDownloaderBar(
+                selectionBounds = selectionBounds,
+                userLat = userLat,
+                userLng = userLng,
+                panOffset = panOffset,
+                activeZoomScale = activeZoomScale,
+                baseScale = baseScale,
+                onUpdateSelectionBounds = onUpdateSelectionBounds,
+                onCancelRegionDownload = onCancelRegionDownload,
+                onConfirmRegionDownload = onConfirmRegionDownload,
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .padding(start = 12.dp, end = 12.dp, top = 44.dp)
-                    .fillMaxWidth()
-                    .testTag("region_download_bar")
-            ) {
-                Column(
-                    modifier = Modifier.padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.CloudDownload,
-                                contentDescription = null,
-                                tint = BrandTeal,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "Save Offline Area",
-                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                                color = Color.White
-                            )
-                        }
-
-                        // Dimension Pill
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(999.dp))
-                                .background(BrandTeal.copy(alpha = 0.2f))
-                                .border(1.dp, BrandTeal.copy(alpha = 0.5f), RoundedCornerShape(999.dp))
-                                .padding(horizontal = 8.dp, vertical = 3.dp)
-                        ) {
-                            Text(
-                                text = selectionBounds.formattedDimensions,
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                color = BrandTeal,
-                                fontSize = 11.sp
-                            )
-                        }
-                    }
-
-                    // Adjustment controls
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // Shrink (-20%)
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color.White.copy(alpha = 0.08f))
-                                .border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(8.dp))
-                                .clickable {
-                                    val cLat = selectionBounds.centerLat
-                                    val cLng = selectionBounds.centerLng
-                                    val halfH = (selectionBounds.maxLat - selectionBounds.minLat) * 0.4
-                                    val halfW = (selectionBounds.maxLng - selectionBounds.minLng) * 0.4
-                                    onUpdateSelectionBounds?.invoke(
-                                        GeoBoundingBox(cLat - halfH, cLng - halfW, cLat + halfH, cLng + halfW)
-                                    )
-                                }
-                                .padding(vertical = 6.dp)
-                                .testTag("region_download_shrink_btn"),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "- Shrink Area",
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                color = Color.White,
-                                fontSize = 11.sp
-                            )
-                        }
-
-                        // Expand (+20%)
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color.White.copy(alpha = 0.08f))
-                                .border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(8.dp))
-                                .clickable {
-                                    val cLat = selectionBounds.centerLat
-                                    val cLng = selectionBounds.centerLng
-                                    val halfH = (selectionBounds.maxLat - selectionBounds.minLat) * 0.6
-                                    val halfW = (selectionBounds.maxLng - selectionBounds.minLng) * 0.6
-                                    onUpdateSelectionBounds?.invoke(
-                                        GeoBoundingBox(cLat - halfH, cLng - halfW, cLat + halfH, cLng + halfW)
-                                    )
-                                }
-                                .padding(vertical = 6.dp)
-                                .testTag("region_download_expand_btn"),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "+ Expand Area",
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                color = Color.White,
-                                fontSize = 11.sp
-                            )
-                        }
-
-                        // Re-center on map view center
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color.White.copy(alpha = 0.08f))
-                                .border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(8.dp))
-                                .clickable {
-                                    val dLng = -panOffset.x / (baseScale * activeZoomScale)
-                                    val dLat = panOffset.y / (baseScale * activeZoomScale)
-                                    val newCenterLat = userLat + dLat
-                                    val newCenterLng = userLng + dLng
-                                    val halfH = (selectionBounds.maxLat - selectionBounds.minLat) / 2.0
-                                    val halfW = (selectionBounds.maxLng - selectionBounds.minLng) / 2.0
-                                    onUpdateSelectionBounds?.invoke(
-                                        GeoBoundingBox(
-                                            newCenterLat - halfH,
-                                            newCenterLng - halfW,
-                                            newCenterLat + halfH,
-                                            newCenterLng + halfW
-                                        )
-                                    )
-                                }
-                                .padding(vertical = 6.dp)
-                                .testTag("region_download_recenter_btn"),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "Center Here",
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                color = Color.White,
-                                fontSize = 11.sp
-                            )
-                        }
-                    }
-
-                    // Bottom Action Row: Cancel / Download
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconButton(
-                            onClick = { onCancelRegionDownload?.invoke() },
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .background(Color.White.copy(alpha = 0.12f))
-                                .testTag("region_download_cancel_btn")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Close,
-                                contentDescription = "Cancel Download",
-                                tint = Color.White,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-
-                        Button(
-                            onClick = { onConfirmRegionDownload?.invoke() },
-                            shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = BrandTeal,
-                                contentColor = Color(0xFF080B1E)
-                            ),
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(36.dp)
-                                .testTag("region_download_confirm_btn")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.CloudDownload,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "Download This Area",
-                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
-                            )
-                        }
-                    }
-                }
-            }
+            )
         }
 
         // Floating On-Canvas Controls for Step Zoom (+/-), GPS Pan Reset, Region Downloader, and Route Planner
-        Column(
+        MapCanvasControls(
+            isRegionDownloadMode = isRegionDownloadMode,
+            onStartRegionDownload = onStartRegionDownload,
+            onCancelRegionDownload = onCancelRegionDownload,
+            onPlanTrailClick = onPlanTrailClick,
+            onResetPan = { panOffset = Offset.Zero },
+            onZoomIn = {
+                onZoomIn()
+                internalZoomScale = (internalZoomScale + 0.35f).coerceAtMost(ScoutVectorEngine.MAX_ZOOM_SCALE)
+            },
+            onZoomOut = {
+                onZoomOut()
+                internalZoomScale = (internalZoomScale - 0.35f).coerceAtLeast(ScoutVectorEngine.MIN_ZOOM_SCALE)
+            },
             modifier = Modifier
                 .align(Alignment.CenterEnd)
-                .padding(end = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            // Region Downloader Button
-            if (onStartRegionDownload != null) {
-                Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(CircleShape)
-                        .background(if (isRegionDownloadMode) BrandTeal else Color(0xFF080B1E).copy(alpha = 0.9f))
-                        .border(1.dp, if (isRegionDownloadMode) Color.White else BrandTeal.copy(alpha = 0.8f), CircleShape)
-                        .clickable {
-                            if (isRegionDownloadMode) {
-                                onCancelRegionDownload?.invoke()
-                            } else {
-                                onStartRegionDownload()
-                            }
-                        }
-                        .testTag("vector_region_download_btn"),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.CloudDownload,
-                        contentDescription = if (isRegionDownloadMode) "Exit Region Downloader" else "Download Offline Region",
-                        tint = if (isRegionDownloadMode) Color.Black else BrandTeal,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-            }
-
-            // Offline Walking Route Planner Button
-            if (onPlanTrailClick != null) {
-                Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFF080B1E).copy(alpha = 0.9f))
-                        .border(1.dp, BrandCoral.copy(alpha = 0.8f), CircleShape)
-                        .clickable { onPlanTrailClick() }
-                        .testTag("vector_route_planner_btn"),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Route,
-                        contentDescription = "Plan Route",
-                        tint = BrandCoral,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-            }
-
-            // Center on GPS Beacon
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(Color(0xFF080B1E).copy(alpha = 0.9f))
-                    .border(1.dp, BrandTeal.copy(alpha = 0.5f), CircleShape)
-                    .clickable { panOffset = Offset.Zero }
-                    .testTag("vector_center_on_me"),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.MyLocation,
-                    contentDescription = "Center on GPS",
-                    tint = BrandTeal,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-
-            // Step Zoom In (+)
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(Color(0xFF080B1E).copy(alpha = 0.9f))
-                    .border(1.dp, Color.White.copy(alpha = 0.25f), CircleShape)
-                    .clickable {
-                        onZoomIn()
-                        internalZoomScale = (internalZoomScale + 0.35f).coerceAtMost(ScoutVectorEngine.MAX_ZOOM_SCALE)
-                    }
-                    .testTag("vector_zoom_in"),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Add,
-                    contentDescription = "Zoom In",
-                    tint = Color.White,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-
-            // Step Zoom Out (-)
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(Color(0xFF080B1E).copy(alpha = 0.9f))
-                    .border(1.dp, Color.White.copy(alpha = 0.25f), CircleShape)
-                    .clickable {
-                        onZoomOut()
-                        internalZoomScale = (internalZoomScale - 0.35f).coerceAtLeast(ScoutVectorEngine.MIN_ZOOM_SCALE)
-                    }
-                    .testTag("vector_zoom_out"),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Remove,
-                    contentDescription = "Zoom Out",
-                    tint = Color.White,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-        }
+                .padding(end = 12.dp)
+        )
     }
 }
+
 
 /**
  * Backward-compatible overload for ScoutSpotEntity list with manual zoom integration.

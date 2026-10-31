@@ -17,9 +17,9 @@
 4. **Room Database Schemas**:
    - Room schema JSON versions 1.json through 7.json generated and committed in `app/schemas/`.
 
-5. **Screen Composables Refactoring**:
-   - `ExploreScreen.kt`, `RadarScreen.kt`, and `ProfileScreen.kt` split into focused sub-composables.
-   - All files under 500 lines (exceeding < ~600 lines requirement).
+5. **Screen & Component Composables Refactoring**:
+   - `ExploreScreen.kt`, `RadarScreen.kt`, `ProfileScreen.kt`, and `MapCanvasView.kt` split into focused sub-composables in their respective packages.
+   - All extracted components are modularized under ~200-300 lines each.
 
 ## Known Issues / Non-Blocking Items
 
