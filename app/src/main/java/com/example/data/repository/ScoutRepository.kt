@@ -168,8 +168,7 @@ class ScoutRepository(
     }
 
     suspend fun initializeIfEmpty() = withContext(Dispatchers.IO) {
-        if (scoutDao.getCount() == 0) {
-            com.example.data.local.AppDatabase.populateInitialSpots(scoutDao)
-        }
+        val legacySeedIds = listOf("spot_1", "spot_2", "spot_3", "spot_4", "spot_5", "spot_6", "spot_7", "spot_8")
+        scoutDao.deleteSpotsByIds(legacySeedIds)
     }
 }
