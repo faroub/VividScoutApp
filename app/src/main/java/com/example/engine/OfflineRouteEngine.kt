@@ -13,7 +13,11 @@ data class OfflineWalkingTrail(
     val waypoints: List<ScoutSpotEntity>,
     val pathPoints: List<Pair<Double, Double>>,
     val totalDistanceMeters: Double,
-    val estimatedWalkingMinutes: Int
+    val estimatedWalkingMinutes: Int,
+    val steps: List<RouteStep> = emptyList(),
+    val originTitle: String = "Starting Point",
+    val destinationTitle: String = "Destination",
+    val elevationProfile: RouteElevationProfile? = null
 ) {
     val formattedDistance: String
         get() = if (totalDistanceMeters >= 1000) {
@@ -58,7 +62,8 @@ object OfflineRouteEngine {
     fun calculateTrail(
         startLat: Double,
         startLng: Double,
-        spots: List<ScoutSpotEntity>
+        spots: List<ScoutSpotEntity>,
+        elevationModel: ElevationModel = NullElevationModel
     ): OfflineWalkingTrail? {
         if (spots.isEmpty()) return null
 
@@ -103,12 +108,58 @@ object OfflineRouteEngine {
         }
 
         val minutes = (totalDist / WALKING_SPEED_METERS_PER_MIN).roundToInt().coerceAtLeast(1)
+        val elevationProfile = elevationModel.buildElevationProfile(pathPoints)
 
         return OfflineWalkingTrail(
             waypoints = orderedWaypoints,
             pathPoints = pathPoints,
             totalDistanceMeters = totalDist,
-            estimatedWalkingMinutes = minutes
+            estimatedWalkingMinutes = minutes,
+            originTitle = "My Location",
+            destinationTitle = orderedWaypoints.lastOrNull()?.name ?: "Saved Gems Trail",
+            elevationProfile = elevationProfile
+        )
+    }
+
+    /**
+     * Calculates the shortest A* walking route between two cached locations or GPS positions,
+     * snapped to the vector road and pedestrian network.
+     */
+    fun calculateShortestAStarRoute(
+        originLat: Double,
+        originLng: Double,
+        destLat: Double,
+        destLng: Double,
+        originName: String = "Starting Point",
+        destName: String = "Destination",
+        originEntity: ScoutSpotEntity? = null,
+        destEntity: ScoutSpotEntity? = null,
+        elevationModel: ElevationModel = NullElevationModel
+    ): OfflineWalkingTrail {
+        val result = AStarPathfinder.findShortestPath(
+            startLat = originLat,
+            startLng = originLng,
+            destLat = destLat,
+            destLng = destLng,
+            startName = originName,
+            destName = destName
+        )
+
+        val waypoints = mutableListOf<ScoutSpotEntity>()
+        originEntity?.let { waypoints.add(it) }
+        destEntity?.let { waypoints.add(it) }
+
+        val elevationProfile = elevationModel.buildElevationProfile(result.pathPoints)
+
+        return OfflineWalkingTrail(
+            waypoints = waypoints,
+            pathPoints = result.pathPoints,
+            totalDistanceMeters = result.totalDistanceMeters,
+            estimatedWalkingMinutes = result.estimatedWalkingMinutes,
+            steps = result.steps,
+            originTitle = result.originName,
+            destinationTitle = result.destinationName,
+            elevationProfile = elevationProfile
         )
     }
 }

@@ -51,7 +51,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import com.example.util.ImageResolver
 import com.example.data.local.ScoutSpotEntity
 import com.example.ui.theme.BrandCoral
 import com.example.ui.theme.LocalAppStrings
@@ -65,6 +68,8 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
+
 @Composable
 fun SavedScreen(
     savedSpots: List<ScoutSpotEntity>,
@@ -73,6 +78,7 @@ fun SavedScreen(
     onToggleDiscovered: (ScoutSpotEntity) -> Unit = {},
     onSpotClick: (ScoutSpotEntity) -> Unit,
     onPlanWalkingTrail: () -> Unit = {},
+    onPlanRouteToSpot: ((ScoutSpotEntity) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val strings = LocalAppStrings.current
@@ -309,8 +315,15 @@ fun SavedScreen(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        val context = LocalContext.current
                         AsyncImage(
-                            model = spot.imageUrl,
+                            model = ImageRequest.Builder(context)
+                                .data(ImageResolver.resolveImageModel(spot.imageUrl, spot.category, spot.title, spot.id))
+                                .crossfade(true)
+                                .placeholder(ImageResolver.getDrawableResForCategory(spot.category))
+                                .error(ImageResolver.getDrawableResForCategory(spot.category))
+                                .fallback(ImageResolver.getDrawableResForCategory(spot.category))
+                                .build(),
                             contentDescription = spot.title,
                             contentScale = ContentScale.Crop,
                             modifier = Modifier
@@ -360,6 +373,19 @@ fun SavedScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1
                             )
+                        }
+
+                        if (onPlanRouteToSpot != null) {
+                            IconButton(
+                                onClick = { onPlanRouteToSpot(spot) },
+                                modifier = Modifier.testTag("plan_route_to_spot_${spot.id}")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.DirectionsWalk,
+                                    contentDescription = "Plan walking route",
+                                    tint = BrandCoral
+                                )
+                            }
                         }
 
                         if (selectedTab == 0) {

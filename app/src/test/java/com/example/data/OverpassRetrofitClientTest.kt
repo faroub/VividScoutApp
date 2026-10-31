@@ -26,6 +26,19 @@ class OverpassRetrofitClientTest {
     }
 
     @Test
+    fun buildQuery_generatesCategorySpecificFilters() {
+        val lat = 38.7112
+        val lng = -9.1423
+        val radius = 1500
+
+        val diningQuery = client.buildQuery(lat, lng, radius, "dining")
+        assertTrue("Dining query should target restaurant amenity", diningQuery.contains("""node["amenity"="restaurant"]"""))
+
+        val eventsQuery = client.buildQuery(lat, lng, radius, "events")
+        assertTrue("Events query should target museum tourism", eventsQuery.contains("""node["tourism"="museum"]"""))
+    }
+
+    @Test
     fun mapElementsToEntities_correctlyCategorizesViewpointBakeryAndShortcut() {
         val elements = listOf(
             OverpassElement(
@@ -69,5 +82,102 @@ class OverpassRetrofitClientTest {
         assertEquals("osm_node_103", spots[2].id)
         assertEquals("Escadinhas da Bica", spots[2].title)
         assertEquals("shortcut", spots[2].category)
+    }
+
+    @Test
+    fun mapElementsWithDiagnostics_capturesDroppedNodesAndReasons() {
+        val elements = listOf(
+            OverpassElement(
+                type = "node",
+                id = 201L,
+                lat = 38.7120,
+                lon = -9.1400,
+                tags = mapOf("tourism" to "viewpoint", "name" to "Valid Spot")
+            ),
+            OverpassElement(
+                type = "node",
+                id = 202L,
+                lat = null,
+                lon = null,
+                tags = mapOf("tourism" to "viewpoint", "name" to "Missing Coords Spot")
+            )
+        )
+
+        val (mapped, dropReasons) = client.mapElementsWithDiagnostics(elements, 38.7112, -9.1423)
+
+        assertEquals(1, mapped.size)
+        assertEquals("Valid Spot", mapped[0].title)
+        assertEquals(1, dropReasons.size)
+        assertTrue("Drop reason should indicate missing coordinates", dropReasons[0].contains("Missing latitude/longitude"))
+    }
+
+    @Test
+    fun mapElementsWithDiagnostics_discardsNodesExceeding50kmRadius() {
+        val userLat = 38.7112
+        val userLng = -9.1423
+
+        val elements = listOf(
+            // Nearby spot (~100m away)
+            OverpassElement(
+                type = "node",
+                id = 301L,
+                lat = 38.7120,
+                lon = -9.1420,
+                tags = mapOf("tourism" to "viewpoint", "name" to "Nearby Viewpoint")
+            ),
+            // Distant spot (>4,000 km away - e.g. New York 40.7128, -74.0060)
+            OverpassElement(
+                type = "node",
+                id = 302L,
+                lat = 40.7128,
+                lon = -74.0060,
+                tags = mapOf("tourism" to "viewpoint", "name" to "Distant NYC Spot")
+            )
+        )
+
+        val (mapped, dropReasons) = client.mapElementsWithDiagnostics(elements, userLat, userLng)
+
+        assertEquals(1, mapped.size)
+        assertEquals("Nearby Viewpoint", mapped[0].title)
+        assertEquals(1, dropReasons.size)
+        assertTrue("Drop reason should log 50 km safety radius limit", dropReasons[0].contains("exceeds 50 km safety radius limit"))
+    }
+
+    @Test
+    fun mapElementsWithDiagnostics_dropsUnnamedElements() {
+        val elements = listOf(
+            OverpassElement(
+                type = "node",
+                id = 401L,
+                lat = 38.7120,
+                lon = -9.1420,
+                tags = mapOf("tourism" to "viewpoint") // No name tag
+            )
+        )
+
+        val (mapped, dropReasons) = client.mapElementsWithDiagnostics(elements, 38.7112, -9.1423)
+
+        assertEquals(0, mapped.size)
+        assertEquals(1, dropReasons.size)
+        assertTrue("Drop reason should indicate missing official name tag", dropReasons[0].contains("Missing official name tag"))
+    }
+
+    @Test
+    fun overpassDiagnosticLog_calculatesMetricsCorrectly() {
+        val log = com.example.data.network.OverpassDiagnosticLog(
+            mirrorUrl = "https://overpass-api.de/",
+            httpStatusCode = 200,
+            durationMs = 245,
+            rawJson = """{"elements":[{"id":1}]}""",
+            rawElementsCount = 1,
+            mappedEntitiesCount = 1,
+            droppedElementsCount = 0,
+            isFallbackTriggered = false
+        )
+
+        assertTrue(log.isSuccess)
+        assertEquals(200, log.httpStatusCode)
+        assertEquals(245L, log.durationMs)
+        assertEquals(1, log.mappedEntitiesCount)
     }
 }

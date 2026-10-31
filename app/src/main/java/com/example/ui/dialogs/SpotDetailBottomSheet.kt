@@ -20,6 +20,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Navigation
@@ -49,6 +50,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import com.example.util.ImageResolver
 import com.example.data.local.ScoutSpotEntity
 import com.example.ui.theme.LocalAppStrings
 import com.example.ui.theme.PrimaryContainer
@@ -56,16 +59,31 @@ import com.example.ui.theme.Secondary
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.runtime.collectAsState
+import androidx.compose.material.icons.filled.AddComment
+import androidx.compose.material.icons.filled.NotificationsActive
+import com.example.ui.components.CommunityTipCard
+import com.example.ui.components.PostTipDialog
+import com.example.util.TipDecayUtils
+import com.example.ui.theme.BrandTeal
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalContext
+import com.example.data.local.AppDatabase
+import com.example.data.model.WeatherReport
+import com.example.data.repository.WeatherRepository
+import com.example.ui.components.WeatherCard
 import com.example.ui.theme.SecondaryContainer
 import com.example.ui.theme.SurfaceContainerLow
 import com.example.ui.theme.SurfaceContainerLowest
 import com.example.ui.theme.Tertiary
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -77,12 +95,48 @@ fun SpotDetailBottomSheet(
     onSaveNote: (String) -> Unit = {},
     onUpvote: () -> Unit,
     onToggleAudio: () -> Unit,
-    isPlayingAudio: Boolean
+    isPlayingAudio: Boolean,
+    onPlanRoute: (() -> Unit)? = null,
+    onReFetchImage: (spotId: String, onResult: (Boolean, String) -> Unit) -> Unit = { _, _ -> }
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val strings = LocalAppStrings.current
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
     var noteText by remember(spot.id) { mutableStateOf(spot.userNotes ?: "") }
     var isNoteSaved by remember { mutableStateOf(false) }
+
+    var weatherReport by remember { mutableStateOf<WeatherReport?>(null) }
+    var isWeatherLoading by remember { mutableStateOf(false) }
+
+    val weatherRepository = remember {
+        val db = AppDatabase.getDatabase(context)
+        WeatherRepository(db.weatherDao())
+    }
+
+    var isPostTipOpen by remember { mutableStateOf(false) }
+    val db = remember { AppDatabase.getDatabase(context) }
+    val tipsForSpot by db.communityTipDao().getTipsForSpotFlow(spot.id).collectAsState(initial = emptyList())
+    val latestStatus = tipsForSpot.firstOrNull { it.isStatusUpdate }
+
+    fun fetchWeather(forceRefresh: Boolean = false) {
+        scope.launch {
+            isWeatherLoading = true
+            weatherReport = weatherRepository.getOrFetchWeather(
+                gemId = spot.id,
+                latitude = spot.latitude,
+                longitude = spot.longitude,
+                category = spot.category,
+                forceRefresh = forceRefresh
+            )
+            isWeatherLoading = false
+        }
+    }
+
+    LaunchedEffect(spot.id) {
+        fetchWeather(forceRefresh = false)
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -104,7 +158,13 @@ fun SpotDetailBottomSheet(
                     .height(230.dp)
             ) {
                 AsyncImage(
-                    model = spot.imageUrl,
+                    model = ImageRequest.Builder(context)
+                        .data(ImageResolver.resolveImageModel(spot.imageUrl, spot.category, spot.title, spot.id))
+                        .crossfade(true)
+                        .placeholder(ImageResolver.getDrawableResForCategory(spot.category))
+                        .error(ImageResolver.getDrawableResForCategory(spot.category))
+                        .fallback(ImageResolver.getDrawableResForCategory(spot.category))
+                        .build(),
                     contentDescription = spot.title,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()
@@ -152,7 +212,42 @@ fun SpotDetailBottomSheet(
                         )
                     }
                 }
+
+                // Photo attribution badge
+                val photoAttribution = ImageResolver.getAttribution(spot.title, spot.imageUrl, spot.category)
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(16.dp)
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(Color.Black.copy(alpha = 0.65f))
+                        .padding(horizontal = 10.dp, vertical = 5.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.CameraAlt,
+                            contentDescription = null,
+                            tint = Color.White.copy(alpha = 0.9f),
+                            modifier = Modifier.size(12.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = photoAttribution,
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Medium
+                            ),
+                            color = Color.White
+                        )
+                    }
+                }
             }
+
+            // Diagnostic Telemetry & Re-Fetch Visualizer
+            com.example.ui.components.ImageDiagnosticVisualizerCard(
+                spot = spot,
+                onReFetchImage = onReFetchImage
+            )
 
             // Body
             Column(
@@ -181,25 +276,97 @@ fun SpotDetailBottomSheet(
                         )
                     }
 
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
+                    if (spot.rating != null || spot.reviewCount != null) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(999.dp))
+                                .background(SurfaceContainerLow)
+                                .padding(horizontal = 10.dp, vertical = 5.dp)
+                        ) {
+                            if (spot.rating != null) {
+                                Icon(
+                                    imageVector = Icons.Default.Star,
+                                    contentDescription = null,
+                                    tint = PrimaryContainer,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                            }
+                            val ratingReviewText = when {
+                                spot.rating != null && spot.reviewCount != null -> "${spot.rating} (${spot.reviewCount})"
+                                spot.rating != null -> "${spot.rating}"
+                                else -> ""
+                            }
+                            if (ratingReviewText.isNotEmpty()) {
+                                Text(
+                                    text = ratingReviewText,
+                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Live Community Spot Status Alert (e.g. "Bakery out of bread")
+                if (latestStatus != null) {
+                    val decayTier = TipDecayUtils.calculateDecayTier(latestStatus.timestamp)
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = decayTier.containerColor,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, decayTier.dotColor.copy(alpha = 0.5f)),
                         modifier = Modifier
-                            .clip(RoundedCornerShape(999.dp))
-                            .background(SurfaceContainerLow)
-                            .padding(horizontal = 10.dp, vertical = 5.dp)
+                            .fillMaxWidth()
+                            .testTag("spot_detail_live_status_alert")
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Star,
-                            contentDescription = null,
-                            tint = PrimaryContainer,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "${spot.rating} (${spot.reviewCount})",
-                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .clip(CircleShape)
+                                    .background(decayTier.dotColor.copy(alpha = 0.2f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.NotificationsActive,
+                                    contentDescription = null,
+                                    tint = decayTier.dotColor,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                            Column(modifier = Modifier.weight(1f)) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text(
+                                        text = "LIVE STATUS ALERT",
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontWeight = FontWeight.Black,
+                                            letterSpacing = 0.8.sp,
+                                            fontSize = 9.sp
+                                        ),
+                                        color = decayTier.contentColor
+                                    )
+                                    Text(
+                                        text = "• ${TipDecayUtils.formatRelativeTime(latestStatus.timestamp)}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = decayTier.contentColor.copy(alpha = 0.8f),
+                                        fontSize = 9.sp
+                                    )
+                                }
+                                Text(
+                                    text = latestStatus.content,
+                                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
                     }
                 }
 
@@ -209,6 +376,13 @@ fun SpotDetailBottomSheet(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     lineHeight = 22.sp
+                )
+
+                // Weather & Visit Suitability Forecast Card
+                WeatherCard(
+                    weather = weatherReport,
+                    isLoading = isWeatherLoading,
+                    onRefreshClick = { fetchWeather(forceRefresh = true) }
                 )
 
                 // Audio Lore Player (if available)
@@ -266,6 +440,83 @@ fun SpotDetailBottomSheet(
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
+                        }
+                    }
+                }
+
+                // Community Ground Truth & Tips Section
+                Surface(
+                    color = SurfaceContainerLow,
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("spot_detail_community_section")
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(
+                                    text = "COMMUNITY GROUND TRUTH",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontWeight = FontWeight.Black,
+                                        letterSpacing = 0.8.sp
+                                    ),
+                                    color = BrandTeal
+                                )
+                                Text(
+                                    text = "${tipsForSpot.size} Scout Reports in P2P Cache",
+                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+
+                            Button(
+                                onClick = { isPostTipOpen = true },
+                                colors = ButtonDefaults.buttonColors(containerColor = BrandTeal),
+                                shape = RoundedCornerShape(999.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                modifier = Modifier.testTag("spot_detail_post_tip_btn")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.AddComment,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "Leave Tip",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold)
+                                )
+                            }
+                        }
+
+                        if (tipsForSpot.isEmpty()) {
+                            Text(
+                                text = "No community reports for this gem yet. Leave the first tip or status alert!",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        } else {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                tipsForSpot.take(3).forEach { tip ->
+                                    CommunityTipCard(
+                                        tip = tip,
+                                        onUpvoteClick = { tipId ->
+                                            scope.launch {
+                                                db.communityTipDao().incrementUpvote(tipId)
+                                            }
+                                        },
+                                        showSpotHeader = false
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -426,19 +677,24 @@ fun SpotDetailBottomSheet(
                     ) {
                         Icon(
                             imageVector = Icons.Default.ThumbUp,
-                            contentDescription = null,
+                            contentDescription = "Upvote",
                             modifier = Modifier.size(16.dp)
                         )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "${spot.upvotes}",
-                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
-                        )
+                        if (spot.upvotes != null) {
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "${spot.upvotes}",
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                            )
+                        }
                     }
 
                     // Start Navigation CTA
                     Button(
-                        onClick = onDismiss,
+                        onClick = {
+                            onDismiss()
+                            onPlanRoute?.invoke()
+                        },
                         colors = ButtonDefaults.buttonColors(
                             containerColor = PrimaryContainer,
                             contentColor = Color.White
@@ -447,6 +703,7 @@ fun SpotDetailBottomSheet(
                         modifier = Modifier
                             .weight(1f)
                             .height(50.dp)
+                            .testTag("spot_detail_directions_cta")
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
@@ -465,4 +722,16 @@ fun SpotDetailBottomSheet(
             }
         }
     }
+
+    PostTipDialog(
+        isOpen = isPostTipOpen,
+        onDismiss = { isPostTipOpen = false },
+        onSubmit = { spotId, spotTitle, content, isStatus, category ->
+            scope.launch {
+                val repo = com.example.data.repository.CommunityTipRepository(db.communityTipDao())
+                repo.postTip(spotId, spotTitle, content, isStatus, category)
+            }
+        },
+        initialSpot = spot
+    )
 }

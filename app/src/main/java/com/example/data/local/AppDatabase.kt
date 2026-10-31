@@ -11,14 +11,25 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 @Database(
-    entities = [ScoutSpotEntity::class, DiscoveredGemEntity::class],
-    version = 2,
-    exportSchema = false
+    entities = [
+        ScoutSpotEntity::class,
+        DiscoveredGemEntity::class,
+        RecentSearchEntity::class,
+        WeatherCacheEntity::class,
+        AchievementEntity::class,
+        CommunityTipEntity::class
+    ],
+    version = 7,
+    exportSchema = true
 )
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun scoutDao(): ScoutDao
     abstract fun discoveredGemDao(): DiscoveredGemDao
+    abstract fun recentSearchDao(): RecentSearchDao
+    abstract fun weatherDao(): WeatherDao
+    abstract fun achievementDao(): AchievementDao
+    abstract fun communityTipDao(): CommunityTipDao
 
     companion object {
         @Volatile
@@ -31,7 +42,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "vivid_scout_database"
                 )
-                    .fallbackToDestructiveMigration(dropAllTables = true)
+                    .addMigrations(*DatabaseMigrations.ALL_MIGRATIONS)
                     .addCallback(DatabaseCallback())
                     .build()
                 INSTANCE = instance
@@ -45,8 +56,38 @@ abstract class AppDatabase : RoomDatabase() {
                 INSTANCE?.let { database ->
                     CoroutineScope(Dispatchers.IO).launch {
                         populateInitialSpots(database.scoutDao())
+                        populateInitialRecentSearches(database.recentSearchDao())
+                        populateInitialAchievements(database.achievementDao())
+                        populateInitialCommunityTips(database.communityTipDao())
                     }
                 }
+            }
+        }
+
+        suspend fun populateInitialRecentSearches(dao: RecentSearchDao) {
+            val now = System.currentTimeMillis()
+            val initialSearches = listOf(
+                RecentSearchEntity(
+                    id = "search_seed_1",
+                    queryText = "Secret Azulejo Viewpoints",
+                    category = "sights",
+                    timestamp = now
+                ),
+                RecentSearchEntity(
+                    id = "search_seed_2",
+                    queryText = "Artisanal Pastel Pastries",
+                    category = "eats",
+                    timestamp = now - 60_000L
+                ),
+                RecentSearchEntity(
+                    id = "search_seed_3",
+                    queryText = "Historic Fado Taverns",
+                    category = "history",
+                    timestamp = now - 120_000L
+                )
+            )
+            for (search in initialSearches) {
+                dao.insertSearch(search)
             }
         }
 
@@ -60,8 +101,8 @@ abstract class AppDatabase : RoomDatabase() {
                     distance = "350m walk",
                     walkMinutes = 5,
                     rating = 4.9,
-                    reviewCount = "1.8k",
-                    imageUrl = "https://lh3.googleusercontent.com/aida-public/AB6AXuC3yq57UPilhAgxFkvUZQ5DXMV0nLjnY1lj6srOo8k71oIJOj9esabTT7DxOYTau3HaO_RITybss_bGFcHfxzDzJKCE4rM1X9OhUPA_yHSe2X5b3hn5WrZKMq9gAELDIHmFyAZK6l5EBzsBR-USkjbvbvtjaddKnGUSbapgxmMo93rxnCTXBhVu_uLpq3eisrgGHIRqHgvN25OFa5sBKZ70slSvRtWb1s0WI5KcEe-8x8OzKZ4aEKLj",
+                    reviewCount = 1800,
+                    imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/c/cd/MiradouroSantaLuzia.JPG/800px-MiradouroSantaLuzia.JPG",
                     badgeLabel = "SIGHTS",
                     statusBadge = "Scraped 8m ago",
                     tagsRaw = "Free Entry|||Quiet sunny nook right now|||Bougainvillea Bloom",
@@ -84,8 +125,8 @@ abstract class AppDatabase : RoomDatabase() {
                     distance = "180m walk",
                     walkMinutes = 3,
                     rating = 4.8,
-                    reviewCount = "950",
-                    imageUrl = "https://lh3.googleusercontent.com/aida-public/AB6AXuDPCK5oapFoy00NJ1b3mIU0vUn2Gnrk1awb3Jvl7kyGVnyA4wBvHgjmdRb1tqk2Ok6_GcFB5mibaV-scj50JK3m0jew3pZok2LB27QElGEzIN5lg4nTU-dyqYXNkkgkJQ0e1xB35HgmVVw1zL2hgYJv_rTaQDmfuTfmYGtQIqejW_-O9s7fEOTtrq48qvwsh7V5mH6PbnPMRzdRInngGIFWL0a69w6iex0qFfeCsklaE8HhuOmIcDah",
+                    reviewCount = 950,
+                    imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/3/30/Pastel_de_nata_em_Lisboa.jpg/800px-Pastel_de_nata_em_Lisboa.jpg",
                     badgeLabel = "WARM BAKERY ALERT",
                     statusBadge = "Oven: 4m ago",
                     tagsRaw = "~3 mins line|||Peak Crispness: 12 min window|||Fresh Batch Pulled",
@@ -105,8 +146,8 @@ abstract class AppDatabase : RoomDatabase() {
                     distance = "0.4 km away",
                     walkMinutes = 6,
                     rating = 4.9,
-                    reviewCount = "1.4k",
-                    imageUrl = "https://lh3.googleusercontent.com/aida-public/AB6AXuBPtZx47YTIT9FDFZdINpU_-pVnF79RzoKvF3OePU02L7RoEUwGaCLDNrJcDicykBnIB3t2O2Lv7vgeN5u2fIhfvytDkad9QuPKpiAckNYsH4inim64vxuBeQRo4sbXxnqGsNgPGGJSQ8Xm25r_EIKWkm9Cs9WgMVMf7KBxJPRlAeFDrCaMCocdhIJ5HwRAC1Y6oPOupNturZDoSezwCKp71MDbaNFtCircAnOqwJREtCcaL1XNmrT5",
+                    reviewCount = 1400,
+                    imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d4/Convento_do_Carmo_Lisbon.jpg/800px-Convento_do_Carmo_Lisbon.jpg",
                     badgeLabel = "HISTORY",
                     statusBadge = "Audio Clip 1m30s",
                     tagsRaw = "Gothic Nave|||Skip-Queue Pass|||Audio Tour",
@@ -127,14 +168,14 @@ abstract class AppDatabase : RoomDatabase() {
                     distance = "520m walk",
                     walkMinutes = 7,
                     rating = 4.9,
-                    reviewCount = "88",
-                    imageUrl = "https://lh3.googleusercontent.com/aida-public/AB6AXuDYYMaNLMTo5oXwUSLoYVEVxcb5NfdLPTYuRmJNjzB95cBREyxMjMcbiygmDP30SrPdRwckFobYF4K0DHMJ0s3NJNqPGyXDiXsXDquy2oeFhm_4kmK5ExLEUenaQdtxdgGt4WuUmP-9ZDpvivln0-aX4OCh9CHhjjZWUUevRFlRR0zBXHkIWAqZLXe5tBWZwMqIUN0Al_I12L8FJib5c7Tmqy0Ej42_1fzpsQ1CjZK5wVJhbXkAwSay",
+                    reviewCount = 88,
+                    imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6b/Escadinhas_da_Sa%C3%BAde_Mouraria.jpg/800px-Escadinhas_da_Sa%C3%BAde_Mouraria.jpg",
                     badgeLabel = "COMMUNITY GEM",
                     statusBadge = "94% Verified",
                     tagsRaw = "Cuts 12 mins uphill|||Cobblestone Pass|||Secret Pass",
                     proTip = "Look for the iron street lamp with the brass falcon crest.",
                     contributor = "@ana_traveler",
-                    contributorAvatar = "https://lh3.googleusercontent.com/aida-public/AB6AXuDjhSwx8_tEIeIp1FmafMomZgm7wK0L_DWQB3f28iVgrWWutERlumrWrcb9yhpS5Pd7brXb9Sz_EBjGE8OKZIvGP3lXrtOFTGQfWGUMfbyitWMg9fwxXyRb8bE-9x3XAsrWey9LaSoUpEZC-3V4qb3oXsEvmkUNcDJoPhr6abcNuPKMLzwvpdWe0T8GG9B_a3RZR_s7uScpEPtVFz63C3_3tBwf1GO5wSLEoMPYs0n4KJZLCLcwnUNU",
+                    contributorAvatar = null,
                     upvotes = 88,
                     isSaved = false,
                     isDiscovered = true,
@@ -152,8 +193,8 @@ abstract class AppDatabase : RoomDatabase() {
                     distance = "0.8 km away",
                     walkMinutes = 11,
                     rating = 4.8,
-                    reviewCount = "1.2k",
-                    imageUrl = "https://lh3.googleusercontent.com/aida-public/AB6AXuCX7TovRy3XzH1uE9mvV91IY27SQePR3ZGLyTtwu9FiDg0QKewNNsH0s0_EZMKDHdM-E4Ns0ScaM_HPa-QVhDFyiLv_eulNvUig3WBoHn6DXjAXHT6n8fSTSJ4Fq25RX2bbn6vib3x7PtMU2RvqyV5hCn2thWxNZ17xrecUQu9BFvD4DxXi8PJfiebziZxGtFHKtMj1wWVIQ840aI8CrMEnVIcrYmTXgEHtM5JN6M7omxkXpErrsv4R",
+                    reviewCount = 1200,
+                    imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/2/24/Pastel_de_Nata_Manteigaria.jpg/800px-Pastel_de_Nata_Manteigaria.jpg",
                     badgeLabel = "STREET EATS · WARM BATCH",
                     statusBadge = "Fresh out oven 3m ago",
                     tagsRaw = "Crisp Crust|||No Line right now|||€1.40 / piece",
@@ -173,8 +214,8 @@ abstract class AppDatabase : RoomDatabase() {
                     distance = "1.2 km away",
                     walkMinutes = 18,
                     rating = 4.9,
-                    reviewCount = "3.2k",
-                    imageUrl = "https://lh3.googleusercontent.com/aida-public/AB6AXuBOhbli2-YQxZAhAPDPhNvvTacfDkHOHHHzQoSlWoSPPOHy_ZDNBDjTTuEdX9cjFNrNERYhx_w6rg8NBlpYMd7Mx0TZEFrK_urq1XrKKQOiAMNOebbvbbEeDIwRnyCf_UCHd-QBPUdSu3IFuPA_7g_sN5oDoZgTNM2PVXMnTjbVKAgoFQNO1HiameuZDjSjchyYwnEC5z6N40mG_zkdCPyS4PMJVtYs1-ha5ry67HhAMl9dhxYoDJsL",
+                    reviewCount = 3200,
+                    imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4b/Miradouro_da_Senhora_do_Monte%2C_Lisbon%2C_Portugal_%2848835849883%29.jpg/800px-Miradouro_da_Senhora_do_Monte%2C_Lisbon%2C_Portugal_%2848835849883%29.jpg",
                     badgeLabel = "PANORAMIC SUNSET",
                     statusBadge = "Golden Hour 19:42",
                     tagsRaw = "Golden Hour 19:42|||Free Access|||Busker Live",
@@ -194,8 +235,8 @@ abstract class AppDatabase : RoomDatabase() {
                     distance = "1.6 km away",
                     walkMinutes = 22,
                     rating = 4.8,
-                    reviewCount = "2.1k",
-                    imageUrl = "https://lh3.googleusercontent.com/aida-public/AB6AXuBXvw73czX-hYaqEdjVA0sZz4T7dGTpYzWIZit1Fr-Vo903wE-HlvLUdxxAelwkXZnuu-Lj4YoT4zDuK26SH_ePqSzHkIzYXbyEXfdF7ZH9Qeo--q7qFarCHAZwejijWy0-ofYKCdAGeOUJfMVXBYNKThmn_tZ01S5VqWs9eKpmCii6Z0OcOZ1hI-NBINU9C4SHx0Vt66Jzs254Of15B-2C5rDxnuVpb-_3CAb33bk6FkBNM6Scay18",
+                    reviewCount = 2100,
+                    imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/6/69/Castelo_de_S%C3%A3o_Jorge_by_Augusto_Cabrita.jpg/800px-Castelo_de_S%C3%A3o_Jorge_by_Augusto_Cabrita.jpg",
                     badgeLabel = "HIDDEN HISTORY",
                     statusBadge = "Pine Shaded Trail",
                     tagsRaw = "Secret Garden|||Medieval Walls|||Pine Shade",
@@ -215,8 +256,8 @@ abstract class AppDatabase : RoomDatabase() {
                     distance = "310m walk",
                     walkMinutes = 4,
                     rating = 5.0,
-                    reviewCount = "Offline Draft",
-                    imageUrl = "https://lh3.googleusercontent.com/aida-public/AB6AXuB7xEP9h28BmLIl7Blc9HlVd6pFvRCzWVE0iDC6Ca1oPEDNOlydMy8IbMDvHPNp5_0uUlGCZu5Cw6Bm39F_KkbvLPOmcgrXHSU-a4h7PVnRNgle66SM05K7w8EOWeQ5yG6-5OzUUMA-vVU40aqUdOAWyXH1crmx9Vp2tTTAQ1QTNNEvtbnoukMI4v0qHyR2ad0mL70ALOBm16NlvPATzNielDDSV7Rp-pzWtZzzWv8pTeMZBuNBXfjY",
+                    reviewCount = null,
+                    imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/3/36/Alfama_Lisbon_street_scene.jpg/800px-Alfama_Lisbon_street_scene.jpg",
                     badgeLabel = "OFFLINE SCOUT DRAFT",
                     statusBadge = "Pending Auto-Sync",
                     tagsRaw = "Offline Queued|||GPS Cached: ±3m|||Photo Stored Locally",
@@ -231,6 +272,73 @@ abstract class AppDatabase : RoomDatabase() {
                 )
             )
             dao.insertSpots(initialSpots)
+        }
+
+        suspend fun populateInitialAchievements(dao: AchievementDao) {
+            val initialAchievements = listOf(
+                AchievementEntity(
+                    id = "sights_explorer",
+                    title = "Sights Explorer",
+                    description = "Discover 3 scenic viewpoints, miradouros, or panorama terraces in Alfama.",
+                    category = "sights",
+                    tierLevel = 1,
+                    currentProgress = 1,
+                    targetGoal = 3,
+                    isUnlocked = false,
+                    iconResName = "ic_cat_sights"
+                ),
+                AchievementEntity(
+                    id = "foodie_scout",
+                    title = "Foodie Scout",
+                    description = "Sample 3 local bakery tarts, standing cafes, or artisan dining spots.",
+                    category = "eats",
+                    tierLevel = 1,
+                    currentProgress = 0,
+                    targetGoal = 3,
+                    isUnlocked = false,
+                    iconResName = "ic_cat_eats"
+                ),
+                AchievementEntity(
+                    id = "history_buff",
+                    title = "History Buff",
+                    description = "Explore 2 historic convents, castle ramparts, or gothic ruins.",
+                    category = "history",
+                    tierLevel = 2,
+                    currentProgress = 0,
+                    targetGoal = 2,
+                    isUnlocked = false,
+                    iconResName = "ic_cat_history"
+                ),
+                AchievementEntity(
+                    id = "shortcut_master",
+                    title = "Shortcut Master",
+                    description = "Uncover 2 secret tile tunnels or cobblestone pedestrian staircases.",
+                    category = "shortcut",
+                    tierLevel = 2,
+                    currentProgress = 1,
+                    targetGoal = 2,
+                    isUnlocked = false,
+                    iconResName = "ic_cat_shortcut"
+                ),
+                AchievementEntity(
+                    id = "offline_pioneer",
+                    title = "Offline Pioneer",
+                    description = "Log 1 custom offline scout draft in Room database without cellular network.",
+                    category = "offline",
+                    tierLevel = 3,
+                    currentProgress = 1,
+                    targetGoal = 1,
+                    isUnlocked = true,
+                    unlockedTimestamp = System.currentTimeMillis() - 86400000L,
+                    iconResName = "ic_cat_secret"
+                )
+            )
+            dao.insertAchievements(initialAchievements)
+        }
+
+        suspend fun populateInitialCommunityTips(dao: CommunityTipDao) {
+            val initialTips = com.example.data.p2p.PeerMeshSyncEngine.createSeedTips()
+            dao.insertTips(initialTips)
         }
     }
 }

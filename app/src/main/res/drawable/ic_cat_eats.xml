@@ -1,0 +1,67 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="400dp"
+    android:height="220dp"
+    android:viewportWidth="400"
+    android:viewportHeight="220">
+
+    <!-- Warm Bakery Oven Glow Gradient -->
+    <path android:pathData="M0,0h400v220h-400z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="200"
+                android:startY="0"
+                android:endX="200"
+                android:endY="220"
+                android:type="linear">
+                <item android:color="#FFD97706" android:offset="0.0" />
+                <item android:color="#FFB45309" android:offset="0.5" />
+                <item android:color="#FF451A03" android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Decorative Azulejo Tile Line Header -->
+    <path
+        android:pathData="M0,15 H400 V25 H0 Z"
+        android:fillColor="#FEF3C7"
+        android:fillAlpha="0.4" />
+
+    <!-- Pastel de Nata Tart Shell Base -->
+    <path
+        android:pathData="M140,140 Q200,185 260,140 Q240,110 200,110 Q160,110 140,140 Z"
+        android:fillColor="#F59E0B" />
+    <path
+        android:pathData="M150,135 Q200,175 250,135 Q235,115 200,115 Q165,115 150,135 Z"
+        android:fillColor="#FEF08A" />
+
+    <!-- Custard Caramelized Spots -->
+    <path
+        android:pathData="M180,130 A6,5 0 1,0 192,130 A6,5 0 1,0 180,130"
+        android:fillColor="#78350F" />
+    <path
+        android:pathData="M210,138 A8,6 0 1,0 226,138 A8,6 0 1,0 210,138"
+        android:fillColor="#92400E" />
+    <path
+        android:pathData="M195,145 A5,4 0 1,0 205,145 A5,4 0 1,0 195,145"
+        android:fillColor="#78350F" />
+
+    <!-- Steam Aromas -->
+    <path
+        android:pathData="M175,95 Q185,80 175,65 M200,90 Q210,72 200,55 M225,95 Q235,80 225,65"
+        android:strokeColor="#FEF3C7"
+        android:strokeWidth="3.5"
+        android:strokeLineCap="round" />
+
+    <!-- Espresso Cup Silhouette -->
+    <path
+        android:pathData="M290,140 H330 V165 Q330,175 310,175 Q290,175 290,165 Z"
+        android:fillColor="#FFF8FAFC" />
+    <path
+        android:pathData="M330,145 C342,145 342,160 330,160"
+        android:strokeColor="#FFF8FAFC"
+        android:strokeWidth="3" />
+    <path
+        android:pathData="M280,175 H340 V180 H280 Z"
+        android:fillColor="#CBD5E1" />
+</vector>

@@ -22,10 +22,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -35,8 +39,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
@@ -45,6 +51,7 @@ import com.example.data.local.ScoutSpotEntity
 import com.example.data.model.ScoutGem
 import com.example.data.model.toEntity
 import com.example.data.model.toScoutGem
+import com.example.data.offline.GeoBoundingBox
 import com.example.engine.ScoutVectorEngine
 import com.example.ui.theme.BrandCoral
 import com.example.ui.theme.BrandTeal
@@ -52,12 +59,17 @@ import kotlin.math.hypot
 
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.CenterFocusStrong
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Route
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.ZoomIn
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -90,8 +102,29 @@ fun MapCanvasView(
     onResetZoom: () -> Unit = {},
     activeTrail: com.example.engine.OfflineWalkingTrail? = null,
     onPlanTrailClick: (() -> Unit)? = null,
+    onClearTrailClick: (() -> Unit)? = null,
+    cacheHealth: com.example.data.model.VicinityCacheHealth? = null,
+    onOpenCacheHealth: (() -> Unit)? = null,
+    isRegionDownloadMode: Boolean = false,
+    selectionBounds: GeoBoundingBox? = null,
+    onUpdateSelectionBounds: ((GeoBoundingBox) -> Unit)? = null,
+    onStartRegionDownload: (() -> Unit)? = null,
+    onCancelRegionDownload: (() -> Unit)? = null,
+    onConfirmRegionDownload: (() -> Unit)? = null,
+    achievements: List<com.example.data.local.AchievementEntity> = emptyList(),
     modifier: Modifier = Modifier
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val compassSensorManager = remember { com.example.sensor.CompassSensorManager(context) }
+    val compassState by compassSensorManager.compassState.collectAsState()
+
+    androidx.compose.runtime.DisposableEffect(userLat, userLng) {
+        compassSensorManager.startListening(userLat, userLng)
+        onDispose {
+            compassSensorManager.stopListening()
+        }
+    }
+
     var panOffset by remember { mutableStateOf(Offset.Zero) }
     var internalZoomScale by remember { mutableFloatStateOf(zoomScale) }
 
@@ -108,6 +141,17 @@ fun MapCanvasView(
             repeatMode = RepeatMode.Reverse
         ),
         label = "beaconPulse"
+    )
+
+    // Marching phase for walking path dashed line and directional pulse markers
+    val directionalPulsePhase by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2200, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "directionalPulsePhase"
     )
 
     val baseScale = ScoutVectorEngine.DEFAULT_BASE_SCALE
@@ -231,14 +275,11 @@ fun MapCanvasView(
                 style = Stroke(width = 3f * activeZoomScale)
             )
 
-            // 4b. Active Offline Walking Trail Polyline
+            // 4b. Active Offline Walking Trail Polyline (Glowing dashed path with pulsing directional markers)
             activeTrail?.let { trail ->
                 if (trail.pathPoints.size >= 2) {
-                    val trailPath = Path()
-                    var first = true
-
-                    trail.pathPoints.forEach { pt ->
-                        val pos = ScoutVectorEngine.projectGpsToCanvasOffset(
+                    val projectedPoints = trail.pathPoints.map { pt ->
+                        ScoutVectorEngine.projectGpsToCanvasOffset(
                             spotLat = pt.first,
                             spotLng = pt.second,
                             userLat = userLat,
@@ -247,29 +288,109 @@ fun MapCanvasView(
                             zoomScale = activeZoomScale,
                             baseScale = baseScale
                         )
-                        if (first) {
-                            trailPath.moveTo(pos.x, pos.y)
-                            first = false
-                        } else {
-                            trailPath.lineTo(pos.x, pos.y)
+                    }
+
+                    val trailPath = Path()
+                    projectedPoints.forEachIndexed { index, pos ->
+                        if (index == 0) trailPath.moveTo(pos.x, pos.y)
+                        else trailPath.lineTo(pos.x, pos.y)
+                    }
+
+                    // 1. Wide ambient glowing path halo
+                    drawPath(
+                        path = trailPath,
+                        color = BrandCoral.copy(alpha = 0.20f),
+                        style = Stroke(width = 16f * activeZoomScale.coerceIn(0.8f, 1.5f))
+                    )
+                    // 2. Focused glowing corridor
+                    drawPath(
+                        path = trailPath,
+                        color = BrandCoral.copy(alpha = 0.55f),
+                        style = Stroke(width = 7f * activeZoomScale.coerceIn(0.8f, 1.5f))
+                    )
+                    // 3. Inner high-contrast marching dashed line
+                    val dashLength = 16f
+                    val gapLength = 10f
+                    val totalCycle = dashLength + gapLength
+                    drawPath(
+                        path = trailPath,
+                        color = Color.White,
+                        style = Stroke(
+                            width = 3f * activeZoomScale.coerceIn(0.8f, 1.5f),
+                            pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(
+                                intervals = floatArrayOf(dashLength, gapLength),
+                                phase = -directionalPulsePhase * totalCycle
+                            )
+                        )
+                    )
+
+                    // 4. Pulsing Directional Markers along the path
+                    val numPoints = projectedPoints.size
+                    if (numPoints >= 2) {
+                        val markerSpacing = (numPoints / 6).coerceAtLeast(1)
+                        for (i in 0 until numPoints - 1 step markerSpacing) {
+                            val p1 = projectedPoints[i]
+                            val p2 = projectedPoints[i + 1]
+                            val dx = p2.x - p1.x
+                            val dy = p2.y - p1.y
+                            val segLength = hypot(dx, dy)
+                            if (segLength > 6f) {
+                                val offsetFraction = ((i.toFloat() / numPoints) + directionalPulsePhase) % 1f
+                                val markerX = p1.x + dx * offsetFraction
+                                val markerY = p1.y + dy * offsetFraction
+                                val markerSize = 6f * activeZoomScale.coerceIn(0.8f, 1.4f)
+
+                                drawCircle(
+                                    color = BrandCoral.copy(alpha = 0.35f),
+                                    radius = markerSize * 1.8f,
+                                    center = Offset(markerX, markerY)
+                                )
+                                drawCircle(
+                                    color = Color.White,
+                                    radius = markerSize * 0.7f,
+                                    center = Offset(markerX, markerY)
+                                )
+                            }
                         }
                     }
 
-                    // Outer glowing path halo
-                    drawPath(
-                        path = trailPath,
-                        color = BrandCoral.copy(alpha = 0.45f),
-                        style = Stroke(width = 10f * activeZoomScale.coerceIn(0.8f, 1.5f))
-                    )
-                    // Inner dashed coral walking path line
-                    drawPath(
-                        path = trailPath,
-                        color = BrandCoral,
-                        style = Stroke(
-                            width = 4f * activeZoomScale.coerceIn(0.8f, 1.5f),
-                            pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(18f, 12f), 0f)
+                    // 5. Origin Beacon Node
+                    projectedPoints.firstOrNull()?.let { startPt ->
+                        drawCircle(
+                            color = BrandTeal.copy(alpha = 0.35f),
+                            radius = 12f * activeZoomScale.coerceIn(0.8f, 1.5f),
+                            center = startPt
                         )
-                    )
+                        drawCircle(
+                            color = BrandTeal,
+                            radius = 6f * activeZoomScale.coerceIn(0.8f, 1.5f),
+                            center = startPt
+                        )
+                        drawCircle(
+                            color = Color.White,
+                            radius = 2.5f * activeZoomScale.coerceIn(0.8f, 1.5f),
+                            center = startPt
+                        )
+                    }
+
+                    // 6. Destination Target Pin Node
+                    projectedPoints.lastOrNull()?.let { endPt ->
+                        drawCircle(
+                            color = BrandCoral.copy(alpha = 0.35f),
+                            radius = 14f * activeZoomScale.coerceIn(0.8f, 1.5f),
+                            center = endPt
+                        )
+                        drawCircle(
+                            color = BrandCoral,
+                            radius = 8f * activeZoomScale.coerceIn(0.8f, 1.5f),
+                            center = endPt
+                        )
+                        drawCircle(
+                            color = Color.White,
+                            radius = 3.5f * activeZoomScale.coerceIn(0.8f, 1.5f),
+                            center = endPt
+                        )
+                    }
                 }
             }
 
@@ -323,6 +444,24 @@ fun MapCanvasView(
                 val pinY = pinPos.y
 
                 val isSelected = selectedGem?.id == gem.id
+                val tierStyle = com.example.util.MarkerTierResolver.resolveTierForCategory(gem.category, achievements)
+
+                // Achievement Tier Pulsing Aura Ring (Bronze / Silver / Gold)
+                if (tierStyle.isPulsing) {
+                    val auraRadius = (20f + (beaconPulse * 8f)) * activeZoomScale.coerceIn(0.8f, 1.3f)
+                    drawCircle(
+                        color = tierStyle.auraColor.copy(alpha = 0.35f),
+                        radius = auraRadius,
+                        center = Offset(pinX, pinY)
+                    )
+                    drawCircle(
+                        color = tierStyle.auraColor,
+                        radius = auraRadius,
+                        center = Offset(pinX, pinY),
+                        style = Stroke(width = 1.5f)
+                    )
+                }
+
                 val pinColor = when {
                     gem.isSaved -> BrandCoral
                     gem.isDiscovered -> Color(0xFFEAB308) // Discovered gold
@@ -378,6 +517,90 @@ fun MapCanvasView(
                     )
                 }
             }
+
+            // 7. Interactive Bounding Box for Offline Region Download
+            if (isRegionDownloadMode && selectionBounds != null) {
+                val p1 = ScoutVectorEngine.projectGpsToCanvasOffset(
+                    spotLat = selectionBounds.maxLat,
+                    spotLng = selectionBounds.minLng,
+                    userLat = userLat,
+                    userLng = userLng,
+                    canvasCenter = center,
+                    zoomScale = activeZoomScale,
+                    baseScale = baseScale
+                )
+                val p2 = ScoutVectorEngine.projectGpsToCanvasOffset(
+                    spotLat = selectionBounds.minLat,
+                    spotLng = selectionBounds.maxLng,
+                    userLat = userLat,
+                    userLng = userLng,
+                    canvasCenter = center,
+                    zoomScale = activeZoomScale,
+                    baseScale = baseScale
+                )
+
+                val boxLeft = minOf(p1.x, p2.x)
+                val boxTop = minOf(p1.y, p2.y)
+                val boxWidth = kotlin.math.abs(p2.x - p1.x)
+                val boxHeight = kotlin.math.abs(p2.y - p1.y)
+
+                // Translucent fill
+                drawRect(
+                    color = BrandTeal.copy(alpha = 0.16f),
+                    topLeft = Offset(boxLeft, boxTop),
+                    size = Size(boxWidth, boxHeight)
+                )
+
+                // Internal synthesis grid lines preview
+                val subSteps = 4
+                val subW = boxWidth / subSteps
+                val subH = boxHeight / subSteps
+                for (i in 1 until subSteps) {
+                    drawLine(
+                        color = BrandTeal.copy(alpha = 0.25f),
+                        start = Offset(boxLeft + i * subW, boxTop),
+                        end = Offset(boxLeft + i * subW, boxTop + boxHeight),
+                        strokeWidth = 1f,
+                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 6f))
+                    )
+                    drawLine(
+                        color = BrandTeal.copy(alpha = 0.25f),
+                        start = Offset(boxLeft, boxTop + i * subH),
+                        end = Offset(boxLeft + boxWidth, boxTop + i * subH),
+                        strokeWidth = 1f,
+                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 6f))
+                    )
+                }
+
+                // Dashed boundary stroke
+                drawRect(
+                    color = BrandTeal,
+                    topLeft = Offset(boxLeft, boxTop),
+                    size = Size(boxWidth, boxHeight),
+                    style = Stroke(
+                        width = 2.5f,
+                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 8f))
+                    )
+                )
+
+                // Corner Handles
+                val handleLen = 22f
+                val handleThick = 4f
+                val cornerColor = BrandCoral
+
+                // Top-Left
+                drawLine(cornerColor, Offset(boxLeft - 2f, boxTop), Offset(boxLeft + handleLen, boxTop), strokeWidth = handleThick)
+                drawLine(cornerColor, Offset(boxLeft, boxTop - 2f), Offset(boxLeft, boxTop + handleLen), strokeWidth = handleThick)
+                // Top-Right
+                drawLine(cornerColor, Offset(boxLeft + boxWidth - handleLen, boxTop), Offset(boxLeft + boxWidth + 2f, boxTop), strokeWidth = handleThick)
+                drawLine(cornerColor, Offset(boxLeft + boxWidth, boxTop - 2f), Offset(boxLeft + boxWidth, boxTop + handleLen), strokeWidth = handleThick)
+                // Bottom-Left
+                drawLine(cornerColor, Offset(boxLeft - 2f, boxTop + boxHeight), Offset(boxLeft + handleLen, boxTop + boxHeight), strokeWidth = handleThick)
+                drawLine(cornerColor, Offset(boxLeft, boxTop + boxHeight - handleLen), Offset(boxLeft, boxTop + boxHeight + 2f), strokeWidth = handleThick)
+                // Bottom-Right
+                drawLine(cornerColor, Offset(boxLeft + boxWidth - handleLen, boxTop + boxHeight), Offset(boxLeft + boxWidth + 2f, boxTop + boxHeight), strokeWidth = handleThick)
+                drawLine(cornerColor, Offset(boxLeft + boxWidth, boxTop + boxHeight - handleLen), Offset(boxLeft + boxWidth, boxTop + boxHeight + 2f), strokeWidth = handleThick)
+            }
         }
 
         // Live Zoom Percentage & Preset Badge (Top Floating on Canvas)
@@ -419,6 +642,42 @@ fun MapCanvasView(
             }
         }
 
+        // Cache Health Score Badge (Top End Floating on Canvas)
+        if (cacheHealth != null) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(end = 12.dp, top = 12.dp)
+            ) {
+                CacheHealthBadge(
+                    health = cacheHealth,
+                    onClick = { onOpenCacheHealth?.invoke() },
+                    isCompact = false
+                )
+            }
+        }
+
+        // True North Digital Compass Overlay (Floating on Map Canvas)
+        val targetSpot = selectedGem?.toEntity() ?: com.example.util.CompassMathUtils.findNearestSavedGem(
+            userLat,
+            userLng,
+            gems.map { it.toEntity() }
+        )
+
+        CompassOverlay(
+            compassState = compassState,
+            userLat = userLat,
+            userLng = userLng,
+            targetGem = targetSpot,
+            onToggleTrueNorth = { compassSensorManager.toggleTrueNorthMode() },
+            onSelectTargetGem = { spot ->
+                gems.find { it.id == spot.id }?.let { onGemSelect(it) }
+            },
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(end = 12.dp, top = if (cacheHealth != null) 52.dp else 12.dp)
+        )
+
         // Preset Zoom Level Selector Chips (Bottom Floating above controls)
         Row(
             modifier = Modifier
@@ -453,13 +712,353 @@ fun MapCanvasView(
             }
         }
 
-        // Floating On-Canvas Controls for Step Zoom (+/-) and GPS Pan Reset
+        // Floating Active Route HUD Card
+        if (activeTrail != null) {
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = Color(0xF2080B1E),
+                border = BorderStroke(1.dp, BrandCoral.copy(alpha = 0.6f)),
+                shadowElevation = 8.dp,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(start = 12.dp, end = 12.dp, bottom = 44.dp)
+                    .fillMaxWidth()
+                    .testTag("vector_route_hud")
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(CircleShape)
+                            .background(BrandCoral.copy(alpha = 0.2f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.DirectionsWalk,
+                            contentDescription = null,
+                            tint = BrandCoral,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "${activeTrail.originTitle} → ${activeTrail.destinationTitle}",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                color = Color.White,
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                            )
+                        }
+                        Text(
+                            text = "${activeTrail.formattedDistance} • ${activeTrail.formattedDuration}" +
+                                    (activeTrail.steps.firstOrNull()?.let { " • ${it.instruction}" } ?: ""),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color(0xFF94A3B8),
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(6.dp))
+                    if (onPlanTrailClick != null) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(BrandTeal.copy(alpha = 0.25f))
+                                .border(1.dp, BrandTeal.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
+                                .clickable { onPlanTrailClick() }
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                                .testTag("vector_route_steps_btn"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Steps",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                color = Color.White
+                            )
+                        }
+                    }
+                    if (onClearTrailClick != null) {
+                        Spacer(modifier = Modifier.width(4.dp))
+                        IconButton(
+                            onClick = onClearTrailClick,
+                            modifier = Modifier
+                                .size(28.dp)
+                                .testTag("vector_route_clear_btn")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Clear Route",
+                                tint = Color(0xFFEF4444),
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // Region Downloader Floating Controller Banner
+        if (isRegionDownloadMode && selectionBounds != null) {
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = Color(0xF2080B1E),
+                border = BorderStroke(1.5.dp, BrandTeal.copy(alpha = 0.85f)),
+                shadowElevation = 12.dp,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(start = 12.dp, end = 12.dp, top = 44.dp)
+                    .fillMaxWidth()
+                    .testTag("region_download_bar")
+            ) {
+                Column(
+                    modifier = Modifier.padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.CloudDownload,
+                                contentDescription = null,
+                                tint = BrandTeal,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Save Offline Area",
+                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                color = Color.White
+                            )
+                        }
+
+                        // Dimension Pill
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(999.dp))
+                                .background(BrandTeal.copy(alpha = 0.2f))
+                                .border(1.dp, BrandTeal.copy(alpha = 0.5f), RoundedCornerShape(999.dp))
+                                .padding(horizontal = 8.dp, vertical = 3.dp)
+                        ) {
+                            Text(
+                                text = selectionBounds.formattedDimensions,
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                color = BrandTeal,
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+
+                    // Adjustment controls
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Shrink (-20%)
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color.White.copy(alpha = 0.08f))
+                                .border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(8.dp))
+                                .clickable {
+                                    val cLat = selectionBounds.centerLat
+                                    val cLng = selectionBounds.centerLng
+                                    val halfH = (selectionBounds.maxLat - selectionBounds.minLat) * 0.4
+                                    val halfW = (selectionBounds.maxLng - selectionBounds.minLng) * 0.4
+                                    onUpdateSelectionBounds?.invoke(
+                                        GeoBoundingBox(cLat - halfH, cLng - halfW, cLat + halfH, cLng + halfW)
+                                    )
+                                }
+                                .padding(vertical = 6.dp)
+                                .testTag("region_download_shrink_btn"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "- Shrink Area",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                color = Color.White,
+                                fontSize = 11.sp
+                            )
+                        }
+
+                        // Expand (+20%)
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color.White.copy(alpha = 0.08f))
+                                .border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(8.dp))
+                                .clickable {
+                                    val cLat = selectionBounds.centerLat
+                                    val cLng = selectionBounds.centerLng
+                                    val halfH = (selectionBounds.maxLat - selectionBounds.minLat) * 0.6
+                                    val halfW = (selectionBounds.maxLng - selectionBounds.minLng) * 0.6
+                                    onUpdateSelectionBounds?.invoke(
+                                        GeoBoundingBox(cLat - halfH, cLng - halfW, cLat + halfH, cLng + halfW)
+                                    )
+                                }
+                                .padding(vertical = 6.dp)
+                                .testTag("region_download_expand_btn"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "+ Expand Area",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                color = Color.White,
+                                fontSize = 11.sp
+                            )
+                        }
+
+                        // Re-center on map view center
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color.White.copy(alpha = 0.08f))
+                                .border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(8.dp))
+                                .clickable {
+                                    val dLng = -panOffset.x / (baseScale * activeZoomScale)
+                                    val dLat = panOffset.y / (baseScale * activeZoomScale)
+                                    val newCenterLat = userLat + dLat
+                                    val newCenterLng = userLng + dLng
+                                    val halfH = (selectionBounds.maxLat - selectionBounds.minLat) / 2.0
+                                    val halfW = (selectionBounds.maxLng - selectionBounds.minLng) / 2.0
+                                    onUpdateSelectionBounds?.invoke(
+                                        GeoBoundingBox(
+                                            newCenterLat - halfH,
+                                            newCenterLng - halfW,
+                                            newCenterLat + halfH,
+                                            newCenterLng + halfW
+                                        )
+                                    )
+                                }
+                                .padding(vertical = 6.dp)
+                                .testTag("region_download_recenter_btn"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Center Here",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                color = Color.White,
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+
+                    // Bottom Action Row: Cancel / Download
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(
+                            onClick = { onCancelRegionDownload?.invoke() },
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(Color.White.copy(alpha = 0.12f))
+                                .testTag("region_download_cancel_btn")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Cancel Download",
+                                tint = Color.White,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+
+                        Button(
+                            onClick = { onConfirmRegionDownload?.invoke() },
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = BrandTeal,
+                                contentColor = Color(0xFF080B1E)
+                            ),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(36.dp)
+                                .testTag("region_download_confirm_btn")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CloudDownload,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Download This Area",
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // Floating On-Canvas Controls for Step Zoom (+/-), GPS Pan Reset, Region Downloader, and Route Planner
         Column(
             modifier = Modifier
                 .align(Alignment.CenterEnd)
                 .padding(end = 12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            // Region Downloader Button
+            if (onStartRegionDownload != null) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(if (isRegionDownloadMode) BrandTeal else Color(0xFF080B1E).copy(alpha = 0.9f))
+                        .border(1.dp, if (isRegionDownloadMode) Color.White else BrandTeal.copy(alpha = 0.8f), CircleShape)
+                        .clickable {
+                            if (isRegionDownloadMode) {
+                                onCancelRegionDownload?.invoke()
+                            } else {
+                                onStartRegionDownload()
+                            }
+                        }
+                        .testTag("vector_region_download_btn"),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CloudDownload,
+                        contentDescription = if (isRegionDownloadMode) "Exit Region Downloader" else "Download Offline Region",
+                        tint = if (isRegionDownloadMode) Color.Black else BrandTeal,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+
+            // Offline Walking Route Planner Button
+            if (onPlanTrailClick != null) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF080B1E).copy(alpha = 0.9f))
+                        .border(1.dp, BrandCoral.copy(alpha = 0.8f), CircleShape)
+                        .clickable { onPlanTrailClick() }
+                        .testTag("vector_route_planner_btn"),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Route,
+                        contentDescription = "Plan Route",
+                        tint = BrandCoral,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+
             // Center on GPS Beacon
             Box(
                 modifier = Modifier
@@ -545,6 +1144,15 @@ fun MapCanvasView(
     onResetZoom: () -> Unit = {},
     activeTrail: com.example.engine.OfflineWalkingTrail? = null,
     onPlanTrailClick: (() -> Unit)? = null,
+    onClearTrailClick: (() -> Unit)? = null,
+    cacheHealth: com.example.data.model.VicinityCacheHealth? = null,
+    onOpenCacheHealth: (() -> Unit)? = null,
+    isRegionDownloadMode: Boolean = false,
+    selectionBounds: GeoBoundingBox? = null,
+    onUpdateSelectionBounds: ((GeoBoundingBox) -> Unit)? = null,
+    onStartRegionDownload: (() -> Unit)? = null,
+    onCancelRegionDownload: (() -> Unit)? = null,
+    onConfirmRegionDownload: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val gems = remember(spots, userLat, userLng) {
@@ -571,6 +1179,15 @@ fun MapCanvasView(
         onResetZoom = onResetZoom,
         activeTrail = activeTrail,
         onPlanTrailClick = onPlanTrailClick,
+        onClearTrailClick = onClearTrailClick,
+        cacheHealth = cacheHealth,
+        onOpenCacheHealth = onOpenCacheHealth,
+        isRegionDownloadMode = isRegionDownloadMode,
+        selectionBounds = selectionBounds,
+        onUpdateSelectionBounds = onUpdateSelectionBounds,
+        onStartRegionDownload = onStartRegionDownload,
+        onCancelRegionDownload = onCancelRegionDownload,
+        onConfirmRegionDownload = onConfirmRegionDownload,
         modifier = modifier
     )
 }

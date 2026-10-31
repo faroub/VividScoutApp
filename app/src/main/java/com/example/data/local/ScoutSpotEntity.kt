@@ -14,8 +14,8 @@ data class ScoutSpotEntity(
     val category: String, // "sights", "eats", "history", "shortcut"
     val distance: String,
     val walkMinutes: Int,
-    val rating: Double,
-    val reviewCount: String,
+    val rating: Double? = null,
+    val reviewCount: Int? = null,
     val imageUrl: String,
     val badgeLabel: String,
     val statusBadge: String,
@@ -23,7 +23,7 @@ data class ScoutSpotEntity(
     val proTip: String? = null,
     val contributor: String? = null,
     val contributorAvatar: String? = null,
-    val upvotes: Int = 0,
+    val upvotes: Int? = null,
     val isSaved: Boolean = false,
     val isOfflineDraft: Boolean = false,
     val isDiscovered: Boolean = false,
@@ -35,7 +35,13 @@ data class ScoutSpotEntity(
     val longitude: Double = -9.1423,
     val audioDuration: String? = null,
     val timestamp: Long = System.currentTimeMillis()
-)
+) {
+    val name: String
+        get() = title
+
+    val neighborhood: String
+        get() = locationName
+}
 
 class Converters {
     @TypeConverter

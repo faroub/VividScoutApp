@@ -10,10 +10,16 @@ import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.withContext
 import java.util.UUID
 
+import com.example.data.local.AchievementDao
+import com.example.data.local.AchievementEntity
+
 class ScoutRepository(
     private val scoutDao: ScoutDao,
-    private val discoveredGemDao: DiscoveredGemDao? = null
+    private val discoveredGemDao: DiscoveredGemDao? = null,
+    private val achievementDao: AchievementDao? = null
 ) {
+
+    private val achievementEvaluator = achievementDao?.let { AchievementEvaluator(scoutDao, it) }
 
     val allSpots: Flow<List<ScoutSpotEntity>> = scoutDao.getAllSpots()
     val savedSpots: Flow<List<ScoutSpotEntity>> = scoutDao.getSavedSpots()
@@ -21,6 +27,15 @@ class ScoutRepository(
     val offlineDrafts: Flow<List<ScoutSpotEntity>> = scoutDao.getOfflineDrafts()
     val customDiscoveredGems: Flow<List<DiscoveredGemEntity>> =
         discoveredGemDao?.getAllDiscoveredGems() ?: emptyFlow()
+    val allAchievements: Flow<List<AchievementEntity>> =
+        achievementDao?.getAllAchievements() ?: emptyFlow()
+    val unlockedAchievementsCount: Flow<Int> =
+        achievementDao?.getUnlockedCount() ?: emptyFlow()
+    val userPoints: Flow<Int> = kotlinx.coroutines.flow.flowOf(150)
+
+    suspend fun clearCachedData() = withContext(Dispatchers.IO) {
+        scoutDao.clearAllTransientSpots()
+    }
 
     suspend fun toggleSave(id: String, currentlySaved: Boolean) = withContext(Dispatchers.IO) {
         scoutDao.setSavedStatus(id, !currentlySaved)
@@ -30,6 +45,7 @@ class ScoutRepository(
         val newDiscovered = !currentlyDiscovered
         val timestamp = if (newDiscovered) System.currentTimeMillis() else 0L
         scoutDao.setDiscoveredStatus(id, newDiscovered, timestamp)
+        achievementEvaluator?.evaluateAllAchievements()
     }
 
     suspend fun updateSpotNotes(id: String, notes: String) = withContext(Dispatchers.IO) {
@@ -57,15 +73,15 @@ class ScoutRepository(
             category = category.lowercase(),
             distance = "10m radius",
             walkMinutes = 1,
-            rating = 5.0,
-            reviewCount = "Offline Scout",
-            imageUrl = photoUri ?: "https://lh3.googleusercontent.com/aida-public/AB6AXuB7xEP9h28BmLIl7Blc9HlVd6pFvRCzWVE0iDC6Ca1oPEDNOlydMy8IbMDvHPNp5_0uUlGCZu5Cw6Bm39F_KkbvLPOmcgrXHSU-a4h7PVnRNgle66SM05K7w8EOWeQ5yG6-5OzUUMA-vVU40aqUdOAWyXH1crmx9Vp2tTTAQ1QTNNEvtbnoukMI4v0qHyR2ad0mL70ALOBm16NlvPATzNielDDSV7Rp-pzWtZzzWv8pTeMZBuNBXfjY",
+            rating = null,
+            reviewCount = null,
+            imageUrl = photoUri ?: "ic_cat_${category.lowercase()}",
             badgeLabel = "COMMUNITY GEM",
             statusBadge = "Saved Offline",
             tagsRaw = "Offline Queued|||GPS Cached: ±3m|||Photo Stored Locally",
             proTip = "Saved in local Room database. Auto-sync will transmit when reconnected.",
             contributor = "@you (Offline)",
-            upvotes = 1,
+            upvotes = null,
             isSaved = false,
             isOfflineDraft = true,
             isDiscovered = true,
@@ -95,6 +111,7 @@ class ScoutRepository(
             )
         )
 
+        achievementEvaluator?.evaluateAllAchievements()
         newSpot
     }
 
@@ -132,6 +149,18 @@ class ScoutRepository(
                 Result.success(fallback.size)
             }
         )
+    }
+
+    suspend fun purgeUnsavedDistantSpots(
+        centerLat: Double,
+        centerLng: Double,
+        radiusDegrees: Double = 1.0 // Approx 111 km
+    ) = withContext(Dispatchers.IO) {
+        val minLat = centerLat - radiusDegrees
+        val maxLat = centerLat + radiusDegrees
+        val minLng = centerLng - radiusDegrees
+        val maxLng = centerLng + radiusDegrees
+        scoutDao.deleteUnsavedDistantSpots(minLat, maxLat, minLng, maxLng)
     }
 
     suspend fun initializeIfEmpty() = withContext(Dispatchers.IO) {

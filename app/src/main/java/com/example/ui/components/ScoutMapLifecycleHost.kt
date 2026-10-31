@@ -13,6 +13,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.data.local.ScoutSpotEntity
+import com.example.data.model.toEntity
+import com.example.data.model.toScoutGem
 import com.example.engine.ScoutVectorEngine
 import com.example.ui.viewmodel.ScoutMapViewModel
 
@@ -32,6 +34,16 @@ fun ScoutMapLifecycleHost(
     mapViewModel: ScoutMapViewModel,
     activeTrail: com.example.engine.OfflineWalkingTrail? = null,
     onPlanTrailClick: (() -> Unit)? = null,
+    onClearTrailClick: (() -> Unit)? = null,
+    cacheHealth: com.example.data.model.VicinityCacheHealth? = null,
+    onOpenCacheHealth: (() -> Unit)? = null,
+    isRegionDownloadMode: Boolean = false,
+    selectionBounds: com.example.data.offline.GeoBoundingBox? = null,
+    onUpdateSelectionBounds: ((com.example.data.offline.GeoBoundingBox) -> Unit)? = null,
+    onStartRegionDownload: (() -> Unit)? = null,
+    onCancelRegionDownload: (() -> Unit)? = null,
+    onConfirmRegionDownload: (() -> Unit)? = null,
+    achievements: List<com.example.data.local.AchievementEntity> = emptyList(),
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -68,12 +80,13 @@ fun ScoutMapLifecycleHost(
 
     Box(modifier = modifier.fillMaxSize()) {
         MapCanvasView(
-            spots = spots,
+            gems = spots.map { it.toScoutGem() },
             userLat = userLat,
             userLng = userLng,
             userAccuracy = userAccuracy,
-            selectedSpot = selectedSpot ?: mapUiState.selectedSpot,
-            onSpotSelect = { spot ->
+            selectedGem = (selectedSpot ?: mapUiState.selectedSpot)?.toScoutGem(),
+            onGemSelect = { gem: com.example.data.model.ScoutGem ->
+                val spot = gem.toEntity()
                 mapViewModel.selectSpot(spot)
                 onSpotSelect(spot)
             },
@@ -81,10 +94,20 @@ fun ScoutMapLifecycleHost(
             zoomPreset = mapUiState.zoomPreset,
             onZoomIn = { mapViewModel.zoomIn() },
             onZoomOut = { mapViewModel.zoomOut() },
-            onSetZoomPreset = { preset -> mapViewModel.setZoomPreset(preset) },
+            onSetZoomPreset = { preset: com.example.ui.viewmodel.ZoomPreset -> mapViewModel.setZoomPreset(preset) },
             onResetZoom = { mapViewModel.resetZoom() },
             activeTrail = activeTrail,
             onPlanTrailClick = onPlanTrailClick,
+            onClearTrailClick = onClearTrailClick,
+            cacheHealth = cacheHealth,
+            onOpenCacheHealth = onOpenCacheHealth,
+            isRegionDownloadMode = isRegionDownloadMode,
+            selectionBounds = selectionBounds,
+            onUpdateSelectionBounds = onUpdateSelectionBounds,
+            onStartRegionDownload = onStartRegionDownload,
+            onCancelRegionDownload = onCancelRegionDownload,
+            onConfirmRegionDownload = onConfirmRegionDownload,
+            achievements = achievements,
             modifier = Modifier.fillMaxSize()
         )
     }

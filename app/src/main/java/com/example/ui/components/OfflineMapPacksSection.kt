@@ -53,6 +53,8 @@ fun OfflineMapPacksSection(
     onDownloadPack: (String) -> Unit,
     onDeletePack: (String) -> Unit,
     onDownloadCurrentGpsPack: () -> Unit,
+    customRegions: List<com.example.data.offline.DownloadedRegionPack> = emptyList(),
+    onDeleteCustomRegion: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val formattedTotalMb = String.format(
@@ -170,6 +172,59 @@ fun OfflineMapPacksSection(
                         onDownload = { onDownloadPack(pack.id) },
                         onDelete = { onDeletePack(pack.id) }
                     )
+                }
+            }
+
+            // Custom Saved Offline Regions List
+            if (customRegions.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(18.dp))
+                Text(
+                    text = "Saved Offline Areas (${customRegions.size})",
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    customRegions.forEach { region ->
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = SurfaceContainerLow,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("custom_region_pack_${region.id}")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = region.name,
+                                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = "${region.bounds.formattedDimensions} • ${region.roadSegments.size} road segments • ${region.formattedSize}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+
+                                androidx.compose.material3.IconButton(
+                                    onClick = { onDeleteCustomRegion(region.id) },
+                                    modifier = Modifier.testTag("delete_custom_region_${region.id}")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.DeleteOutline,
+                                        contentDescription = "Delete Custom Region",
+                                        tint = BrandCoral,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }

@@ -1,7 +1,7 @@
 package com.example.ui.screens
 
 import android.location.Location
-import com.example.ui.components.ScoutMapView
+import com.example.ui.components.MapCanvasView
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -36,7 +36,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bookmark
+import com.example.data.local.RecentSearchEntity
+import com.example.ui.components.DiscoverGemsLoadingState
+import com.example.ui.components.RecentSearchStrip
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.ChevronRight
@@ -47,6 +51,8 @@ import androidx.compose.material.icons.filled.GpsFixed
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.filled.NearMe
+import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Radar
@@ -117,6 +123,8 @@ enum class RadarViewMode {
 @Composable
 fun RadarScreen(
     spots: List<ScoutSpotEntity>,
+    selectedCategory: String = "all",
+    onCategorySelected: (String) -> Unit = {},
     userLocation: Location? = null,
     hasLocationPermission: Boolean = true,
     isPreciseLocation: Boolean = true,
@@ -131,6 +139,19 @@ fun RadarScreen(
     activeTrail: com.example.engine.OfflineWalkingTrail? = null,
     onPlanWalkingTrail: () -> Unit = {},
     onClearWalkingTrail: () -> Unit = {},
+    cacheHealth: com.example.data.model.VicinityCacheHealth? = null,
+    onOpenCacheHealth: () -> Unit = {},
+    isRegionDownloadMode: Boolean = false,
+    selectionBounds: com.example.data.offline.GeoBoundingBox? = null,
+    onUpdateSelectionBounds: (com.example.data.offline.GeoBoundingBox) -> Unit = {},
+    onStartRegionDownload: () -> Unit = {},
+    onCancelRegionDownload: () -> Unit = {},
+    onConfirmRegionDownload: () -> Unit = {},
+    recentSearches: List<RecentSearchEntity> = emptyList(),
+    onSelectRecentSearch: (RecentSearchEntity) -> Unit = {},
+    onDeleteRecentSearch: (String) -> Unit = {},
+    onClearAllRecentSearches: () -> Unit = {},
+    achievements: List<com.example.data.local.AchievementEntity> = emptyList(),
     modifier: Modifier = Modifier
 ) {
     var viewMode by remember { mutableStateOf(RadarViewMode.MAP) }
@@ -385,6 +406,26 @@ fun RadarScreen(
             }
         }
 
+        // 2.5 Floating Category Chips Ribbon for Map Screen
+        item {
+            RadarCategoryFilterRibbon(
+                selectedCategory = selectedCategory,
+                onCategorySelected = onCategorySelected
+            )
+        }
+
+        // 2.7 Recent Gemini AI Searches Horizontal Scroll Strip
+        if (recentSearches.isNotEmpty()) {
+            item {
+                RecentSearchStrip(
+                    recentSearches = recentSearches,
+                    onSearchClick = onSelectRecentSearch,
+                    onDeleteSearch = onDeleteRecentSearch,
+                    onClearAllSearches = onClearAllRecentSearches
+                )
+            }
+        }
+
         // 3. Main Visual Component (Map or Radar)
         item {
             Surface(
@@ -398,24 +439,26 @@ fun RadarScreen(
                 Box(modifier = Modifier.fillMaxSize()) {
                     if (viewMode == RadarViewMode.MAP) {
                         // Scout Vector Map interactive view with user location and Room gems
-                        ScoutMapView(
+                        MapCanvasView(
                             spots = sortedSpots,
                             userLat = userLat,
                             userLng = userLng,
                             userAccuracy = userAccuracy,
-                            hasLocationPermission = hasLocationPermission,
-                            selectedRadius = selectedRadius,
                             selectedSpot = selectedSpot,
-                            onSpotSelect = { selectedSpot = it },
-                            onSpotClick = onSpotClick,
-                            onToggleSave = onToggleSave,
-                            isScrapingOsm = isScrapingOsm,
-                            osmScrapeMessage = osmScrapeMessage,
-                            onScrapeOsm = onScrapeOsm,
-                            onDismissOsmMessage = onDismissOsmMessage,
-                            syncStatus = syncStatus,
+                            onSpotSelect = { spot ->
+                                selectedSpot = spot
+                                onSpotClick(spot)
+                            },
                             activeTrail = activeTrail,
                             onPlanTrailClick = onPlanWalkingTrail,
+                            cacheHealth = cacheHealth,
+                            onOpenCacheHealth = onOpenCacheHealth,
+                            isRegionDownloadMode = isRegionDownloadMode,
+                            selectionBounds = selectionBounds,
+                            onUpdateSelectionBounds = onUpdateSelectionBounds,
+                            onStartRegionDownload = onStartRegionDownload,
+                            onCancelRegionDownload = onCancelRegionDownload,
+                            onConfirmRegionDownload = onConfirmRegionDownload,
                             modifier = Modifier.fillMaxSize()
                         )
                     } else {
@@ -471,12 +514,12 @@ fun RadarScreen(
                             Spacer(modifier = Modifier.width(10.dp))
                             Column {
                                 Text(
-                                    text = "Live OSM Web Scraper",
+                                    text = "✨ Discover Gems with Gemini AI",
                                     style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Text(
-                                    text = "Scrape viewpoints, bakeries & shortcuts from OpenStreetMap into Room",
+                                    text = "Generate verified landmarks & viewpoints using Gemini 3.8 Flash",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -502,26 +545,34 @@ fun RadarScreen(
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    "Scraping...",
+                                    "Discovering...",
                                     style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold)
                                 )
                             } else {
                                 Icon(
-                                    imageVector = Icons.Default.CloudDownload,
+                                    imageVector = Icons.Default.AutoAwesome,
                                     contentDescription = null,
                                     tint = Color.White,
                                     modifier = Modifier.size(14.dp)
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    "Scrape",
+                                    "Discover",
                                     style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold)
                                 )
                             }
                         }
                     }
 
-                    if (osmScrapeMessage != null) {
+                    if (isScrapingOsm) {
+                        Spacer(modifier = Modifier.height(14.dp))
+                        DiscoverGemsLoadingState(
+                            category = selectedCategory,
+                            userCoordinates = Pair(userLat, userLng),
+                            gpsAccuracyMeters = userAccuracy,
+                            statusMessage = osmScrapeMessage
+                        )
+                    } else if (osmScrapeMessage != null) {
                         Spacer(modifier = Modifier.height(8.dp))
                         Surface(
                             shape = RoundedCornerShape(10.dp),
@@ -716,199 +767,3 @@ fun RadarScreen(
     }
 }
 
-
-/**
- * High-Tech Radar Sweep View
- */
-@Composable
-fun RadarSweepView(
-    spots: List<ScoutSpotEntity>,
-    userLat: Double,
-    userLng: Double,
-    sweepAngle: Float,
-    selectedRadius: String,
-    onSpotSelect: (ScoutSpotEntity) -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.SpaceBetween
-    ) {
-        // Radar Header
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(32.dp)
-                        .clip(CircleShape)
-                        .background(BrandTeal.copy(alpha = 0.2f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Sensors,
-                        contentDescription = null,
-                        tint = BrandTeal,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-                Spacer(modifier = Modifier.width(8.dp))
-                Column {
-                    Text(
-                        text = "Real-Time On-Foot Radar",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                        color = Color.White
-                    )
-                    Text(
-                        text = "Live Compass Scanning Active",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color(0xFF94A3B8)
-                    )
-                }
-            }
-
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(999.dp))
-                    .background(SecondaryContainer.copy(alpha = 0.25f))
-                    .border(1.dp, BrandTeal.copy(alpha = 0.4f), RoundedCornerShape(999.dp))
-                .padding(horizontal = 8.dp, vertical = 4.dp)
-            ) {
-                Text(
-                    text = "${spots.size} in range",
-                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                    color = BrandTeal
-                )
-            }
-        }
-
-        // Concentric Radar Scope Canvas
-        Box(
-            modifier = Modifier
-                .size(240.dp)
-                .testTag("radar_canvas_box"),
-            contentAlignment = Alignment.Center
-        ) {
-            Canvas(modifier = Modifier.size(240.dp)) {
-                val center = Offset(size.width / 2, size.height / 2)
-                val maxRadius = size.width / 2
-
-                // Concentric Range Rings
-                drawCircle(
-                    color = BrandTeal.copy(alpha = 0.2f),
-                    radius = maxRadius * 0.95f,
-                    style = Stroke(width = 1.5f)
-                )
-                drawCircle(
-                    color = BrandTeal.copy(alpha = 0.3f),
-                    radius = maxRadius * 0.65f,
-                    style = Stroke(width = 1.2f)
-                )
-                drawCircle(
-                    color = BrandTeal.copy(alpha = 0.45f),
-                    radius = maxRadius * 0.35f,
-                    style = Stroke(width = 1f)
-                )
-
-                // Crosshairs
-                drawLine(
-                    color = BrandTeal.copy(alpha = 0.2f),
-                    start = Offset(center.x, 0f),
-                    end = Offset(center.x, size.height),
-                    strokeWidth = 1f
-                )
-                drawLine(
-                    color = BrandTeal.copy(alpha = 0.2f),
-                    start = Offset(0f, center.y),
-                    end = Offset(size.width, center.y),
-                    strokeWidth = 1f
-                )
-
-                // Rotating Sweep Beam
-                rotate(degrees = sweepAngle, pivot = center) {
-                    drawArc(
-                        brush = Brush.sweepGradient(
-                            colors = listOf(
-                                Color.Transparent,
-                                BrandTeal.copy(alpha = 0.35f)
-                            ),
-                            center = center
-                        ),
-                        startAngle = -45f,
-                        sweepAngle = 45f,
-                        useCenter = true
-                    )
-                    drawLine(
-                        color = BrandTeal,
-                        start = center,
-                        end = Offset(center.x + maxRadius * 0.95f, center.y),
-                        strokeWidth = 2f
-                    )
-                }
-
-                // User Center Device Blip
-                drawCircle(
-                    color = Color.White,
-                    radius = 5f,
-                    center = center
-                )
-                drawCircle(
-                    color = BrandTeal,
-                    radius = 10f,
-                    center = center,
-                    style = Stroke(width = 2f)
-                )
-
-                // Plot detected gems on radar scope based on distance & bearing
-                val maxRangeMeters = when (selectedRadius) {
-                    "200m" -> 200f
-                    "500m" -> 500f
-                    "1km" -> 1000f
-                    "3km" -> 3000f
-                    else -> 1000f
-                }
-
-                spots.take(8).forEach { spot ->
-                    val dist = spot.computedDistanceMeters(userLat, userLng)
-                    val normDist = (dist / maxRangeMeters).coerceIn(0.15f, 0.92f) * maxRadius
-
-                    val dLat = spot.latitude - userLat
-                    val dLng = spot.longitude - userLng
-                    val bearingRad = atan2(dLng, dLat)
-
-                    val blipX = center.x + (normDist * sin(bearingRad)).toFloat()
-                    val blipY = center.y - (normDist * cos(bearingRad)).toFloat()
-
-                    val blipColor = when (spot.category) {
-                        "eats" -> BrandCoral
-                        "history" -> Color(0xFFC084FC)
-                        "sights" -> Color(0xFF10B981)
-                        else -> BrandTeal
-                    }
-
-                    drawCircle(
-                        color = blipColor,
-                        radius = 6.5f,
-                        center = Offset(blipX, blipY)
-                    )
-                    drawCircle(
-                        color = Color.White,
-                        radius = 2.5f,
-                        center = Offset(blipX, blipY)
-                    )
-                }
-            }
-        }
-
-        Text(
-            text = "Concentric Range: 100m • 300m • 500m",
-            style = MaterialTheme.typography.labelSmall,
-            color = Color(0xFF94A3B8)
-        )
-    }
-}

@@ -1,0 +1,42 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="400dp"
+    android:height="220dp"
+    android:viewportWidth="400"
+    android:viewportHeight="220">
+
+    <!-- Lisbon Terracotta Skyline Sunset Gradient -->
+    <path android:pathData="M0,0h400v220h-400z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="200"
+                android:startY="0"
+                android:endX="200"
+                android:endY="220"
+                android:type="linear">
+                <item android:color="#FFE11D48" android:offset="0.0" />
+                <item android:color="#FFC026D3" android:offset="0.5" />
+                <item android:color="#FF4C0519" android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Sun Disc -->
+    <path
+        android:pathData="M200,90m-40,0a40,40 0 1,1 80,0a40,40 0 1,1 -80,0"
+        android:fillColor="#FDE047"
+        android:fillAlpha="0.8" />
+
+    <!-- Terracotta Roof Silhouettes -->
+    <path
+        android:pathData="M0,170 L30,140 L60,170 L90,135 L120,170 L150,145 L180,170 L220,130 L250,170 L290,140 L330,170 L370,135 L400,170 V220 H0 Z"
+        android:fillColor="#1E1B4B" />
+
+    <!-- Lisbon Tram Silhouette -->
+    <path
+        android:pathData="M160,185 H240 V205 H160 Z"
+        android:fillColor="#FACC15" />
+    <path
+        android:pathData="M170,190 H185 V198 H170 Z M195,190 H210 V198 H195 Z M220,190 H235 V198 H220 Z"
+        android:fillColor="#1E293B" />
+</vector>

@@ -119,4 +119,10 @@
     <string name="gps_inactive_tap">GPS Inactive • Tap to Enable</string>
     <string name="location_settings_card_title">GPS Telemetry &amp; Permissions</string>
     <string name="location_settings_card_desc">High-precision FusedLocationProvider tracking</string>
+    <string name="cache_health_title">Vicinity Cache Health</string>
+    <string name="cache_health_optimal">Optimal Cache</string>
+    <string name="cache_health_good">Good Coverage</string>
+    <string name="cache_health_fair">Sparse Cache</string>
+    <string name="cache_health_critical">Needs Fetch</string>
+    <string name="pre_cache_vicinity">Pre-Cache Vicinity Now</string>
 </resources>

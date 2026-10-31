@@ -20,10 +20,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Radar
 import androidx.compose.material.icons.outlined.Explore
 import androidx.compose.material.icons.outlined.FavoriteBorder
+import androidx.compose.material.icons.outlined.Forum
 import androidx.compose.material.icons.outlined.PersonOutline
 import androidx.compose.material.icons.outlined.Radar
 import androidx.compose.material3.Icon
@@ -106,11 +108,23 @@ fun BottomNavigationDock(
                     modifier = Modifier.weight(1f)
                 )
 
-                // Tab 3: Center Primary '+' FAB
+                // Tab 3: Community
+                NavTabItem(
+                    title = "Community",
+                    selected = currentTab == MainTab.COMMUNITY,
+                    selectedIcon = Icons.Filled.Forum,
+                    unselectedIcon = Icons.Outlined.Forum,
+                    showDot = true,
+                    testTag = "nav_tab_community",
+                    onClick = { onTabSelected(MainTab.COMMUNITY) },
+                    modifier = Modifier.weight(1f)
+                )
+
+                // Center Primary '+' FAB
                 Box(
                     modifier = Modifier
-                        .padding(horizontal = 4.dp)
-                        .size(50.dp)
+                        .padding(horizontal = 2.dp)
+                        .size(46.dp)
                         .shadow(
                             elevation = 8.dp,
                             shape = CircleShape,
@@ -126,7 +140,7 @@ fun BottomNavigationDock(
                         imageVector = Icons.Filled.Add,
                         contentDescription = strings.spotAGem,
                         tint = Color.White,
-                        modifier = Modifier.size(28.dp)
+                        modifier = Modifier.size(26.dp)
                     )
                 }
 

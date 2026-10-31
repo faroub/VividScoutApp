@@ -14,6 +14,37 @@ import retrofit2.converter.moshi.MoshiConverterFactory
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 import kotlin.random.Random
+import okhttp3.FormBody
+import okhttp3.Request
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import org.json.JSONObject
+
+/**
+ * Diagnostic record capturing the exact Overpass query, raw response body, HTTP status,
+ * timings, and mapping fidelity from OpenStreetMap to Room Database entities.
+ */
+data class OverpassDiagnosticLog(
+    val timestamp: Long = System.currentTimeMillis(),
+    val mirrorUrl: String = "",
+    val httpStatusCode: Int = 0,
+    val durationMs: Long = 0L,
+    val query: String = "",
+    val userLat: Double = 0.0,
+    val userLng: Double = 0.0,
+    val radiusMeters: Int = 0,
+    val rawJson: String = "",
+    val rawElementsCount: Int = 0,
+    val mappedEntitiesCount: Int = 0,
+    val droppedElementsCount: Int = 0,
+    val dropReasons: List<String> = emptyList(),
+    val isFallbackTriggered: Boolean = false,
+    val errorMessage: String? = null
+) {
+    val isSuccess: Boolean get() = httpStatusCode in 200..299 && errorMessage == null
+    val formattedTimestamp: String get() = java.text.SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(java.util.Date(timestamp))
+}
 
 /**
  * Retrofit client for OpenStreetMap Overpass API.
@@ -45,6 +76,9 @@ class OverpassRetrofitClient(
         .build()
 
     val api: OverpassApi = retrofit.create(OverpassApi::class.java)
+
+    private val _lastDiagnosticLog = MutableStateFlow<OverpassDiagnosticLog?>(null)
+    val lastDiagnosticLog: StateFlow<OverpassDiagnosticLog?> = _lastDiagnosticLog.asStateFlow()
 
     // Mirror URLs if primary server experiences high traffic
     private val mirrorBaseUrls = listOf(
@@ -78,26 +112,58 @@ class OverpassRetrofitClient(
     )
 
     /**
-     * Builds the Overpass QL query targeting viewpoints, attractions, bakeries, cafes, historic sites & ways near coordinates.
+     * Builds the Overpass QL query targeting viewpoints, attractions, bakeries, cafes, historic sites, events & ways near coordinates.
      */
-    fun buildQuery(lat: Double, lng: Double, radiusMeters: Int): String {
+    fun buildQuery(lat: Double, lng: Double, radiusMeters: Int, category: String = "all"): String {
+        val categoryFilters = when (category.lowercase(Locale.ROOT)) {
+            "touristic", "sights" -> """
+                node["tourism"](around:$radiusMeters,$lat,$lng);
+                way["tourism"](around:$radiusMeters,$lat,$lng);
+                node["tourism"="viewpoint"](around:$radiusMeters,$lat,$lng);
+                node["tourism"="attraction"](around:$radiusMeters,$lat,$lng);
+            """.trimIndent()
+            "dining", "eats", "restaurant" -> """
+                node["shop"="bakery"](around:$radiusMeters,$lat,$lng);
+                node["amenity"="cafe"](around:$radiusMeters,$lat,$lng);
+                node["amenity"="restaurant"](around:$radiusMeters,$lat,$lng);
+                node["shop"](around:$radiusMeters,$lat,$lng);
+            """.trimIndent()
+            "historical", "history" -> """
+                node["historic"](around:$radiusMeters,$lat,$lng);
+                way["historic"](around:$radiusMeters,$lat,$lng);
+            """.trimIndent()
+            "events", "culture" -> """
+                node["tourism"="museum"](around:$radiusMeters,$lat,$lng);
+                node["amenity"="arts_centre"](around:$radiusMeters,$lat,$lng);
+                node["leisure"="park"](around:$radiusMeters,$lat,$lng);
+                node["amenity"="theatre"](around:$radiusMeters,$lat,$lng);
+            """.trimIndent()
+            "gems", "shortcut" -> """
+                node["highway"="steps"](around:$radiusMeters,$lat,$lng);
+                way["highway"="steps"](around:$radiusMeters,$lat,$lng);
+                way["highway"="pedestrian"](around:$radiusMeters,$lat,$lng);
+            """.trimIndent()
+            else -> """
+                node["tourism"="viewpoint"](around:$radiusMeters,$lat,$lng);
+                node["tourism"](around:$radiusMeters,$lat,$lng);
+                way["tourism"](around:$radiusMeters,$lat,$lng);
+                node["shop"="bakery"](around:$radiusMeters,$lat,$lng);
+                node["amenity"="cafe"](around:$radiusMeters,$lat,$lng);
+                node["amenity"="restaurant"](around:$radiusMeters,$lat,$lng);
+                node["historic"](around:$radiusMeters,$lat,$lng);
+                way["historic"](around:$radiusMeters,$lat,$lng);
+                node["highway"="steps"](around:$radiusMeters,$lat,$lng);
+                way["highway"="steps"](around:$radiusMeters,$lat,$lng);
+                way["highway"="pedestrian"](around:$radiusMeters,$lat,$lng);
+                node["tourism"="museum"](around:$radiusMeters,$lat,$lng);
+                node["leisure"="park"](around:$radiusMeters,$lat,$lng);
+            """.trimIndent()
+        }
+
         return """
             [out:json][timeout:25];
             (
-              node["tourism"="viewpoint"](around:$radiusMeters,$lat,$lng);
-              node["tourism"](around:$radiusMeters,$lat,$lng);
-              way["tourism"](around:$radiusMeters,$lat,$lng);
-              node["shop"="bakery"](around:$radiusMeters,$lat,$lng);
-              node["shop"](around:$radiusMeters,$lat,$lng);
-              node["amenity"="cafe"](around:$radiusMeters,$lat,$lng);
-              node["amenity"="restaurant"](around:$radiusMeters,$lat,$lng);
-              node["amenity"](around:$radiusMeters,$lat,$lng);
-              node["historic"](around:$radiusMeters,$lat,$lng);
-              way["historic"](around:$radiusMeters,$lat,$lng);
-              node["highway"="steps"](around:$radiusMeters,$lat,$lng);
-              way["highway"="steps"](around:$radiusMeters,$lat,$lng);
-              way["highway"="pedestrian"](around:$radiusMeters,$lat,$lng);
-              node["leisure"](around:$radiusMeters,$lat,$lng);
+              $categoryFilters
             );
             out body center qt 50;
         """.trimIndent()
@@ -110,7 +176,8 @@ class OverpassRetrofitClient(
     fun generateNearbyFallbackSpots(
         userLat: Double,
         userLng: Double,
-        count: Int = 6
+        count: Int = 6,
+        category: String = "all"
     ): List<ScoutSpotEntity> {
         val spotTemplates = listOf(
             Triple("Scenic Overlook & Viewpoint", "sights", "PANORAMIC VIEW"),
@@ -124,46 +191,46 @@ class OverpassRetrofitClient(
         val timestamp = System.currentTimeMillis()
         return (0 until count).map { index ->
             val template = spotTemplates[index % spotTemplates.size]
-            val angle = (2.0 * Math.PI * index) / count + (Random.nextDouble() * 0.3)
-            val distanceMeters = 150.0 + (index * 90.0) + (Random.nextDouble() * 50.0)
+            val angle = (2.0 * Math.PI * index) / count
+            val distanceMeters = 150.0 + (index * 90.0)
             val deltaLat = (distanceMeters / 111000.0) * Math.cos(angle)
             val deltaLng = (distanceMeters / (111000.0 * Math.cos(Math.toRadians(userLat)))) * Math.sin(angle)
 
             val spotLat = userLat + deltaLat
             val spotLng = userLng + deltaLng
 
-            val images = when (template.second) {
-                "eats" -> bakeryImages
-                "history" -> historicImages
-                "shortcut" -> shortcutImages
-                else -> viewpointImages
-            }
-
-            val spotId = "osm_spot_${(userLat * 1000).toInt()}_${(userLng * 1000).toInt()}_${index}_${timestamp % 100000}"
+            val spotTitle = "${template.first} #${index + 1}"
+            val spotId = "osm_fallback_${(userLat * 10000).toInt()}_${(userLng * 10000).toInt()}_$index"
+            val photoResult = com.example.util.LocationPhotoResolver.resolvePhotoSynchronous(
+                title = spotTitle,
+                category = template.second,
+                districtOrLocation = "Local District",
+                spotId = spotId
+            )
 
             ScoutSpotEntity(
                 id = spotId,
-                title = "${template.first} #${index + 1}",
+                title = spotTitle,
                 description = "Discovered nearby via live GPS scan. A verified point of interest saved directly to your local map database.",
                 category = template.second,
                 distance = "${distanceMeters.toInt()}m away",
                 walkMinutes = Math.max(1, (distanceMeters / 75.0).toInt()),
-                rating = 4.6 + (Random.nextDouble() * 0.3),
-                reviewCount = "OSM Scout",
-                imageUrl = images[index % images.size],
+                rating = null,
+                reviewCount = null,
+                imageUrl = photoResult.url,
                 badgeLabel = template.third,
                 statusBadge = "Live GPS Scout",
                 tagsRaw = "Live GPS|||Scout Verified|||Saved Offline",
                 proTip = "Discovered around your current coordinates. Tap bookmark to keep permanently.",
                 contributor = "@osm_scout_bot",
-                upvotes = 12 + index * 5,
+                upvotes = null,
                 isSaved = false,
                 isOfflineDraft = false,
                 isDiscovered = false,
                 discoveredTimestamp = null,
                 userNotes = null,
                 offlineCached = true,
-                locationName = "Nearby GPS Spot",
+                locationName = "Local District",
                 latitude = spotLat,
                 longitude = spotLng,
                 timestamp = timestamp + index
@@ -172,100 +239,209 @@ class OverpassRetrofitClient(
     }
 
     /**
+     * Executes an Overpass QL query and returns detailed diagnostic telemetry
+     * including raw JSON string, HTTP status, timing, elements parsed, and mapping results.
+     */
+    suspend fun fetchDiagnosticLog(
+        lat: Double,
+        lng: Double,
+        radiusMeters: Int = 1500,
+        category: String = "all"
+    ): OverpassDiagnosticLog = withContext(Dispatchers.IO) {
+        val qlQuery = buildQuery(lat, lng, radiusMeters, category)
+        val formBody = FormBody.Builder()
+            .add("data", qlQuery)
+            .build()
+
+        var lastError: Exception? = null
+
+        for (mirror in mirrorBaseUrls) {
+            val startTime = System.currentTimeMillis()
+            val endpoint = if (mirror.endsWith("/")) "${mirror}api/interpreter" else "$mirror/api/interpreter"
+            try {
+                val request = Request.Builder()
+                    .url(endpoint)
+                    .post(formBody)
+                    .header("User-Agent", "VividScout/1.0 (Android; Retrofit Overpass Client)")
+                    .build()
+
+                okHttpClient.newCall(request).execute().use { response ->
+                    val duration = System.currentTimeMillis() - startTime
+                    val rawBody = response.body?.string() ?: ""
+                    val statusCode = response.code
+
+                    if (response.isSuccessful && rawBody.isNotBlank()) {
+                        val formattedJson = try {
+                            JSONObject(rawBody).toString(2)
+                        } catch (e: Exception) {
+                            rawBody
+                        }
+
+                        val adapter = moshi.adapter(OverpassResponse::class.java)
+                        val overpassResponse = adapter.fromJson(rawBody)
+                        val elements = overpassResponse?.elements ?: emptyList()
+                        val (entities, dropReasons) = mapElementsWithDiagnostics(elements, lat, lng)
+
+                        val log = OverpassDiagnosticLog(
+                            timestamp = System.currentTimeMillis(),
+                            mirrorUrl = mirror,
+                            httpStatusCode = statusCode,
+                            durationMs = duration,
+                            query = qlQuery,
+                            userLat = lat,
+                            userLng = lng,
+                            radiusMeters = radiusMeters,
+                            rawJson = formattedJson,
+                            rawElementsCount = elements.size,
+                            mappedEntitiesCount = entities.size,
+                            droppedElementsCount = dropReasons.size,
+                            dropReasons = dropReasons,
+                            isFallbackTriggered = elements.isEmpty(),
+                            errorMessage = if (elements.isEmpty()) "0 elements returned by OSM for coordinates ($lat, $lng)" else null
+                        )
+                        _lastDiagnosticLog.value = log
+                        return@withContext log
+                    } else {
+                        lastError = RuntimeException("HTTP $statusCode from $mirror: ${response.message}")
+                    }
+                }
+            } catch (e: Exception) {
+                lastError = e
+            }
+        }
+
+        // If all mirrors failed, record failure log with fallback simulation
+        val fallbackSpots = generateNearbyFallbackSpots(lat, lng, 6, category)
+        val syntheticJson = JSONObject().apply {
+            put("version", 0.6)
+            put("generator", "VividScout Synthetic Fallback Generator")
+            put("note", "Overpass mirrors failed or rate-limited. Synthesized realistic nearby spots.")
+            put("elements_count", fallbackSpots.size)
+        }.toString(2)
+
+        val failureLog = OverpassDiagnosticLog(
+            timestamp = System.currentTimeMillis(),
+            mirrorUrl = mirrorBaseUrls.firstOrNull() ?: "https://overpass-api.de/",
+            httpStatusCode = 0,
+            durationMs = 0L,
+            query = qlQuery,
+            userLat = lat,
+            userLng = lng,
+            radiusMeters = radiusMeters,
+            rawJson = syntheticJson,
+            rawElementsCount = fallbackSpots.size,
+            mappedEntitiesCount = fallbackSpots.size,
+            droppedElementsCount = 0,
+            dropReasons = emptyList(),
+            isFallbackTriggered = true,
+            errorMessage = lastError?.message ?: "All Overpass mirrors unreachable or timed out."
+        )
+        _lastDiagnosticLog.value = failureLog
+        failureLog
+    }
+
+    /**
      * Fetches nodes and ways representing tourism spots, bakeries, cafes, and historic sites near user coordinates.
      */
     suspend fun fetchNearbyNodes(
         lat: Double,
         lng: Double,
-        radiusMeters: Int = 1500
+        radiusMeters: Int = 1500,
+        category: String = "all"
     ): Result<List<ScoutSpotEntity>> = withContext(Dispatchers.IO) {
-        val qlQuery = buildQuery(lat, lng, radiusMeters)
-        Log.i("OverpassRetrofit", "Executing Overpass QL query for GPS ($lat, $lng) radius ${radiusMeters}m")
-
-        for (mirror in mirrorBaseUrls) {
-            try {
-                Log.d("OverpassRetrofit", "Querying Overpass mirror: $mirror")
-                val client = if (mirror == "https://overpass-api.de/") this@OverpassRetrofitClient else OverpassRetrofitClient(mirror)
-                val response: OverpassResponse = client.api.queryOverpass(qlQuery)
-                val elements = response.elements
-                Log.i("OverpassRetrofit", "Mirror $mirror returned ${elements.size} raw elements.")
-                if (elements.isNotEmpty()) {
-                    val entities = mapElementsToEntities(elements, lat, lng)
-                    if (entities.isNotEmpty()) {
-                        Log.i("OverpassRetrofit", "Retrofit successfully parsed ${entities.size} valid spots from $mirror")
-                        return@withContext Result.success(entities)
-                    }
-                }
-            } catch (e: Exception) {
-                Log.w("OverpassRetrofit", "Mirror $mirror query failed: ${e.javaClass.simpleName} - ${e.message}")
+        val diagnosticLog = fetchDiagnosticLog(lat, lng, radiusMeters, category)
+        if (diagnosticLog.isFallbackTriggered || diagnosticLog.mappedEntitiesCount == 0) {
+            val fallback = generateNearbyFallbackSpots(lat, lng, 6, category)
+            Result.success(fallback)
+        } else {
+            val adapter = moshi.adapter(OverpassResponse::class.java)
+            val overpassResponse = adapter.fromJson(diagnosticLog.rawJson)
+            val elements = overpassResponse?.elements ?: emptyList()
+            val entities = mapElementsToEntities(elements, lat, lng)
+            if (entities.isNotEmpty()) {
+                Result.success(entities)
+            } else {
+                Result.success(generateNearbyFallbackSpots(lat, lng, 6, category))
             }
         }
-
-        Log.i("OverpassRetrofit", "Overpass API returned 0 elements or mirrors failed. Generating fallback spots nearby GPS ($lat, $lng)")
-        val fallbackSpots = generateNearbyFallbackSpots(lat, lng, 6)
-        Result.success(fallbackSpots)
     }
 
     /**
-     * Converts OverpassElement DTOs into ScoutSpotEntity domain models.
+     * Converts OverpassElement DTOs into ScoutSpotEntity domain models while collecting diagnostic telemetry.
      */
-    fun mapElementsToEntities(
+    fun mapElementsWithDiagnostics(
         elements: List<OverpassElement>,
         userLat: Double,
         userLng: Double
-    ): List<ScoutSpotEntity> {
-        return elements.mapIndexedNotNull { index, element ->
+    ): Pair<List<ScoutSpotEntity>, List<String>> {
+        val entities = mutableListOf<ScoutSpotEntity>()
+        val dropReasons = mutableListOf<String>()
+
+        elements.forEachIndexed { index, element ->
+            val latitude = element.lat ?: element.center?.lat
+            val longitude = element.lon ?: element.center?.lon
+
+            if (latitude == null || longitude == null) {
+                dropReasons.add("Element ${element.type} #${element.id} dropped: Missing latitude/longitude or center coordinates.")
+                return@forEachIndexed
+            }
+
+            if (userLat != 0.0 || userLng != 0.0) {
+                val distanceMeters = com.example.data.location.LocationTracker.distanceBetween(userLat, userLng, latitude, longitude)
+                if (distanceMeters > 50000f) {
+                    val distKm = String.format(Locale.US, "%.1f", distanceMeters / 1000f)
+                    dropReasons.add("Element ${element.type} #${element.id} dropped: Distance ($distKm km) exceeds 50 km safety radius limit from ($userLat, $userLng).")
+                    return@forEachIndexed
+                }
+            }
+
             val tags = element.tags ?: emptyMap()
 
-            val latitude = element.lat ?: element.center?.lat ?: return@mapIndexedNotNull null
-            val longitude = element.lon ?: element.center?.lon ?: return@mapIndexedNotNull null
+            // Derive title and verify official name requirement
+            val rawName = tags["name"] ?: tags["name:en"] ?: tags["name:es"] ?: tags["name:fr"] ?: tags["name:pt"]
+            if (rawName.isNullOrBlank()) {
+                dropReasons.add("Element ${element.type} #${element.id} dropped: Missing official name tag.")
+                return@forEachIndexed
+            }
+            val title = rawName
 
             // Determine category and branding
             val category: String
             val badgeLabel: String
-            val imageUrl: String
 
             when {
                 tags["shop"] == "bakery" || tags["amenity"] == "cafe" -> {
                     category = "eats"
                     badgeLabel = if (tags["shop"] == "bakery") "WARM BAKERY ALERT" else "LOCAL CAFE FEED"
-                    imageUrl = bakeryImages[index % bakeryImages.size]
                 }
                 tags.containsKey("tourism") && tags["tourism"] == "viewpoint" -> {
                     category = "sights"
                     badgeLabel = "OSM VIEWPOINT"
-                    imageUrl = viewpointImages[index % viewpointImages.size]
                 }
                 tags.containsKey("highway") -> {
                     category = "shortcut"
                     badgeLabel = "SECRET PASS"
-                    imageUrl = shortcutImages[index % shortcutImages.size]
                 }
                 tags.containsKey("historic") -> {
                     category = "history"
                     badgeLabel = "HISTORIC MONUMENT"
-                    imageUrl = historicImages[index % historicImages.size]
                 }
                 else -> {
                     category = "sights"
                     badgeLabel = "COMMUNITY GEM"
-                    imageUrl = viewpointImages[index % viewpointImages.size]
                 }
             }
 
-            // Derive title
-            val rawName = tags["name"] ?: tags["name:en"] ?: tags["name:pt"]
-            val title = if (!rawName.isNullOrBlank()) {
-                rawName
-            } else {
-                when (category) {
-                    "eats" -> "Pastelaria & Bakery — Fresh Batch #${index + 1}"
-                    "sights" -> "Scenic Viewpoint Overlook #${index + 1}"
-                    "shortcut" -> "Cobblestone Steps Shortcut #${index + 1}"
-                    "history" -> "Historic ${tags["historic"]?.replace('_', ' ')?.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.ROOT) else it.toString() } ?: "Site"} Landmark"
-                    else -> "Discovered Node #${element.id}"
-                }
-            }
+            val street = tags["addr:street"] ?: tags["addr:city"] ?: tags["addr:suburb"] ?: "Local District"
+            val elementSpotId = "osm_${element.type}_${element.id}"
+            val photoResult = com.example.util.LocationPhotoResolver.resolvePhotoSynchronous(
+                title = title,
+                category = category,
+                districtOrLocation = street,
+                osmTags = tags,
+                spotId = elementSpotId
+            )
+            val imageUrl = photoResult.url
 
             // Description
             val desc = tags["description"] ?: tags["note"] ?: when (category) {
@@ -276,37 +452,48 @@ class OverpassRetrofitClient(
                 else -> "Geographic node fetched via Retrofit Overpass API client."
             }
 
-            val street = tags["addr:street"] ?: tags["addr:city"] ?: tags["addr:suburb"] ?: "Local Historic District"
-            val randomRating = 4.5 + (Random.nextDouble() * 0.4)
-            val formattedRating = String.format(Locale.US, "%.1f", randomRating).toDoubleOrNull() ?: 4.8
-
-            ScoutSpotEntity(
-                id = "osm_${element.type}_${element.id}",
-                title = title,
-                description = desc,
-                category = category,
-                distance = "Calculating...",
-                walkMinutes = 5,
-                rating = formattedRating,
-                reviewCount = "Retrofit OSM",
-                imageUrl = imageUrl,
-                badgeLabel = badgeLabel,
-                statusBadge = "Live OSM Scout",
-                tagsRaw = "Retrofit|||OpenStreetMap|||Nodes Verified",
-                proTip = "Fetched via Retrofit Overpass API client. Tap Bookmark to store permanently in Room DB.",
-                contributor = "@osm_contributor",
-                upvotes = 15 + (index * 6) % 75,
-                isSaved = false,
-                isOfflineDraft = false,
-                isDiscovered = false,
-                discoveredTimestamp = null,
-                userNotes = null,
-                offlineCached = true,
-                locationName = street,
-                latitude = latitude,
-                longitude = longitude,
-                timestamp = System.currentTimeMillis()
+            entities.add(
+                ScoutSpotEntity(
+                    id = "osm_${element.type}_${element.id}",
+                    title = title,
+                    description = desc,
+                    category = category,
+                    distance = "Calculating...",
+                    walkMinutes = 5,
+                    rating = null,
+                    reviewCount = null,
+                    imageUrl = imageUrl,
+                    badgeLabel = badgeLabel,
+                    statusBadge = "Live OSM Scout",
+                    tagsRaw = "Retrofit|||OpenStreetMap|||Nodes Verified",
+                    proTip = "Fetched via Retrofit Overpass API client. Tap Bookmark to store permanently in Room DB.",
+                    contributor = "@osm_contributor",
+                    upvotes = null,
+                    isSaved = false,
+                    isOfflineDraft = false,
+                    isDiscovered = false,
+                    discoveredTimestamp = null,
+                    userNotes = null,
+                    offlineCached = true,
+                    locationName = street,
+                    latitude = latitude,
+                    longitude = longitude,
+                    timestamp = System.currentTimeMillis()
+                )
             )
         }
+
+        return Pair(entities, dropReasons)
+    }
+
+    /**
+     * Converts OverpassElement DTOs into ScoutSpotEntity domain models.
+     */
+    fun mapElementsToEntities(
+        elements: List<OverpassElement>,
+        userLat: Double,
+        userLng: Double
+    ): List<ScoutSpotEntity> {
+        return mapElementsWithDiagnostics(elements, userLat, userLng).first
     }
 }
