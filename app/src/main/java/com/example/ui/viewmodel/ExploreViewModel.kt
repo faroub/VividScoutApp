@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.local.RecentSearchEntity
 import com.example.data.local.ScoutSpotEntity
+import com.example.data.local.computedDistanceMeters
 import com.example.data.network.OverpassRetrofitClient
 import com.example.data.repository.ScoutGemRepository
 import com.example.data.repository.ScoutRepository
@@ -85,18 +86,27 @@ class ExploreViewModel(
     private val _playingAudioId = MutableStateFlow<String?>(null)
     val playingAudioId: StateFlow<String?> = _playingAudioId.asStateFlow()
 
+    private val _userCoordinates = MutableStateFlow(Pair(38.7112, -9.1423))
+    val userCoordinates: StateFlow<Pair<Double, Double>> = _userCoordinates.asStateFlow()
+
     val filteredSpots: StateFlow<List<ScoutSpotEntity>> = combine(
         allSpots,
         _selectedCategory,
-        _searchQuery
-    ) { spots, category, query ->
-        spots.filter { spot ->
+        _searchQuery,
+        _userCoordinates
+    ) { spots, category, query, coords ->
+        val matching = spots.filter { spot ->
             val matchesCategory = (category.equals("all", ignoreCase = true) || spot.category.equals(category, ignoreCase = true))
             val matchesQuery = query.isBlank() ||
                 spot.title.contains(query, ignoreCase = true) ||
                 spot.description.contains(query, ignoreCase = true) ||
                 spot.category.contains(query, ignoreCase = true)
             matchesCategory && matchesQuery
+        }
+
+        // Proximity Sorting: Places closest to active GPS / city coordinates appear FIRST
+        matching.sortedBy { spot ->
+            spot.computedDistanceMeters(coords.first, coords.second)
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -207,8 +217,35 @@ class ExploreViewModel(
             val profile = _cityProfile.value
             val lat = if (profile.lat != 0.0) profile.lat else 38.7112
             val lng = if (profile.lng != 0.0) profile.lng else -9.1423
+            _userCoordinates.value = Pair(lat, lng)
             val banner = preScoutEngine.executePreScout(lat, lng, cityName)
             _preScoutBannerState.value = banner
+            val nearbyCount = repository.getAllSpotsSync().count { spot ->
+                spot.computedDistanceMeters(lat, lng) <= 15000f
+            }
+            if (nearbyCount < 3) {
+                gemRepository.syncLiveOsmGems(lat, lng, 3000, "all")
+            }
+        }
+    }
+
+    fun updateUserLocation(lat: Double, lng: Double) {
+        if (lat == 0.0 && lng == 0.0) return
+        val prev = _userCoordinates.value
+        if (Math.abs(prev.first - lat) > 0.0005 || Math.abs(prev.second - lng) > 0.0005) {
+            _userCoordinates.value = Pair(lat, lng)
+            viewModelScope.launch(Dispatchers.IO) {
+                val cityName = _selectedGlobalCity.value
+                val banner = preScoutEngine.executePreScout(lat, lng, cityName)
+                _preScoutBannerState.value = banner
+
+                val nearbyCount = repository.getAllSpotsSync().count { spot ->
+                    spot.computedDistanceMeters(lat, lng) <= 15000f
+                }
+                if (nearbyCount < 3) {
+                    gemRepository.syncLiveOsmGems(lat, lng, 3000, "all")
+                }
+            }
         }
     }
 

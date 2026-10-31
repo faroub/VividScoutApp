@@ -2,6 +2,7 @@ package com.example.data.network
 
 import android.util.Log
 import com.example.data.local.ScoutSpotEntity
+import com.example.data.location.LocationTracker
 import com.google.firebase.Firebase
 import com.google.firebase.ai.ai
 import com.google.firebase.ai.type.Schema
@@ -265,86 +266,171 @@ class GeminiSpotService {
             val tags: String
         )
 
-        val catalog = listOf(
-            CuratedSpotBlueprint(
-                title = "Miradouro de Santa Luzia",
-                district = "Alfama Terraces",
-                category = "touristic",
-                description = "Romantic bougainvillea-framed terrace overlooking the red terracotta roofs of Alfama down to the blue Tagus estuary.",
-                audioLore = "Legend says 18th-century sailors would look back up at these painted blue azulejo panels depicting Praça do Comércio before departing into the Atlantic.",
-                badgeLabel = "ICONIC VIEWPOINT",
-                rating = 4.9,
-                latOffset = 0.0018,
-                lngOffset = 0.0022,
-                imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/c/cd/MiradouroSantaLuzia.JPG/800px-MiradouroSantaLuzia.JPG",
-                tags = "viewpoint,terrace,azulejos,romantic,alfama"
-            ),
-            CuratedSpotBlueprint(
-                title = "Pastelaria Manteigaria — Chiado",
-                district = "Praça Luís de Camões",
-                category = "restaurant",
-                description = "Artisan bakery where pastel de nata custard tarts are hand-rolled and baked fresh continuously before your eyes.",
-                audioLore = "Listen closely for the bronze bell ringing over Camões square—every single chime signals a fresh hot tray coming right out of the 300-degree oven.",
-                badgeLabel = "MUST-TRY FOOD GEM",
-                rating = 4.9,
-                latOffset = -0.0012,
-                lngOffset = -0.0015,
-                imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/2/24/Pastel_de_Nata_Manteigaria.jpg/800px-Pastel_de_Nata_Manteigaria.jpg",
-                tags = "bakery,pastry,local_favorite,cinnamon,chiado"
-            ),
-            CuratedSpotBlueprint(
-                title = "Castelo de São Jorge Ramparts",
-                district = "Santa Maria Maior",
-                category = "historical",
-                description = "11th-century Moorish citadel perched atop the highest hill of the historic center offering 360-degree panoramic rampart walks.",
-                audioLore = "The ancient stone pine trees here cast deep shade over battlements that have withstood earthquakes, sieges, and eight centuries of royal intrigue.",
-                badgeLabel = "HISTORIC FORTRESS",
-                rating = 4.8,
-                latOffset = 0.0031,
-                lngOffset = 0.0008,
-                imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/6/69/Castelo_de_S%C3%A3o_Jorge_by_Augusto_Cabrita.jpg/800px-Castelo_de_S%C3%A3o_Jorge_by_Augusto_Cabrita.jpg",
-                tags = "castle,fortress,history,panoramic,moorish"
-            ),
-            CuratedSpotBlueprint(
-                title = "Elevador da Bica Funicular",
-                district = "Bica / Misericórdia",
-                category = "touristic",
-                description = "Charming yellow funicular operating since 1892, climbing the steep, lantern-lit cobblestones between Rua de São Paulo and Calhariz.",
-                audioLore = "Designed by Raoul Mesnier du Ponsard, this twin-cable carriage is immortalized in vintage photographs with laundry fluttering above from wrought-iron balconies.",
-                badgeLabel = "LIVING HERITAGE",
-                rating = 4.7,
-                latOffset = -0.0025,
-                lngOffset = -0.0031,
-                imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d3/Elevador_da_Bica_01.jpg/800px-Elevador_da_Bica_01.jpg",
-                tags = "funicular,tram,cobblestone,street,bica"
-            ),
-            CuratedSpotBlueprint(
-                title = "Convento do Carmo Ruins",
-                district = "Largo do Carmo",
-                category = "historical",
-                description = "Roofless Gothic church preserved as a hauntingly beautiful open-air memorial following the Great 1755 Lisbon Earthquake.",
-                audioLore = "Look straight up through the pointed rib-vault arches to see open sky—the monument serves as a silent testament to survival and rebirth.",
-                badgeLabel = "GOTHIC MONUMENT",
-                rating = 4.8,
-                latOffset = 0.0009,
-                lngOffset = -0.0019,
-                imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d4/Convento_do_Carmo_Lisbon.jpg/800px-Convento_do_Carmo_Lisbon.jpg",
-                tags = "monument,gothic,history,museum,chiado"
-            ),
-            CuratedSpotBlueprint(
-                title = "Taberna da Rua das Flores",
-                district = "Chiado / Baixa",
-                category = "restaurant",
-                description = "Cozy chalkboard-menu tavern championing seasonal Portuguese petiscos, cured cheeses, and fresh Atlantic seafood.",
-                audioLore = "There are no reservations here: patrons gather under the wooden awning sipping chilled vinho verde while chatting with locals.",
-                badgeLabel = "LOCAL TAVERN",
-                rating = 4.7,
-                latOffset = -0.0008,
-                lngOffset = -0.0011,
-                imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/a/ad/Taberna_tradicional_Lisboa_petiscos.jpg/800px-Taberna_tradicional_Lisboa_petiscos.jpg",
-                tags = "dining,seafood,wine,cozy,tavern"
+        val isLisbonArea = LocationTracker.distanceBetween(userLat, userLng, 38.7112, -9.1423) < 100000f
+
+        val catalog = if (isLisbonArea) {
+            listOf(
+                CuratedSpotBlueprint(
+                    title = "Miradouro de Santa Luzia",
+                    district = "Alfama Terraces",
+                    category = "touristic",
+                    description = "Romantic bougainvillea-framed terrace overlooking the red terracotta roofs of Alfama down to the blue Tagus estuary.",
+                    audioLore = "Legend says 18th-century sailors would look back up at these painted blue azulejo panels depicting Praça do Comércio before departing into the Atlantic.",
+                    badgeLabel = "ICONIC VIEWPOINT",
+                    rating = 4.9,
+                    latOffset = 0.0018,
+                    lngOffset = 0.0022,
+                    imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/c/cd/MiradouroSantaLuzia.JPG/800px-MiradouroSantaLuzia.JPG",
+                    tags = "viewpoint,terrace,azulejos,romantic,alfama"
+                ),
+                CuratedSpotBlueprint(
+                    title = "Pastelaria Manteigaria — Chiado",
+                    district = "Praça Luís de Camões",
+                    category = "restaurant",
+                    description = "Artisan bakery where pastel de nata custard tarts are hand-rolled and baked fresh continuously before your eyes.",
+                    audioLore = "Listen closely for the bronze bell ringing over Camões square—every single chime signals a fresh hot tray coming right out of the 300-degree oven.",
+                    badgeLabel = "MUST-TRY FOOD GEM",
+                    rating = 4.9,
+                    latOffset = -0.0012,
+                    lngOffset = -0.0015,
+                    imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/2/24/Pastel_de_Nata_Manteigaria.jpg/800px-Pastel_de_Nata_Manteigaria.jpg",
+                    tags = "bakery,pastry,local_favorite,cinnamon,chiado"
+                ),
+                CuratedSpotBlueprint(
+                    title = "Castelo de São Jorge Ramparts",
+                    district = "Santa Maria Maior",
+                    category = "historical",
+                    description = "11th-century Moorish citadel perched atop the highest hill of the historic center offering 360-degree panoramic rampart walks.",
+                    audioLore = "The ancient stone pine trees here cast deep shade over battlements that have withstood earthquakes, sieges, and eight centuries of royal intrigue.",
+                    badgeLabel = "HISTORIC FORTRESS",
+                    rating = 4.8,
+                    latOffset = 0.0031,
+                    lngOffset = 0.0008,
+                    imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/6/69/Castelo_de_S%C3%A3o_Jorge_by_Augusto_Cabrita.jpg/800px-Castelo_de_S%C3%A3o_Jorge_by_Augusto_Cabrita.jpg",
+                    tags = "castle,fortress,history,panoramic,moorish"
+                ),
+                CuratedSpotBlueprint(
+                    title = "Elevador da Bica Funicular",
+                    district = "Bica / Misericórdia",
+                    category = "touristic",
+                    description = "Charming yellow funicular operating since 1892, climbing the steep, lantern-lit cobblestones between Rua de São Paulo and Calhariz.",
+                    audioLore = "Designed by Raoul Mesnier du Ponsard, this twin-cable carriage is immortalized in vintage photographs with laundry fluttering above from wrought-iron balconies.",
+                    badgeLabel = "LIVING HERITAGE",
+                    rating = 4.7,
+                    latOffset = -0.0025,
+                    lngOffset = -0.0031,
+                    imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d3/Elevador_da_Bica_01.jpg/800px-Elevador_da_Bica_01.jpg",
+                    tags = "funicular,tram,cobblestone,street,bica"
+                ),
+                CuratedSpotBlueprint(
+                    title = "Convento do Carmo Ruins",
+                    district = "Largo do Carmo",
+                    category = "historical",
+                    description = "Roofless Gothic church preserved as a hauntingly beautiful open-air memorial following the Great 1755 Lisbon Earthquake.",
+                    audioLore = "Look straight up through the pointed rib-vault arches to see open sky—the monument serves as a silent testament to survival and rebirth.",
+                    badgeLabel = "GOTHIC MONUMENT",
+                    rating = 4.8,
+                    latOffset = 0.0009,
+                    lngOffset = -0.0019,
+                    imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d4/Convento_do_Carmo_Lisbon.jpg/800px-Convento_do_Carmo_Lisbon.jpg",
+                    tags = "monument,gothic,history,museum,chiado"
+                ),
+                CuratedSpotBlueprint(
+                    title = "Taberna da Rua das Flores",
+                    district = "Chiado / Baixa",
+                    category = "restaurant",
+                    description = "Cozy chalkboard-menu tavern championing seasonal Portuguese petiscos, cured cheeses, and fresh Atlantic seafood.",
+                    audioLore = "There are no reservations here: patrons gather under the wooden awning sipping chilled vinho verde while chatting with locals.",
+                    badgeLabel = "LOCAL TAVERN",
+                    rating = 4.7,
+                    latOffset = -0.0008,
+                    lngOffset = -0.0011,
+                    imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/a/ad/Taberna_tradicional_Lisboa_petiscos.jpg/800px-Taberna_tradicional_Lisboa_petiscos.jpg",
+                    tags = "dining,seafood,wine,cozy,tavern"
+                )
             )
-        )
+        } else {
+            listOf(
+                CuratedSpotBlueprint(
+                    title = "Historic Old Town Square",
+                    district = "City Center",
+                    category = "touristic",
+                    description = "Vibrant historic square featuring grand architecture, open-air cafes, and century-old monuments.",
+                    audioLore = "A central meeting place for locals and travelers alike, surrounded by historic facades and scenic streetscapes.",
+                    badgeLabel = "ICONIC LANDMARK",
+                    rating = 4.8,
+                    latOffset = 0.0015,
+                    lngOffset = 0.0020,
+                    imageUrl = "https://images.unsplash.com/photo-1513688275127-1be5a8359473?auto=format&fit=crop&w=800&q=80",
+                    tags = "landmark,square,historic,center"
+                ),
+                CuratedSpotBlueprint(
+                    title = "Artisan Bakery & Cafe",
+                    district = "Old Town District",
+                    category = "restaurant",
+                    description = "Cozy local bakery specializing in fresh regional pastries, hand-brewed espresso, and artisan breads.",
+                    audioLore = "Sample fresh traditional pastries baked in small batches daily by local pastry chefs.",
+                    badgeLabel = "MUST-TRY FOOD GEM",
+                    rating = 4.9,
+                    latOffset = -0.0012,
+                    lngOffset = -0.0015,
+                    imageUrl = "https://images.unsplash.com/photo-1509440159596-0249088772ff?auto=format&fit=crop&w=800&q=80",
+                    tags = "bakery,pastry,cafe,local_favorite"
+                ),
+                CuratedSpotBlueprint(
+                    title = "Historic Citadel & Castle Ramparts",
+                    district = "Castle Quarter",
+                    category = "historical",
+                    description = "Centuries-old stone fortress and elevated ramparts offering 360-degree views over the surrounding city skyline.",
+                    audioLore = "Explore stone battlements and historic arches that have stood through centuries of regional history.",
+                    badgeLabel = "HISTORIC FORTRESS",
+                    rating = 4.8,
+                    latOffset = 0.0031,
+                    lngOffset = 0.0008,
+                    imageUrl = "https://images.unsplash.com/photo-1548707309-dcebeab9ea9b?auto=format&fit=crop&w=800&q=80",
+                    tags = "castle,fortress,history,panoramic"
+                ),
+                CuratedSpotBlueprint(
+                    title = "Riverfront Promenade & Viewpoint",
+                    district = "Riverside Promenade",
+                    category = "touristic",
+                    description = "Scenic waterside walking path with benches, street musicians, and sweeping waterfront vistas.",
+                    audioLore = "A peaceful pedestrian boulevard popular for evening strolls and sunset views over the water.",
+                    badgeLabel = "SCENIC WALKWAY",
+                    rating = 4.7,
+                    latOffset = -0.0025,
+                    lngOffset = -0.0031,
+                    imageUrl = "https://images.unsplash.com/photo-1588668214407-6ea9a6d8c272?auto=format&fit=crop&w=800&q=80",
+                    tags = "promenade,riverfront,viewpoint,walk"
+                ),
+                CuratedSpotBlueprint(
+                    title = "Gothic Cathedral & Monuments",
+                    district = "Cathedral Quarter",
+                    category = "historical",
+                    description = "Majestic Gothic cathedral featuring ornate stone carvings, stained glass windows, and quiet inner courtyards.",
+                    audioLore = "Marvel at intricate architectural details and quiet sacred spaces in the heart of the historic center.",
+                    badgeLabel = "GOTHIC MONUMENT",
+                    rating = 4.8,
+                    latOffset = 0.0009,
+                    lngOffset = -0.0019,
+                    imageUrl = "https://images.unsplash.com/photo-1513688275127-1be5a8359473?auto=format&fit=crop&w=800&q=80",
+                    tags = "monument,gothic,history,cathedral"
+                ),
+                CuratedSpotBlueprint(
+                    title = "Local Market & Culinary Taverna",
+                    district = "Market District",
+                    category = "restaurant",
+                    description = "Bustling local market hall and cozy tavern serving seasonal specialties and regional delicacies.",
+                    audioLore = "Gather under wooden timber beams to taste traditional dishes prepared with local ingredients.",
+                    badgeLabel = "LOCAL TAVERN",
+                    rating = 4.7,
+                    latOffset = -0.0008,
+                    lngOffset = -0.0011,
+                    imageUrl = "https://images.unsplash.com/photo-1554118811-1e0d58224f24?auto=format&fit=crop&w=800&q=80",
+                    tags = "dining,market,local,food"
+                )
+            )
+        }
 
         val filtered = if (category.equals("all", ignoreCase = true)) {
             catalog

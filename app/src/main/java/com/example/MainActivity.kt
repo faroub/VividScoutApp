@@ -26,6 +26,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -147,6 +148,12 @@ fun VividScoutApp(
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
         }
+    }
+
+    // Automatically sync active location to ExploreViewModel for proximity sorting & auto-discovery
+    LaunchedEffect(locationState.userCoordinates) {
+        val (lat, lng) = locationState.userCoordinates
+        exploreViewModel.updateUserLocation(lat, lng)
     }
 
     val locationPermissionLauncher = rememberLauncherForActivityResult(

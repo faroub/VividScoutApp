@@ -2,6 +2,7 @@ package com.example.data.model
 
 import android.content.Context
 import com.example.R
+import com.example.data.location.LocationTracker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -31,6 +32,28 @@ object GlobalCityCatalog {
 
     val POPULAR_WORLD_CITIES: List<GlobalCity>
         get() = cachedCities ?: fallbackCities
+
+    fun findNearestCityName(lat: Double, lng: Double): String {
+        val distDresden = LocationTracker.distanceBetween(lat, lng, 51.0504, 13.7373)
+        if (distDresden < 80000f) return "Dresden, Germany"
+
+        val distBerlin = LocationTracker.distanceBetween(lat, lng, 52.5200, 13.4050)
+        if (distBerlin < 80000f) return "Berlin, Germany"
+
+        val distLisbon = LocationTracker.distanceBetween(lat, lng, 38.7112, -9.1423)
+        if (distLisbon < 80000f) return "Lisbon, Portugal"
+
+        val nearest = POPULAR_WORLD_CITIES.filter { it.latitude != 0.0 }.minByOrNull { city ->
+            LocationTracker.distanceBetween(lat, lng, city.latitude, city.longitude)
+        }
+        if (nearest != null) {
+            val dist = LocationTracker.distanceBetween(lat, lng, nearest.latitude, nearest.longitude)
+            if (dist < 100000f) {
+                return "${nearest.name}, ${nearest.country}"
+            }
+        }
+        return "Live GPS Region"
+    }
 
     fun loadCitiesFromAssets(context: Context): List<GlobalCity> {
         cachedCities?.let { return it }

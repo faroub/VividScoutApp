@@ -33,6 +33,10 @@ class ScoutRepository(
         achievementDao?.getUnlockedCount() ?: emptyFlow()
     val userPoints: Flow<Int> = kotlinx.coroutines.flow.flowOf(150)
 
+    suspend fun getAllSpotsSync(): List<ScoutSpotEntity> = withContext(Dispatchers.IO) {
+        scoutDao.getAllSpotsSync()
+    }
+
     suspend fun clearCachedData() = withContext(Dispatchers.IO) {
         scoutDao.clearAllTransientSpots()
     }
