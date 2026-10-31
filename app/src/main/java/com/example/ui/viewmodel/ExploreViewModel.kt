@@ -5,6 +5,8 @@ import androidx.lifecycle.viewModelScope
 import com.example.data.local.RecentSearchEntity
 import com.example.data.local.ScoutSpotEntity
 import com.example.data.local.computedDistanceMeters
+import com.example.data.model.CityProfileRegistry
+import com.example.data.model.GlobalCityCatalog
 import com.example.data.network.OverpassRetrofitClient
 import com.example.data.repository.ScoutGemRepository
 import com.example.data.repository.ScoutRepository
@@ -95,18 +97,26 @@ class ExploreViewModel(
         _searchQuery,
         _userCoordinates
     ) { spots, category, query, coords ->
+        val userLat = coords.first
+        val userLng = coords.second
+
         val matching = spots.filter { spot ->
             val matchesCategory = (category.equals("all", ignoreCase = true) || spot.category.equals(category, ignoreCase = true))
             val matchesQuery = query.isBlank() ||
                 spot.title.contains(query, ignoreCase = true) ||
                 spot.description.contains(query, ignoreCase = true) ||
                 spot.category.contains(query, ignoreCase = true)
-            matchesCategory && matchesQuery
+
+            // Vicinity Filter: Exclude distant spots from other cities/countries (>100km away)
+            val distMeters = spot.computedDistanceMeters(userLat, userLng)
+            val matchesVicinity = distMeters <= 100000f
+
+            matchesCategory && matchesQuery && matchesVicinity
         }
 
         // Proximity Sorting: Places closest to active GPS / city coordinates appear FIRST
         matching.sortedBy { spot ->
-            spot.computedDistanceMeters(coords.first, coords.second)
+            spot.computedDistanceMeters(userLat, userLng)
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -234,13 +244,17 @@ class ExploreViewModel(
         val prev = _userCoordinates.value
         if (Math.abs(prev.first - lat) > 0.0005 || Math.abs(prev.second - lng) > 0.0005) {
             _userCoordinates.value = Pair(lat, lng)
+
+            val detectedCityName = GlobalCityCatalog.findNearestCityName(lat, lng)
+            _selectedGlobalCity.value = detectedCityName
+            _cityProfile.value = CityProfileRegistry.getProfileForCity(detectedCityName, lat, lng)
+
             viewModelScope.launch(Dispatchers.IO) {
-                val cityName = _selectedGlobalCity.value
-                val banner = preScoutEngine.executePreScout(lat, lng, cityName)
+                val banner = preScoutEngine.executePreScout(lat, lng, detectedCityName)
                 _preScoutBannerState.value = banner
 
                 val nearbyCount = repository.getAllSpotsSync().count { spot ->
-                    spot.computedDistanceMeters(lat, lng) <= 15000f
+                    spot.computedDistanceMeters(lat, lng) <= 20000f
                 }
                 if (nearbyCount < 3) {
                     gemRepository.syncLiveOsmGems(lat, lng, 3000, "all")
@@ -248,6 +262,7 @@ class ExploreViewModel(
             }
         }
     }
+
 
     fun dismissPreScoutBanner() {
         _preScoutBannerState.value = _preScoutBannerState.value.copy(isVisible = false)
