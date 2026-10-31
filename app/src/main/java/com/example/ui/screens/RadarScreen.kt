@@ -1,7 +1,7 @@
 package com.example.ui.screens
 
 import android.location.Location
-import com.example.ui.components.ScoutMapView
+import com.example.ui.components.MapCanvasView
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -439,22 +439,16 @@ fun RadarScreen(
                 Box(modifier = Modifier.fillMaxSize()) {
                     if (viewMode == RadarViewMode.MAP) {
                         // Scout Vector Map interactive view with user location and Room gems
-                        ScoutMapView(
+                        MapCanvasView(
                             spots = sortedSpots,
                             userLat = userLat,
                             userLng = userLng,
                             userAccuracy = userAccuracy,
-                            hasLocationPermission = hasLocationPermission,
-                            selectedRadius = selectedRadius,
                             selectedSpot = selectedSpot,
-                            onSpotSelect = { selectedSpot = it },
-                            onSpotClick = onSpotClick,
-                            onToggleSave = onToggleSave,
-                            isScrapingOsm = isScrapingOsm,
-                            osmScrapeMessage = osmScrapeMessage,
-                            onScrapeOsm = onScrapeOsm,
-                            onDismissOsmMessage = onDismissOsmMessage,
-                            syncStatus = syncStatus,
+                            onSpotSelect = { spot ->
+                                selectedSpot = spot
+                                onSpotClick(spot)
+                            },
                             activeTrail = activeTrail,
                             onPlanTrailClick = onPlanWalkingTrail,
                             cacheHealth = cacheHealth,
@@ -465,7 +459,6 @@ fun RadarScreen(
                             onStartRegionDownload = onStartRegionDownload,
                             onCancelRegionDownload = onCancelRegionDownload,
                             onConfirmRegionDownload = onConfirmRegionDownload,
-                            achievements = achievements,
                             modifier = Modifier.fillMaxSize()
                         )
                     } else {

@@ -138,7 +138,9 @@ class LocationTracker(private val context: Context) {
                 Looper.getMainLooper()
             )
             _isTracking.value = true
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            // Safe recovery: Failed to request location updates (e.g. missing permission), log warning and mark tracking false
+            runCatching { android.util.Log.w("LocationTracker", "Failed to start location updates", e) }
             _isTracking.value = false
         }
     }
@@ -146,7 +148,9 @@ class LocationTracker(private val context: Context) {
     fun stopTracking() {
         try {
             fusedLocationClient.removeLocationUpdates(locationCallback)
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            // Safe recovery: Removing updates failed, log telemetry and reset tracking flag
+            runCatching { android.util.Log.w("LocationTracker", "Failed to remove location updates", e) }
         } finally {
             _isTracking.value = false
         }
@@ -166,8 +170,9 @@ class LocationTracker(private val context: Context) {
                 val results = FloatArray(1)
                 Location.distanceBetween(startLat, startLng, endLat, endLng, results)
                 results[0]
-            } catch (_: Throwable) {
-                // Fallback Haversine geodesic calculation for local JVM unit tests
+            } catch (e: Throwable) {
+                // Safe recovery: Fallback Haversine geodesic calculation for local JVM unit tests or unmocked Android Location
+                runCatching { android.util.Log.w("LocationTracker", "Location.distanceBetween failed, using Haversine fallback", e) }
                 val r = 6371000.0 // Earth radius in meters
                 val dLat = Math.toRadians(endLat - startLat)
                 val dLng = Math.toRadians(endLng - startLng)

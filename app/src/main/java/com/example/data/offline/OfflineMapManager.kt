@@ -243,7 +243,9 @@ class OfflineMapManager(
 
             androidx.core.app.NotificationManagerCompat.from(context)
                 .notify(OfflineMapDownloadService.NOTIFICATION_ID, notification)
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            // Safe recovery: Notification posting failed (e.g. permission missing), log telemetry without breaking background download
+            android.util.Log.w("OfflineMapManager", "Failed to post download status notification", e)
         }
     }
 }

@@ -337,7 +337,10 @@ class ScoutGemRepository(
                         scoutDao.insertSpots(entities)
                     }
                 }
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                // Safe recovery: JSON parsing of raw Overpass telemetry failed, log warning telemetry and return raw log
+                android.util.Log.w("ScoutGemRepository", "Failed to parse Overpass diagnostic JSON response", e)
+            }
         }
         log
     }

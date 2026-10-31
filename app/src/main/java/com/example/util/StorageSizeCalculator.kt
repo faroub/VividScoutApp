@@ -28,7 +28,9 @@ object StorageSizeCalculator {
 
             // If empty or freshly initialized, report minimum reasonable table header size (~64KB)
             if (totalBytes < 1024L && dbFile.exists()) 64 * 1024L else totalBytes
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            // Safe recovery: Return estimated default size (128 KB) on I/O error
+            android.util.Log.w("StorageSizeCalculator", "Error measuring database file size", e)
             128 * 1024L
         }
     }

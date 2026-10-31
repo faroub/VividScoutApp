@@ -168,7 +168,9 @@ fun VividScoutApp(
                 Uri.fromParts("package", context.packageName, null)
             )
             context.startActivity(intent)
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            // Safe recovery: System Settings activity launch failed, log telemetry
+            android.util.Log.w("MainActivity", "Failed to launch application details settings intent", e)
         }
     }
 

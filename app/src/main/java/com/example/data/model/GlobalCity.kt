@@ -44,7 +44,9 @@ object GlobalCityCatalog {
             } else {
                 fallbackCities
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            // Safe recovery: Asset reading/parsing failed, log warning telemetry and return static fallback cities list
+            android.util.Log.w("GlobalCityCatalog", "Failed to load global cities from raw asset", e)
             fallbackCities
         }
     }
@@ -67,7 +69,9 @@ object GlobalCityCatalog {
                     )
                 )
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            // Safe recovery: Log warning and return whatever cities were successfully parsed
+            android.util.Log.w("GlobalCityCatalog", "Error parsing cities JSON array", e)
         }
         return list
     }
@@ -126,7 +130,9 @@ object GlobalCityCatalog {
                 val body = response.body?.string() ?: return@withContext emptyList()
                 parseNominatimResults(body)
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            // Safe recovery: Geocoding network call failed, log warning telemetry and return empty list
+            android.util.Log.w("GlobalCityCatalog", "Nominatim geocoding network error for query: $query", e)
             emptyList()
         }
     }
@@ -160,7 +166,9 @@ object GlobalCityCatalog {
                     )
                 }
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            // Safe recovery: Return parsed results on malformed item
+            android.util.Log.w("GlobalCityCatalog", "Error parsing Nominatim JSON response", e)
         }
         return results
     }

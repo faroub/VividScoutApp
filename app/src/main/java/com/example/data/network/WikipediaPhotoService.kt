@@ -41,7 +41,9 @@ class WikipediaPhotoService(
         val encoded = try {
             URLEncoder.encode(cleaned.replace(" ", "_"), StandardCharsets.UTF_8.toString())
                 .replace("+", "%20")
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            // Safe recovery: Encoding failed, fall back to simple string underscore replacement
+            android.util.Log.w("WikipediaPhotoService", "URL encoding failed for tag: $commonsTag", e)
             cleaned.replace(" ", "_")
         }
         return "https://commons.wikimedia.org/wiki/Special:FilePath/$encoded?width=$targetWidth"
