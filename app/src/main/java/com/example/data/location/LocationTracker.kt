@@ -27,12 +27,8 @@ class LocationTracker(private val context: Context) {
         LocationServices.getFusedLocationProviderClient(context)
     }
 
-    // Fallback default coordinates (Lisbon center: Chiado / Alfama)
-    val defaultLocation: Location = Location("DefaultProvider").apply {
-        latitude = 38.7112
-        longitude = -9.1423
-        accuracy = 5f
-    }
+    // Centralized default fallback location
+    val defaultLocation: Location = DefaultLocationConfig.defaultLocation
 
     private val _currentLocation = MutableStateFlow<Location?>(null)
     val currentLocation: StateFlow<Location?> = _currentLocation.asStateFlow()

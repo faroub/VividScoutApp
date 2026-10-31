@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.data.local.RecentSearchEntity
 import com.example.data.local.ScoutSpotEntity
 import com.example.data.local.computedDistanceMeters
+import com.example.data.location.DefaultLocationConfig
 import com.example.data.model.CityProfileRegistry
 import com.example.data.model.GlobalCityCatalog
 import com.example.data.model.ScoutCategory
@@ -89,7 +90,7 @@ class ExploreViewModel(
     private val _playingAudioId = MutableStateFlow<String?>(null)
     val playingAudioId: StateFlow<String?> = _playingAudioId.asStateFlow()
 
-    private val _userCoordinates = MutableStateFlow(Pair(38.7112, -9.1423))
+    private val _userCoordinates = MutableStateFlow(Pair(DefaultLocationConfig.DEFAULT_LAT, DefaultLocationConfig.DEFAULT_LNG))
     val userCoordinates: StateFlow<Pair<Double, Double>> = _userCoordinates.asStateFlow()
 
     val filteredSpots: StateFlow<List<ScoutSpotEntity>> = combine(

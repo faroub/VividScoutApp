@@ -11,9 +11,11 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 
+import com.example.data.location.DefaultLocationConfig
+
 data class LocationUiState(
     val userLocation: Location? = null,
-    val userCoordinates: Pair<Double, Double> = Pair(38.7112, -9.1423), // Default Lisbon (Miradouro de Santa Luzia)
+    val userCoordinates: Pair<Double, Double> = Pair(DefaultLocationConfig.DEFAULT_LAT, DefaultLocationConfig.DEFAULT_LNG),
     val hasLocationPermission: Boolean = false,
     val isPreciseLocation: Boolean = false,
     val isUsingGpsLocation: Boolean = false,
@@ -46,7 +48,7 @@ class LocationViewModel(
 
     val userLocation: StateFlow<Location?> = locationTracker.currentLocation
 
-    private val defaultCoordinates = Pair(38.7112, -9.1423)
+    private val defaultCoordinates = Pair(DefaultLocationConfig.DEFAULT_LAT, DefaultLocationConfig.DEFAULT_LNG)
     private val _manualCoordinates = MutableStateFlow<Pair<Double, Double>?>(null)
 
     val userCoordinates: StateFlow<Pair<Double, Double>> = combine(

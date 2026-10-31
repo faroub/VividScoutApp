@@ -12,6 +12,7 @@ import java.util.UUID
 
 import com.example.data.local.AchievementDao
 import com.example.data.local.AchievementEntity
+import com.example.data.location.DefaultLocationConfig
 
 class ScoutRepository(
     private val scoutDao: ScoutDao,
@@ -65,9 +66,9 @@ class ScoutRepository(
         category: String,
         photoUri: String?,
         notes: String = "",
-        locationName: String = "Chiado Alleyway",
-        latitude: Double = 38.7112,
-        longitude: Double = -9.1423
+        locationName: String = "Local Spot",
+        latitude: Double = DefaultLocationConfig.DEFAULT_LAT,
+        longitude: Double = DefaultLocationConfig.DEFAULT_LNG
     ): ScoutSpotEntity = withContext(Dispatchers.IO) {
         val newId = "draft_${UUID.randomUUID()}"
         val newSpot = ScoutSpotEntity(

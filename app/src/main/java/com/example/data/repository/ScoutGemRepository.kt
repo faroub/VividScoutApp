@@ -5,6 +5,7 @@ import com.example.data.local.RecentSearchDao
 import com.example.data.local.RecentSearchEntity
 import com.example.data.local.ScoutDao
 import com.example.data.local.ScoutSpotEntity
+import com.example.data.location.DefaultLocationConfig
 import com.example.data.model.ScoutGem
 import com.example.data.model.toScoutGem
 import com.example.data.network.GeminiSpotService
@@ -216,8 +217,8 @@ class ScoutGemRepository(
      * Falls back to Overpass API / offline generator if AI discovery is offline or unavailable.
      */
     suspend fun syncLiveOsmGems(
-        userLat: Double = 38.7112,
-        userLng: Double = -9.1423,
+        userLat: Double = DefaultLocationConfig.DEFAULT_LAT,
+        userLng: Double = DefaultLocationConfig.DEFAULT_LNG,
         radiusMeters: Int = 1500,
         category: String = "all",
         customQuery: String = ""

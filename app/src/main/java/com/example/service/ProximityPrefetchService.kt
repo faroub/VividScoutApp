@@ -24,6 +24,7 @@ import androidx.core.content.ContextCompat
 import com.example.MainActivity
 import com.example.R
 import com.example.data.local.AppDatabase
+import com.example.data.location.DefaultLocationConfig
 import com.example.data.network.GeminiQueryService
 import com.example.util.AdaptivePrefetchPolicy
 import com.example.util.BatteryStatus
@@ -137,8 +138,10 @@ class ProximityPrefetchService : Service() {
                 return START_NOT_STICKY
             }
             ACTION_TRIGGER_PREFETCH -> {
-                val lat = intent?.getDoubleExtra(EXTRA_LAT, 38.7112) ?: 38.7112
-                val lng = intent?.getDoubleExtra(EXTRA_LNG, -9.1423) ?: -9.1423
+                val defaultLat = DefaultLocationConfig.DEFAULT_LAT
+                val defaultLng = DefaultLocationConfig.DEFAULT_LNG
+                val lat = intent?.getDoubleExtra(EXTRA_LAT, defaultLat) ?: defaultLat
+                val lng = intent?.getDoubleExtra(EXTRA_LNG, defaultLng) ?: defaultLng
                 val bearing = intent?.getFloatExtra(EXTRA_BEARING, 45f) ?: 45f
                 val speed = intent?.getFloatExtra(EXTRA_SPEED, 1.4f) ?: 1.4f
 
@@ -157,8 +160,8 @@ class ProximityPrefetchService : Service() {
 
                 // Initial baseline vector prefetch
                 serviceScope.launch {
-                    val defaultLat = intent?.getDoubleExtra(EXTRA_LAT, 38.7112) ?: 38.7112
-                    val defaultLng = intent?.getDoubleExtra(EXTRA_LNG, -9.1423) ?: -9.1423
+                    val defaultLat = intent?.getDoubleExtra(EXTRA_LAT, DefaultLocationConfig.DEFAULT_LAT) ?: DefaultLocationConfig.DEFAULT_LAT
+                    val defaultLng = intent?.getDoubleExtra(EXTRA_LNG, DefaultLocationConfig.DEFAULT_LNG) ?: DefaultLocationConfig.DEFAULT_LNG
                     val defaultBearing = intent?.getFloatExtra(EXTRA_BEARING, 45f) ?: 45f
                     val initialVector = MovementVectorUtils.calculateMovementVector(
                         listOf(LocationBreadcrumb(defaultLat, defaultLng, 1.4f, defaultBearing)),
