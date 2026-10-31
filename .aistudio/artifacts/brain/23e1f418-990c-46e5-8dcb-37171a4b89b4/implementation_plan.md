@@ -1,32 +1,34 @@
-# Implementation Plan - Privacy Backup and Data Extraction Rules
+# Implementation Plan - Final Verification Pass & Documentation
 
 ## User Intent
-Configure Android backup and data extraction rules (`backup_rules.xml` and `data_extraction_rules.xml`) to exclude the location-annotated Room database (`vivid_scout_database`, WAL, SHM, and shader journals) from cloud backups and device-to-device transfers, while allowing non-sensitive UI preferences (`sharedpref`) to be backed up.
+Execute a rigorous verification pass across the Android application:
+1. Run `gradle assembleDebug assembleRelease`.
+2. Run `gradle test`.
+3. Run `rg` regex search to confirm zero matches for `fallbackToDestructiveMigration`, empty catch blocks `catch (_: Exception) {}`, and `.random()`.
+4. Inspect `app/schemas/` for committed Room schema JSON.
+5. Create `docs/KNOWN_ISSUES.md` detailing any known limitations or technical notes.
 
 ---
 
 ## User Review Required
 
 > [!IMPORTANT]
-> - Room database `vivid_scout_database`, `vivid_scout_database-wal`, `vivid_scout_database-shm`, and `vivid_scout_database-shader` will be excluded from backups and device transfers.
-> - Shared preferences will be included for seamless user setting restoration across device reinstalls.
+> - All builds (`assembleDebug`, `assembleRelease`) and test suites (`test`) will be executed via Gradle.
+> - Codebase will be scanned for forbidden patterns.
+> - `docs/KNOWN_ISSUES.md` will be created.
 
 ---
 
-## Proposed Changes
+## Proposed Steps
 
-### 1. Update `app/src/main/res/xml/backup_rules.xml`
-- Include shared preferences.
-- Exclude Room database files (`vivid_scout_database`, WAL, SHM, shader).
+### 1. Build & Test Execution
+- Execute `gradle assembleDebug assembleRelease test` to verify complete build and test suite success.
 
-### 2. Update `app/src/main/res/xml/data_extraction_rules.xml`
-- Configure `<cloud-backup>` and `<device-transfer>` sections identically to include shared preferences and exclude Room database files.
-- Resolve TODO comments.
+### 2. Code Pattern Verification (`rg`)
+- Run grep checks for empty catch blocks, destructive migrations, and unsecured random calls.
 
----
+### 3. Room Schema Check
+- Verify existence and contents of `app/schemas/`.
 
-## Verification Plan
-
-### Automated Verification
-1. Run `compile_applet` to verify XML syntax and build integrity.
-2. Run `gradle :app:testDebugUnitTest` to verify all unit tests pass.
+### 4. Create `docs/KNOWN_ISSUES.md`
+- Document architectural notes, R8 minification status, and offline capability details.
