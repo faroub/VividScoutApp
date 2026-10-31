@@ -3,6 +3,7 @@ package com.example.data.network
 import android.util.Log
 import com.example.data.local.ScoutSpotEntity
 import com.example.data.location.LocationTracker
+import com.example.data.model.ScoutCategory
 import com.google.firebase.Firebase
 import com.google.firebase.ai.ai
 import com.google.firebase.ai.type.Schema
@@ -209,14 +210,8 @@ class GeminiSpotService {
                 tagsList.add(category)
             }
 
-            // Map category names to standard internal categories
-            val mappedCategory = when (category) {
-                "touristic", "tourist", "sightseeing" -> "touristic"
-                "restaurant", "dining", "food", "cafe", "bakery" -> "restaurant"
-                "historical", "history", "monument", "castle", "museum" -> "historical"
-                "events", "event", "culture", "festival" -> "events"
-                else -> "gems"
-            }
+            // Map category names to standard internal canonical categories using ScoutCategory
+            val mappedCategory = ScoutCategory.normalize(category)
 
             val spotId = "gemini_${title.lowercase().replace(Regex("[^a-z0-9]"), "_")}_${spotLat.toString().take(6)}"
 

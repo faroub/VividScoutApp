@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.local.ScoutSpotEntity
 import com.example.data.location.LocationTracker
+import com.example.data.model.ScoutCategory
 import com.example.data.repository.ScoutRepository
 import com.example.sensor.CompassSensorManager
 import com.example.sensor.CompassState
@@ -44,7 +45,7 @@ class RadarViewModel(
         compassState
     ) { radius, category, spots, compass ->
         val filtered = spots.filter { spot ->
-            category.equals("all", ignoreCase = true) || spot.category.equals(category, ignoreCase = true)
+            ScoutCategory.matches(category, spot.category)
         }
         RadarUiState(
             radarRadiusMeters = radius,
