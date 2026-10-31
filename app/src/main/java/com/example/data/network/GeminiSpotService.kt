@@ -124,7 +124,7 @@ class GeminiSpotService {
             }
 
             Log.d(TAG, "Gemini response received: ${jsonText.take(200)}...")
-            val parsedSpots = parseSpotsJson(jsonText, userLat, userLng)
+            val parsedSpots = parseSpotsJson(jsonText, userLat, userLng, radiusMeters)
             if (parsedSpots.isNotEmpty()) {
                 Result.success(parsedSpots)
             } else {
@@ -142,10 +142,18 @@ class GeminiSpotService {
         }
     }
 
-    private fun parseSpotsJson(jsonString: String, userLat: Double, userLng: Double): List<ScoutSpotEntity> {
+    internal fun parseSpotsJson(
+        jsonString: String,
+        userLat: Double,
+        userLng: Double,
+        radiusMeters: Int
+    ): List<ScoutSpotEntity> {
         val root = JSONObject(jsonString)
         val spotsArray = root.optJSONArray("spots") ?: return emptyList()
         val result = mutableListOf<ScoutSpotEntity>()
+
+        // Allow up to 20% margin or 3km minimum boundary threshold
+        val maxAllowedDistance = maxOf(radiusMeters.toFloat() * 1.2f, 3000f)
 
         for (i in 0 until spotsArray.length()) {
             val item = spotsArray.getJSONObject(i)
@@ -159,6 +167,17 @@ class GeminiSpotService {
                 continue
             }
             if (spotLat < -90.0 || spotLat > 90.0 || spotLng < -180.0 || spotLng > 180.0) {
+                continue
+            }
+
+            // Validate actual geodesic distance against active radius
+            val distMeters = LocationTracker.distanceBetween(userLat, userLng, spotLat, spotLng)
+            if (distMeters > maxAllowedDistance) {
+                Log.w(
+                    TAG,
+                    "Rejecting AI spot '${item.optString("title")}' at ($spotLat, $spotLng): " +
+                    "distance ${distMeters.toInt()}m exceeds radius threshold ${maxAllowedDistance.toInt()}m"
+                )
                 continue
             }
 
