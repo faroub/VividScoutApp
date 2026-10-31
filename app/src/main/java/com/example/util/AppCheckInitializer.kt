@@ -18,7 +18,8 @@ private const val RECAPTCHA_SITE_KEY_RES = "recaptcha_site_key"
 
 /**
  * Initializes and configures Firebase App Check for AI Logic attestation.
- * Handles debug token extraction from launch intent in debug builds and reCAPTCHA in release builds.
+ * Debug builds use DebugAppCheckProviderFactory with optional debug token extraction.
+ * Release builds use RecaptchaAppCheckProviderFactory and fail closed if production site key is unavailable.
  */
 fun configureAppCheck(context: Context, intent: Intent?) {
     try {
@@ -48,23 +49,19 @@ fun configureAppCheck(context: Context, intent: Intent?) {
             Log.d(TAG, "DebugAppCheckProviderFactory installed.")
         } else {
             val resId = context.resources.getIdentifier(RECAPTCHA_SITE_KEY_RES, "string", context.packageName)
-            if (resId != 0) {
-                val siteKey = context.getString(resId)
-                if (siteKey.isNotBlank()) {
-                    FirebaseAppCheck.getInstance().installAppCheckProviderFactory(
-                        RecaptchaAppCheckProviderFactory.getInstance(siteKey)
-                    )
-                    Log.d(TAG, "RecaptchaAppCheckProviderFactory installed.")
-                } else {
-                    Log.w(TAG, "recaptcha_site_key blank, using debug provider fallback.")
-                    FirebaseAppCheck.getInstance().installAppCheckProviderFactory(
-                        DebugAppCheckProviderFactory.getInstance()
-                    )
-                }
-            } else {
-                Log.w(TAG, "recaptcha_site_key resource not found, installing DebugAppCheckProviderFactory fallback.")
+            val siteKey = if (resId != 0) context.getString(resId) else ""
+
+            if (siteKey.isNotBlank()) {
                 FirebaseAppCheck.getInstance().installAppCheckProviderFactory(
-                    DebugAppCheckProviderFactory.getInstance()
+                    RecaptchaAppCheckProviderFactory.getInstance(siteKey)
+                )
+                Log.d(TAG, "RecaptchaAppCheckProviderFactory installed for Release build.")
+            } else {
+                Log.e(
+                    TAG,
+                    "CRITICAL: Production App Check attestation unavailable. " +
+                    "recaptcha_site_key is missing or blank in Release build. " +
+                    "Failing closed: DebugAppCheckProviderFactory will NOT be installed in Release builds."
                 )
             }
         }
