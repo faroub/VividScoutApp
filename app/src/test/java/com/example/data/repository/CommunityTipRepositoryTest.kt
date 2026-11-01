@@ -7,6 +7,7 @@ import com.example.data.local.AppDatabase
 import com.example.data.local.CommunityTipDao
 import com.example.data.local.CommunityTipEntity
 import com.example.data.local.TipVoteDao
+import com.example.data.local.TipVoteEntity
 import com.example.data.sync.TipUpvoteCloud
 import junit.framework.TestCase
 import kotlinx.coroutines.runBlocking
@@ -146,6 +147,77 @@ class CommunityTipRepositoryTest {
         assertEquals(18, entity?.legacyUpvotes)
         assertEquals(5, entity?.upvotes)
         assertEquals("totalUpvotes must equal legacyUpvotes + upvotes (18 + 5 = 23)", 23, entity?.totalUpvotes)
+    }
+
+    @Test
+    fun upvoteTip_unmigratedDocument_rejectedWithNoCloudWrite() = runBlocking {
+        val unmigratedTip = CommunityTipEntity(
+            id = "tip_unmigrated_999",
+            spotId = "spot_10",
+            spotTitle = "Unmigrated Spot",
+            authorName = "@unmigrated_scout",
+            content = "Legacy content",
+            timestamp = System.currentTimeMillis(),
+            legacyUpvotes = 15,
+            upvotes = 0,
+            isSyncedToCloud = true,
+            isMigrated = false
+        )
+        tipDao.insertTip(unmigratedTip)
+
+        val fakeCloud = FakeTipUpvoteCloud(returnResult = true)
+        val testRepo = CommunityTipRepository(
+            dao = tipDao,
+            tipVoteDao = tipVoteDao,
+            context = null,
+            cloudService = fakeCloud
+        )
+
+        val voteResult = testRepo.upvoteTip("tip_unmigrated_999", "voter_user_42")
+
+        assertFalse("Unmigrated tip must be rejected before cloud write", voteResult)
+        assertEquals("Cloud service must NOT be called for unmigrated tip", 0, fakeCloud.callCount)
+
+        val updatedTip = tipDao.getTipById("tip_unmigrated_999")
+        assertNotNull(updatedTip)
+        assertEquals(0, updatedTip?.upvotes)
+        assertEquals(15, updatedTip?.legacyUpvotes)
+    }
+
+    @Test
+    fun upvoteTip_migratedDocument_accepted() = runBlocking {
+        val migratedTip = CommunityTipEntity(
+            id = "tip_migrated_888",
+            spotId = "spot_11",
+            spotTitle = "Migrated Spot",
+            authorName = "@migrated_scout",
+            content = "Migrated content",
+            timestamp = System.currentTimeMillis(),
+            legacyUpvotes = 20,
+            upvotes = 0,
+            isSyncedToCloud = true,
+            isMigrated = true
+        )
+        tipDao.insertTip(migratedTip)
+
+        val fakeCloud = FakeTipUpvoteCloud(returnResult = true)
+        val testRepo = CommunityTipRepository(
+            dao = tipDao,
+            tipVoteDao = tipVoteDao,
+            context = null,
+            cloudService = fakeCloud
+        )
+
+        val voteResult = testRepo.upvoteTip("tip_migrated_888", "voter_user_42")
+
+        assertTrue("Migrated tip must be accepted", voteResult)
+        assertEquals("Cloud service must be called once", 1, fakeCloud.callCount)
+
+        val updatedTip = tipDao.getTipById("tip_migrated_888")
+        assertNotNull(updatedTip)
+        assertEquals(1, updatedTip?.upvotes)
+        assertEquals(20, updatedTip?.legacyUpvotes)
+        assertEquals(21, updatedTip?.totalUpvotes)
     }
 
     @Test
@@ -471,6 +543,73 @@ class CommunityTipRepositoryTest {
         val tipAfterFailure = tipDao.getTipById("tip_rollback_999")
         assertNotNull(tipAfterFailure)
         assertEquals("Upvote count must remain unchanged at 5", 5, tipAfterFailure?.upvotes)
+    }
+
+    @Test
+    fun upvoteTip_fakeDaoThrowingMidTransaction_rollbackAndUnchangedState() = runBlocking {
+        val tip = CommunityTipEntity(
+            id = "tip_fake_throw_1",
+            spotId = "spot_11",
+            spotTitle = "Fake Throw Spot",
+            authorName = "@author_fake",
+            content = "Fake throw content",
+            timestamp = System.currentTimeMillis(),
+            upvotes = 10,
+            isSyncedToCloud = true
+        )
+        tipDao.insertTip(tip)
+
+        val fakeCloud = FakeTipUpvoteCloud(returnResult = true)
+
+        // Custom fake TipVoteDao that simulates a mid-transaction failure and state rollback
+        var voteRowInsertedInFake = false
+        val throwingTipVoteDao = object : TipVoteDao() {
+            override suspend fun hasUserVoted(tipId: String, userId: String): Boolean = voteRowInsertedInFake
+            override suspend fun insertVote(vote: TipVoteEntity) { voteRowInsertedInFake = true }
+            override suspend fun deleteVote(tipId: String, userId: String) { voteRowInsertedInFake = false }
+            override suspend fun getVoteCountForTip(tipId: String): Int = if (voteRowInsertedInFake) 1 else 0
+
+            override suspend fun recordVoteAndIncrementCount(
+                tipId: String,
+                userId: String,
+                communityTipDao: CommunityTipDao
+            ) {
+                // Simulate first write succeeds
+                insertVote(TipVoteEntity(tipId = tipId, userId = userId))
+                // Simulate second write throws and rolls back the fake
+                try {
+                    communityTipDao.incrementUpvote(tipId)
+                } catch (e: Exception) {
+                    voteRowInsertedInFake = false // Rollback simulated state
+                    throw e
+                }
+            }
+        }
+
+        val throwingTipDao = object : CommunityTipDao by tipDao {
+            override suspend fun incrementUpvote(tipId: String) {
+                throw IllegalStateException("Fake second write failure")
+            }
+        }
+
+        val testRepo = CommunityTipRepository(
+            dao = throwingTipDao,
+            tipVoteDao = throwingTipVoteDao,
+            context = null,
+            cloudService = fakeCloud
+        )
+
+        val voteResult = try {
+            testRepo.upvoteTip("tip_fake_throw_1", "fake_voter_1")
+        } catch (e: Exception) {
+            false
+        }
+
+        assertFalse("upvoteTip must return false when second write throws in transaction", voteResult)
+        assertFalse("Vote row must not be inserted when transaction fails", throwingTipVoteDao.hasUserVoted("tip_fake_throw_1", "fake_voter_1"))
+
+        val finalTip = tipDao.getTipById("tip_fake_throw_1")
+        assertEquals(10, finalTip?.upvotes)
     }
 
     @Test

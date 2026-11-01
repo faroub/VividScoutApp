@@ -86,8 +86,8 @@ class CommunityTipRepository(
         // Fetch tip entity from database
         val tip = dao.getTipById(tipId) ?: return@withContext false
 
-        // Unsynced local/seed tips cannot be voted on until synced to Firestore cloud
-        if (!tip.isSyncedToCloud) {
+        // Unsynced local/seed tips or unmigrated tips cannot be voted on until synced and migrated
+        if (!tip.isSyncedToCloud || !tip.isMigrated) {
             return@withContext false
         }
 
