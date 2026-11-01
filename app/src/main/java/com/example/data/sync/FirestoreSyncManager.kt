@@ -177,7 +177,9 @@ object FirestoreSyncManager {
     }
 
     /**
-     * Synchronizes a +1 upvote for a community tip to the Firestore 'community_tips' collection.
+     * Synchronizes a +1 upvote for a community tip using a Firestore transaction.
+     * Checks if the vote document at community_tips/{tipId}/votes/{currentUid} already exists,
+     * rejecting second votes from the same user, and writing the vote doc together with the upvote increment.
      */
     suspend fun incrementTipUpvoteInCloud(
         context: Context,
@@ -185,15 +187,43 @@ object FirestoreSyncManager {
     ): Boolean = withContext(Dispatchers.IO) {
         if (!ensureFirebaseAuth()) return@withContext false
         val firestore = getFirestore(context) ?: return@withContext false
+        val currentUid = FirebaseAuth.getInstance().currentUser?.uid
+        if (currentUid.isNullOrBlank()) {
+            Log.w(TAG, "Cannot upvote tip '$tipId': No authenticated user UID found")
+            return@withContext false
+        }
+
         try {
-            firestore.collection(TIPS_COLLECTION)
-                .document(tipId)
-                .update("upvotes", FieldValue.increment(1))
-                .await()
-            Log.i(TAG, "Successfully synchronized +1 upvote for tip '$tipId' to cloud Firestore")
-            true
+            val tipRef = firestore.collection(TIPS_COLLECTION).document(tipId)
+            val voteRef = tipRef.collection("votes").document(currentUid)
+
+            val voteSuccess = firestore.runTransaction { transaction ->
+                val voteSnap = transaction.get(voteRef)
+                if (voteSnap.exists()) {
+                    Log.w(TAG, "User '$currentUid' has already voted on tip '$tipId'. Rejecting second vote.")
+                    return@runTransaction false
+                }
+
+                val tipSnap = transaction.get(tipRef)
+                val currentUpvotes = tipSnap.getLong("upvotes") ?: 0L
+
+                val voteData = hashMapOf<String, Any>(
+                    "uid" to currentUid,
+                    "timestamp" to System.currentTimeMillis()
+                )
+
+                // Set vote doc in votes subcollection AND increment tip upvotes by 1
+                transaction.set(voteRef, voteData)
+                transaction.update(tipRef, "upvotes", currentUpvotes + 1)
+                true
+            }.await()
+
+            if (voteSuccess) {
+                Log.i(TAG, "Successfully recorded vote from user '$currentUid' for tip '$tipId'")
+            }
+            voteSuccess
         } catch (e: Exception) {
-            Log.w(TAG, "Failed to sync tip upvote for '$tipId' to Firestore: ${e.message}")
+            Log.w(TAG, "Failed to execute upvote transaction for tip '$tipId': ${e.message}")
             false
         }
     }

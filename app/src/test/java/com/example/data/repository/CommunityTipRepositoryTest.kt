@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -40,7 +41,7 @@ class CommunityTipRepositoryTest {
     }
 
     @Test
-    fun upvoteTip_incrementsLocalUpvoteCount() = runBlocking {
+    fun upvoteTip_firstVoteSucceeds_secondVoteFromSameUserRejected_upvoteCountIncrementedOnce() = runBlocking {
         val initialTip = CommunityTipEntity(
             id = "tip_123",
             spotId = "spot_1",
@@ -52,11 +53,25 @@ class CommunityTipRepositoryTest {
         )
         fakeDao.tips.add(initialTip)
 
-        repository.upvoteTip("tip_123")
+        val userA = "user_alpha_42"
 
-        val updated = fakeDao.getTipById("tip_123")
-        assertNotNull(updated)
-        assertEquals(4, updated?.upvotes)
+        // First vote from user A must succeed
+        val firstVoteResult = repository.upvoteTip("tip_123", userA)
+        assertTrue("First vote from user A must succeed", firstVoteResult)
+
+        // Upvote count should be incremented once from 3 to 4
+        val updatedAfterFirstVote = fakeDao.getTipById("tip_123")
+        assertNotNull(updatedAfterFirstVote)
+        assertEquals(4, updatedAfterFirstVote?.upvotes)
+
+        // Second vote from user A on the same tip must be rejected
+        val secondVoteResult = repository.upvoteTip("tip_123", userA)
+        assertFalse("Second vote from same user A must be rejected", secondVoteResult)
+
+        // Upvote count must remain 4 (incremented only once)
+        val updatedAfterSecondVote = fakeDao.getTipById("tip_123")
+        assertNotNull(updatedAfterSecondVote)
+        assertEquals(4, updatedAfterSecondVote?.upvotes)
     }
 
     // Fake CommunityTipDao for unit testing

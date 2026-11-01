@@ -77,9 +77,12 @@ service cloud.firestore {
                     && request.resource.data.content.size() <= 500
                     && request.resource.data.timestamp is number;
 
+      // Allow +1 upvote increment only when a corresponding vote document is created in the same request,
+      // OR owner-only tip retries (which CANNOT modify upvotes)
       allow update: if isAuthenticated() && (
         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['upvotes'])
-         && request.resource.data.upvotes == resource.data.upvotes + 1) ||
+         && request.resource.data.upvotes == resource.data.upvotes + 1
+         && existsAfter(/databases/$(database)/documents/community_tips/$(tipId)/votes/$(request.auth.uid))) ||
         (isOwner(resource.data.ownerUid)
          && request.resource.data.ownerUid == request.auth.uid
          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
@@ -89,6 +92,17 @@ service cloud.firestore {
       );
 
       allow delete: if false;
+
+      // Per-user vote tracking subcollection: a user may create only their own vote document
+      match /votes/{userId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated()
+                      && userId == request.auth.uid
+                      && request.resource.data.keys().hasOnly(['uid', 'timestamp'])
+                      && request.resource.data.uid == request.auth.uid
+                      && request.resource.data.timestamp is number;
+        allow update, delete: if false;
+      }
     }
   }
 }

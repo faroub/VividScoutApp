@@ -64,11 +64,23 @@ class CommunityTipRepository(
         )
     }
 
-    suspend fun upvoteTip(tipId: String) = withContext(Dispatchers.IO) {
+    /** Per-user vote tracking registry to prevent duplicate voting from the same user */
+    private val votedKeys = mutableSetOf<String>()
+
+    suspend fun upvoteTip(tipId: String, userId: String = "local_user"): Boolean = withContext(Dispatchers.IO) {
+        val voteKey = "${tipId}_$userId"
+        synchronized(votedKeys) {
+            if (votedKeys.contains(voteKey)) {
+                return@withContext false
+            }
+            votedKeys.add(voteKey)
+        }
+
         dao.incrementUpvote(tipId)
         context?.let { ctx ->
             FirestoreSyncManager.incrementTipUpvoteInCloud(ctx, tipId)
         }
+        true
     }
 
     suspend fun syncWithNearbyPeers(
