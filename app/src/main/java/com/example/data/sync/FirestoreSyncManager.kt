@@ -7,6 +7,7 @@ import com.example.data.local.CommunityTipEntity
 import com.example.data.local.DiscoveredGemDao
 import com.example.data.local.ScoutDao
 import com.example.data.local.ScoutSpotEntity
+import com.example.data.model.ScoutCategory
 import com.google.firebase.Firebase
 import com.google.firebase.FirebaseApp
 import com.google.firebase.firestore.FirebaseFirestore
@@ -168,20 +169,23 @@ object FirestoreSyncManager {
             for (doc in tipsSnapshot.documents) {
                 val id = doc.getString("id") ?: doc.id
                 val spotId = doc.getString("spotId") ?: ""
-                val content = doc.getString("content") ?: ""
-                if (spotId.isBlank() || content.isBlank()) continue
+                val rawContent = doc.getString("content") ?: ""
+                if (spotId.isBlank() || rawContent.isBlank()) continue
+
+                val content = rawContent.trim().take(500)
+                val author = (doc.getString("authorName") ?: "@scout").trim().take(50)
 
                 remoteTips.add(
                     CommunityTipEntity(
-                        id = id,
-                        spotId = spotId,
-                        spotTitle = doc.getString("spotTitle") ?: "Community Gem",
-                        authorName = doc.getString("authorName") ?: "@scout",
+                        id = id.take(128),
+                        spotId = spotId.take(128),
+                        spotTitle = (doc.getString("spotTitle") ?: "Community Gem").trim().take(120),
+                        authorName = author,
                         content = content,
                         timestamp = doc.getLong("timestamp") ?: System.currentTimeMillis(),
                         isStatusUpdate = doc.getBoolean("isStatusUpdate") ?: false,
-                        statusCategory = doc.getString("statusCategory") ?: "INSIGHT",
-                        upvotes = (doc.getLong("upvotes") ?: 1L).toInt(),
+                        statusCategory = (doc.getString("statusCategory") ?: "INSIGHT").trim().take(32),
+                        upvotes = (doc.getLong("upvotes") ?: 1L).toInt().coerceAtLeast(1),
                         peerNodeId = "cloud-firestore",
                         isLocallyAuthored = false
                     )
@@ -204,32 +208,49 @@ object FirestoreSyncManager {
                 val id = doc.getString("id") ?: doc.id
                 if (id in existingIds) continue
 
-                val title = doc.getString("title") ?: continue
+                val rawTitle = doc.getString("title") ?: continue
                 val lat = doc.getDouble("latitude") ?: continue
                 val lng = doc.getDouble("longitude") ?: continue
 
+                // Validate coordinates are geographically plausible
+                if (lat.isNaN() || lng.isNaN() || (lat == 0.0 && lng == 0.0) || lat < -90.0 || lat > 90.0 || lng < -180.0 || lng > 180.0) {
+                    Log.w(TAG, "Skipping remote submission '$id': invalid coordinates ($lat, $lng)")
+                    continue
+                }
+
+                val title = rawTitle.trim().take(120)
+                if (title.length < 2) continue
+
+                val rawCategory = doc.getString("category") ?: "sights"
+                val normalizedCategory = ScoutCategory.normalize(rawCategory)
+
+                val description = (doc.getString("description") ?: "Shared community scout gem.").trim().take(1000)
+                val locationName = (doc.getString("locationName") ?: "Community Location").trim().take(100)
+                val contributor = (doc.getString("contributor") ?: "@CommunityScout").trim().take(50)
+                val userNotes = (doc.getString("userNotes") ?: "Shared by community scout.").trim().take(500)
+
                 remoteSpots.add(
                     ScoutSpotEntity(
-                        id = id,
+                        id = id.take(128),
                         title = title,
-                        description = doc.getString("description") ?: "Shared community scout gem.",
-                        category = doc.getString("category") ?: "sights",
+                        description = description,
+                        category = normalizedCategory,
                         distance = "Discovered",
                         walkMinutes = 5,
                         rating = null,
                         reviewCount = null,
                         imageUrl = doc.getString("photoUri") ?: "ic_cat_sights",
                         badgeLabel = "COMMUNITY SCOUT",
-                        statusBadge = "Synced from Cloud",
-                        tagsRaw = "Community Verified|||Cloud Sync",
-                        proTip = doc.getString("userNotes") ?: "Discovered by community scout.",
-                        contributor = doc.getString("contributor") ?: "@CommunityScout",
+                        statusBadge = "Community Shared",
+                        tagsRaw = "Community Shared|||Cloud Sync",
+                        proTip = userNotes,
+                        contributor = contributor,
                         upvotes = 1,
                         isSaved = false,
                         isOfflineDraft = false,
                         isDiscovered = false,
                         offlineCached = true,
-                        locationName = doc.getString("locationName") ?: "Community Location",
+                        locationName = locationName,
                         latitude = lat,
                         longitude = lng,
                         timestamp = doc.getLong("timestamp") ?: System.currentTimeMillis()
