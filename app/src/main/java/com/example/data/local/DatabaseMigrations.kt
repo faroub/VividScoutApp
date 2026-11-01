@@ -241,6 +241,18 @@ object DatabaseMigrations {
         }
     }
 
+    /**
+     * Migration from version 11 to version 12:
+     * Resets isMigrated = 0 for existing cached rows to force cloud sync-down verification.
+     * Note: The isMigrated column default remains 1 for newly inserted rows, as locally created tips
+     * are created in Firestore with legacyUpvotes set and are therefore migrated by design.
+     */
+    val MIGRATION_11_12 = object : Migration(11, 12) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("UPDATE community_tips SET isMigrated = 0")
+        }
+    }
+
     val ALL_MIGRATIONS: Array<Migration> = arrayOf(
         MIGRATION_1_2,
         MIGRATION_2_3,
@@ -251,6 +263,7 @@ object DatabaseMigrations {
         MIGRATION_7_8,
         MIGRATION_8_9,
         MIGRATION_9_10,
-        MIGRATION_10_11
+        MIGRATION_10_11,
+        MIGRATION_11_12
     )
 }

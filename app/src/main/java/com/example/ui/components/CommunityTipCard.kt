@@ -40,6 +40,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.local.CommunityTipEntity
+import com.example.ui.theme.AppStringsData
 import com.example.ui.theme.BrandCoral
 import com.example.ui.theme.BrandTeal
 import com.example.ui.theme.LocalAppStrings
@@ -213,7 +214,8 @@ fun CommunityTipCard(
                 )
 
                 // Upvote Button OR Unsynced / Unmigrated Voting Note
-                if (tip.isSyncedToCloud && tip.isMigrated) {
+                val noteMessage = resolveVotingNoteMessage(tip.isSyncedToCloud, tip.isMigrated, strings)
+                if (noteMessage == null) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
@@ -249,7 +251,7 @@ fun CommunityTipCard(
                         modifier = Modifier.testTag("unsynced_voting_note_${tip.id}")
                     ) {
                         Text(
-                            text = strings.votingAvailableAfterSync,
+                            text = noteMessage,
                             style = MaterialTheme.typography.labelSmall.copy(
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Medium
@@ -343,3 +345,18 @@ private data class StatusChipStyle(
     val textColor: Color,
     val icon: androidx.compose.ui.graphics.vector.ImageVector
 )
+
+/**
+ * Resolves the appropriate disabled voting note message or null if upvoting is enabled.
+ */
+fun resolveVotingNoteMessage(
+    isSyncedToCloud: Boolean,
+    isMigrated: Boolean,
+    strings: AppStringsData
+): String? {
+    return when {
+        isSyncedToCloud && isMigrated -> null
+        !isSyncedToCloud -> strings.votingAvailableAfterSync
+        else -> strings.communityVotingOpensAfterUpdate
+    }
+}
