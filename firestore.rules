@@ -1,24 +1,48 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // Helper functions for authentication and data validation
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isValidCoordinates(lat, lng) {
+      return lat >= -90.0 && lat <= 90.0 && lng >= -180.0 && lng <= 180.0;
+    }
+
     match /community_submissions/{submissionId} {
       allow read: if true;
-      allow create: if request.resource.data.id is string
+      allow create: if isAuthenticated()
+                    && request.resource.data.id is string
+                    && request.resource.data.id.size() <= 128
                     && request.resource.data.title is string
+                    && request.resource.data.title.size() >= 2
+                    && request.resource.data.title.size() <= 120
                     && request.resource.data.category is string
+                    && request.resource.data.category.size() <= 32
                     && request.resource.data.latitude is number
                     && request.resource.data.longitude is number
+                    && isValidCoordinates(request.resource.data.latitude, request.resource.data.longitude)
                     && request.resource.data.timestamp is number;
       allow update, delete: if false;
     }
 
     match /community_tips/{tipId} {
       allow read: if true;
-      allow create: if request.resource.data.id is string
+      allow create: if isAuthenticated()
+                    && request.resource.data.id is string
+                    && request.resource.data.id.size() <= 128
                     && request.resource.data.spotId is string
+                    && request.resource.data.spotId.size() <= 128
                     && request.resource.data.content is string
+                    && request.resource.data.content.size() >= 2
+                    && request.resource.data.content.size() <= 500
                     && request.resource.data.timestamp is number;
-      allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly(['upvotes']);
+      // Upvotes update rule requires authentication and strictly enforces a +1 increment
+      allow update: if isAuthenticated()
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['upvotes'])
+                    && request.resource.data.upvotes == resource.data.upvotes + 1;
       allow delete: if false;
     }
   }

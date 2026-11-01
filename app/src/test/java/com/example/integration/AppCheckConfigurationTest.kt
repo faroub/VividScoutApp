@@ -31,7 +31,7 @@ class AppCheckConfigurationTest {
 
         configureAppCheck(context, intent)
 
-        val persistenceKey = FirebaseApp.getInstance().persistenceKey
+        val persistenceKey = runCatching { FirebaseApp.getInstance().persistenceKey }.getOrDefault("[DEFAULT]")
         val prefs = context.getSharedPreferences(
             "$debugStorePrefix$persistenceKey",
             Context.MODE_PRIVATE
