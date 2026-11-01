@@ -372,6 +372,16 @@ class ProximityPrefetchService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        val stopIntent = Intent(this, ProximityPrefetchService::class.java).apply {
+            action = ACTION_STOP
+        }
+        val stopPendingIntent = PendingIntent.getService(
+            this,
+            1,
+            stopIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Proximity Prefetch • [${currentPowerMode.badgeLabel}]")
             .setContentText(contentText)
@@ -379,6 +389,11 @@ class ProximityPrefetchService : Service() {
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setContentIntent(pendingIntent)
+            .addAction(
+                R.mipmap.ic_launcher,
+                "Stop Service",
+                stopPendingIntent
+            )
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .build()
     }
