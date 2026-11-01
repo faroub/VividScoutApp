@@ -121,5 +121,6 @@
     <string name="location_settings_card_desc">تتبع FusedLocationProvider عالي الدقة</string>
     <string name="prototype_badge">نموذج أولي</string>
     <string name="voting_available_after_sync">التصويت متاح بعد المزامنة السحابية</string>
+    <string name="community_voting_opens_after_update">التصويت متاح بعد التحديث المجتمعي</string>
     <string name="post_tip_error_container_unavailable">تعذر نشر الملاحظة: خدمة التطبيق غير متاحة.</string>
 </resources>

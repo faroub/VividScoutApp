@@ -162,6 +162,7 @@ data class AppStringsData(
     val communityDemoPeersConnected: String,
     val prototypeBadge: String,
     val votingAvailableAfterSync: String,
+    val communityVotingOpensAfterUpdate: String,
     val postTipErrorContainerUnavailable: String
 )
 
@@ -311,6 +312,7 @@ val EnglishStrings = AppStringsData(
     communityDemoPeersConnected = "Demo Peers: 3 sample nodes simulated",
     prototypeBadge = "PROTOTYPE",
     votingAvailableAfterSync = "Voting available after cloud sync",
+    communityVotingOpensAfterUpdate = "Voting opens after the community update",
     postTipErrorContainerUnavailable = "Unable to post note: Application service container unavailable."
 )
 
@@ -460,6 +462,7 @@ val FrenchStrings = AppStringsData(
     communityDemoPeersConnected = "Pairs de démo : 3 nœuds simulés",
     prototypeBadge = "PROTOTYPE",
     votingAvailableAfterSync = "Vote disponible après synchronisation cloud",
+    communityVotingOpensAfterUpdate = "Le vote sera disponible après la mise à jour communautaire",
     postTipErrorContainerUnavailable = "Impossible de publier la note : Service d'application indisponible."
 )
 
@@ -609,6 +612,7 @@ val ArabicStrings = AppStringsData(
     communityDemoPeersConnected = "عقد تجريبية: 3 عقد تمثيلية",
     prototypeBadge = "نموذج أولي",
     votingAvailableAfterSync = "التصويت متاح بعد المزامنة السحابية",
+    communityVotingOpensAfterUpdate = "التصويت متاح بعد التحديث المجتمعي",
     postTipErrorContainerUnavailable = "تعذر نشر الملاحظة: خدمة التطبيق غير متاحة."
 )
 
