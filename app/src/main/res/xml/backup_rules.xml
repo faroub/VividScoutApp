@@ -1,10 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <full-backup-content>
-    <!-- Include non-sensitive shared preferences for smooth UX restoration -->
-    <include domain="sharedpref" path="."/>
-    <!-- Exclude location-annotated Room database files from backup and restore -->
+    <!-- Exclude Room database files containing cached spot entities and location history (created in AppDatabase.kt) -->
     <exclude domain="database" path="vivid_scout_database"/>
     <exclude domain="database" path="vivid_scout_database-wal"/>
     <exclude domain="database" path="vivid_scout_database-shm"/>
-    <exclude domain="database" path="vivid_scout_database-shader"/>
+    <exclude domain="database" path="vivid_scout_database-journal"/>
+
+    <!-- Exclude offline map pack vector packages (created in File(context.filesDir, "offline_map_packs") by OfflineMapManager.kt) -->
+    <exclude domain="file" path="offline_map_packs"/>
+
+    <!-- Exclude custom offline region downloads (created in File(context.filesDir, "offline_custom_regions") by DownloadedRegion.kt) -->
+    <exclude domain="file" path="offline_custom_regions"/>
+
+    <!-- Exclude location history preferences containing user coordinates (created in DefaultLocationConfig.kt) -->
+    <exclude domain="sharedpref" path="vivid_scout_location_prefs.xml"/>
+
+    <!-- Exclude App Check debug token preferences (created in AppCheckInitializer.kt) -->
+    <exclude domain="sharedpref" path="com.google.firebase.appcheck.debug.store.xml"/>
 </full-backup-content>
