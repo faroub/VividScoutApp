@@ -191,12 +191,23 @@ object DatabaseMigrations {
     }
 
     /**
-     * Placeholder migration from version 7 to version 8.
-     * Establishes the pattern for the next schema bump without dropping user tables.
+     * Migration from version 7 to version 8:
+     * Adds tip_votes table with composite primary key (tipId, userId) and indices on tipId and userId.
      */
     val MIGRATION_7_8 = object : Migration(7, 8) {
         override fun migrate(db: SupportSQLiteDatabase) {
-            db.execSQL("PRAGMA user_version = 8")
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `tip_votes` (
+                    `tipId` TEXT NOT NULL,
+                    `userId` TEXT NOT NULL,
+                    `timestamp` INTEGER NOT NULL,
+                    PRIMARY KEY(`tipId`, `userId`)
+                )
+                """.trimIndent()
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_tip_votes_tipId` ON `tip_votes` (`tipId`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_tip_votes_userId` ON `tip_votes` (`userId`)")
         }
     }
 

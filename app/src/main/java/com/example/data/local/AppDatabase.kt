@@ -17,9 +17,10 @@ import kotlinx.coroutines.launch
         RecentSearchEntity::class,
         WeatherCacheEntity::class,
         AchievementEntity::class,
-        CommunityTipEntity::class
+        CommunityTipEntity::class,
+        TipVoteEntity::class
     ],
-    version = 7,
+    version = 8,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -30,6 +31,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun weatherDao(): WeatherDao
     abstract fun achievementDao(): AchievementDao
     abstract fun communityTipDao(): CommunityTipDao
+    abstract fun tipVoteDao(): TipVoteDao
 
     companion object {
         @Volatile
