@@ -2,9 +2,12 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper functions for authentication and coordinate validation
     function isAuthenticated() {
       return request.auth != null;
+    }
+
+    function isOwner(ownerUid) {
+      return isAuthenticated() && request.auth.uid == ownerUid;
     }
 
     function isValidCoordinates(lat, lng) {
@@ -14,6 +17,7 @@ service cloud.firestore {
     match /community_submissions/{submissionId} {
       allow read: if true;
       allow create: if isAuthenticated()
+                    && request.resource.data.ownerUid == request.auth.uid
                     && request.resource.data.id is string
                     && request.resource.data.id.size() <= 128
                     && request.resource.data.title is string
@@ -25,9 +29,13 @@ service cloud.firestore {
                     && request.resource.data.longitude is number
                     && isValidCoordinates(request.resource.data.latitude, request.resource.data.longitude)
                     && request.resource.data.timestamp is number;
-      // Idempotent retry rule: Allows the authenticated user to retry uploading their submission
-      allow update: if isAuthenticated()
-                    && resource.data.id == request.resource.data.id
+      // Strict owner-only retry rule: Only original document owner can retry/update, with restricted affected keys
+      allow update: if isOwner(resource.data.ownerUid)
+                    && request.resource.data.ownerUid == request.auth.uid
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                         'id', 'ownerUid', 'title', 'description', 'category', 'locationName',
+                         'latitude', 'longitude', 'photoUri', 'userNotes', 'contributor', 'timestamp'
+                       ])
                     && request.resource.data.title is string
                     && request.resource.data.title.size() >= 2
                     && request.resource.data.title.size() <= 120
@@ -43,6 +51,7 @@ service cloud.firestore {
     match /community_tips/{tipId} {
       allow read: if true;
       allow create: if isAuthenticated()
+                    && request.resource.data.ownerUid == request.auth.uid
                     && request.resource.data.id is string
                     && request.resource.data.id.size() <= 128
                     && request.resource.data.spotId is string
@@ -51,15 +60,16 @@ service cloud.firestore {
                     && request.resource.data.content.size() >= 2
                     && request.resource.data.content.size() <= 500
                     && request.resource.data.timestamp is number;
-      // Allow upvote increments (+1) OR idempotent retries of tip uploads
+      // Allow strict +1 upvote increments OR owner-only tip retries (which CANNOT modify upvotes)
       allow update: if isAuthenticated() && (
         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['upvotes'])
          && request.resource.data.upvotes == resource.data.upvotes + 1) ||
-        (resource.data.id == request.resource.data.id
-         && resource.data.spotId == request.resource.data.spotId
-         && request.resource.data.content is string
-         && request.resource.data.content.size() >= 2
-         && request.resource.data.content.size() <= 500)
+        (isOwner(resource.data.ownerUid)
+         && request.resource.data.ownerUid == request.auth.uid
+         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'id', 'ownerUid', 'spotId', 'spotTitle', 'authorName', 'content',
+              'timestamp', 'isStatusUpdate', 'statusCategory'
+            ]))
       );
       allow delete: if false;
     }

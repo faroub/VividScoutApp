@@ -10,6 +10,8 @@ import com.example.data.local.ScoutSpotEntity
 import com.example.data.model.ScoutCategory
 import com.google.firebase.Firebase
 import com.google.firebase.FirebaseApp
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 import com.google.firebase.firestore.firestore
@@ -78,9 +80,11 @@ object FirestoreSyncManager {
             return@withContext false
         }
         val firestore = getFirestore(context) ?: return@withContext false
+        val currentUid = FirebaseAuth.getInstance().currentUser?.uid ?: ""
         try {
             val docData = hashMapOf(
                 "id" to spot.id,
+                "ownerUid" to currentUid,
                 "title" to spot.title,
                 "description" to spot.description,
                 "category" to spot.category,
@@ -142,9 +146,11 @@ object FirestoreSyncManager {
             return@withContext false
         }
         val firestore = getFirestore(context) ?: return@withContext false
+        val currentUid = FirebaseAuth.getInstance().currentUser?.uid ?: ""
         try {
             val tipData = hashMapOf(
                 "id" to tip.id,
+                "ownerUid" to currentUid,
                 "spotId" to tip.spotId,
                 "spotTitle" to tip.spotTitle,
                 "authorName" to tip.authorName,
@@ -166,6 +172,45 @@ object FirestoreSyncManager {
             Log.e(TAG, "Failed to post community tip to Firestore: ${e.message}", e)
             false
         }
+    }
+
+    /**
+     * Synchronizes a +1 upvote for a community tip to the Firestore 'community_tips' collection.
+     */
+    suspend fun incrementTipUpvoteInCloud(
+        context: Context,
+        tipId: String
+    ): Boolean = withContext(Dispatchers.IO) {
+        if (!ensureFirebaseAuth()) return@withContext false
+        val firestore = getFirestore(context) ?: return@withContext false
+        try {
+            firestore.collection(TIPS_COLLECTION)
+                .document(tipId)
+                .update("upvotes", FieldValue.increment(1))
+                .await()
+            Log.i(TAG, "Successfully synchronized +1 upvote for tip '$tipId' to cloud Firestore")
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to sync tip upvote for '$tipId' to Firestore: ${e.message}")
+            false
+        }
+    }
+
+    /**
+     * Retries uploading all pending locally authored community tips to Firestore.
+     */
+    suspend fun syncPendingTipsToCloud(
+        context: Context,
+        tipDao: CommunityTipDao
+    ): Int = withContext(Dispatchers.IO) {
+        val pendingTips = tipDao.getLocallyAuthoredTipsSync()
+        var successCount = 0
+        for (tip in pendingTips) {
+            if (postCommunityTipToCloud(context, tip)) {
+                successCount++
+            }
+        }
+        successCount
     }
 
     /**

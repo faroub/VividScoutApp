@@ -5,6 +5,7 @@ import com.example.data.local.CommunityTipEntity
 import com.example.data.p2p.MeshSyncPhase
 import com.example.data.p2p.PeerMeshSyncEngine
 import com.example.data.p2p.PeerMeshSyncResult
+import com.example.data.sync.FirestoreSyncManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -57,6 +58,7 @@ class CommunityTipRepository(
     suspend fun syncWithCloud(scoutDao: com.example.data.local.ScoutDao? = null): Pair<Int, Int> = withContext(Dispatchers.IO) {
         val ctx = context ?: return@withContext Pair(0, 0)
         val db = com.example.data.local.AppDatabase.getDatabase(ctx)
+        FirestoreSyncManager.syncPendingTipsToCloud(ctx, dao)
         com.example.data.sync.FirestoreSyncManager.syncRemoteContentDown(
             ctx, dao, scoutDao ?: db.scoutDao()
         )
@@ -64,6 +66,9 @@ class CommunityTipRepository(
 
     suspend fun upvoteTip(tipId: String) = withContext(Dispatchers.IO) {
         dao.incrementUpvote(tipId)
+        context?.let { ctx ->
+            FirestoreSyncManager.incrementTipUpvoteInCloud(ctx, tipId)
+        }
     }
 
     suspend fun syncWithNearbyPeers(

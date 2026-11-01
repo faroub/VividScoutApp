@@ -40,6 +40,9 @@ interface CommunityTipDao {
     @Query("DELETE FROM community_tips WHERE id = :tipId")
     suspend fun deleteTip(tipId: String)
 
+    @Query("SELECT * FROM community_tips WHERE isLocallyAuthored = 1")
+    suspend fun getLocallyAuthoredTipsSync(): List<CommunityTipEntity>
+
     @Query("SELECT COUNT(*) FROM community_tips")
     suspend fun getTipCount(): Int
 }
