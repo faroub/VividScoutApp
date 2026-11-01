@@ -190,14 +190,15 @@ gradle.taskGraph.whenReady {
       throw GradleException(
         "Release build failed: Missing required environment variable(s) for release signing: " +
         "${missingVars.joinToString(", ")}. " +
-        "Please configure KEYSTORE_PATH, STORE_PASSWORD, KEY_ALIAS, and KEY_PASSWORD to build release artifacts."
+        "Please see the 'Release Signing & Environment Variables' section in README.md for instructions on configuring release signing."
       )
     }
 
     val keystoreFile = file(keystorePath!!)
     if (!keystoreFile.exists()) {
       throw GradleException(
-        "Release build failed: Keystore file defined by KEYSTORE_PATH does not exist at: ${keystoreFile.absolutePath}"
+        "Release build failed: Keystore file defined by KEYSTORE_PATH does not exist at '${keystoreFile.absolutePath}'. " +
+        "Please see the 'Release Signing & Environment Variables' section in README.md for setup details."
       )
     }
   }
