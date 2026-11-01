@@ -183,7 +183,6 @@ class GeminiQueryService {
                 districtOrLocation = locationName,
                 spotId = spotId
             )
-            val isVerified = resolvedPhoto.isVerifiedLandmark
 
             result.add(
                 ScoutSpotEntity(
@@ -196,8 +195,16 @@ class GeminiQueryService {
                     rating = rating,
                     reviewCount = reviewCount,
                     imageUrl = resolvedPhoto.url,
-                    badgeLabel = if (isVerified) "VERIFIED CORRIDOR LANDMARK" else "AI CORRIDOR CANDIDATE",
-                    statusBadge = if (isVerified) "OSM Verified" else "AI Candidate",
+                    badgeLabel = when {
+                        resolvedPhoto.isOsmVerified -> "OSM CORRIDOR LANDMARK"
+                        resolvedPhoto.isCuratedLandmark -> "CURATED CORRIDOR LANDMARK"
+                        else -> "AI CORRIDOR CANDIDATE"
+                    },
+                    statusBadge = when {
+                        resolvedPhoto.isOsmVerified -> "OSM Verified"
+                        resolvedPhoto.isCuratedLandmark -> "Curated Landmark"
+                        else -> "AI Candidate"
+                    },
                     tagsRaw = tagsList.joinToString("|||"),
                     proTip = audioLore,
                     contributor = "@GeminiAI (Corridor Prefetch)",

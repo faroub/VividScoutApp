@@ -224,18 +224,16 @@ class GeminiSpotService {
                 rating = rating,
                 reviewCount = reviewCount,
                 imageUrl = resolvedPhoto.url,
-                badgeLabel = if (resolvedPhoto.isVerifiedLandmark) {
-                    when (mappedCategory) {
-                        "sights" -> "VERIFIED SIGHT"
-                        "eats" -> "VERIFIED EATS"
-                        "history" -> "HISTORIC SITE"
-                        "shortcut" -> "VERIFIED SHORTCUT"
-                        else -> "VERIFIED GEM"
-                    }
-                } else {
-                    "AI RECOMMENDED"
+                badgeLabel = when {
+                    resolvedPhoto.isOsmVerified -> "OSM VERIFIED"
+                    resolvedPhoto.isCuratedLandmark -> "CURATED LANDMARK"
+                    else -> "AI RECOMMENDED"
                 },
-                statusBadge = if (resolvedPhoto.isVerifiedLandmark) "OSM Verified" else "AI Candidate",
+                statusBadge = when {
+                    resolvedPhoto.isOsmVerified -> "OSM Verified"
+                    resolvedPhoto.isCuratedLandmark -> "Curated Landmark"
+                    else -> "AI Candidate"
+                },
                 tagsRaw = tagsList.joinToString(","),
                 proTip = audioLore,
                 upvotes = upvotes,

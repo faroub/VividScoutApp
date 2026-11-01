@@ -20,7 +20,9 @@ object LocationPhotoResolver {
     data class EnrichedPhoto(
         val url: String,
         val attribution: String,
-        val isVerifiedLandmark: Boolean
+        val isVerifiedLandmark: Boolean,
+        val isOsmVerified: Boolean = false,
+        val isCuratedLandmark: Boolean = false
     )
 
     /**
@@ -62,7 +64,7 @@ object LocationPhotoResolver {
         // 1. Check OSM image tag
         val osmImage = osmTags?.get("image")
         if (!osmImage.isNullOrBlank() && (osmImage.startsWith("http://") || osmImage.startsWith("https://"))) {
-            return EnrichedPhoto(osmImage, "OpenStreetMap / Node Contributor", isVerifiedLandmark = true)
+            return EnrichedPhoto(osmImage, "OpenStreetMap / Node Contributor", isVerifiedLandmark = true, isOsmVerified = true)
         }
 
         // 2. Check OSM wikimedia_commons tag
@@ -70,19 +72,19 @@ object LocationPhotoResolver {
         if (!commonsTag.isNullOrBlank()) {
             val commonsUrl = wikiService.resolveWikimediaCommonsTag(commonsTag)
             if (commonsUrl != null) {
-                return EnrichedPhoto(commonsUrl, "Wikimedia Commons / $commonsTag", isVerifiedLandmark = true)
+                return EnrichedPhoto(commonsUrl, "Wikimedia Commons / $commonsTag", isVerifiedLandmark = true, isOsmVerified = true)
             }
         }
 
         // 3. Check Global & Lisbon Landmark Catalogs
         val globalLandmark = GlobalLandmarkCatalog.findLandmark(title)
         if (globalLandmark != null) {
-            return EnrichedPhoto(globalLandmark.imageUrl, globalLandmark.attribution, isVerifiedLandmark = true)
+            return EnrichedPhoto(globalLandmark.imageUrl, globalLandmark.attribution, isVerifiedLandmark = true, isCuratedLandmark = true)
         }
 
         val lisbonLandmark = LisbonLandmarkCatalog.findLandmark(title)
         if (lisbonLandmark != null) {
-            return EnrichedPhoto(lisbonLandmark.imageUrl, lisbonLandmark.attribution, isVerifiedLandmark = true)
+            return EnrichedPhoto(lisbonLandmark.imageUrl, lisbonLandmark.attribution, isVerifiedLandmark = true, isCuratedLandmark = true)
         }
 
         // 4. Contextual keyword & district matching from Lisbon catalog
