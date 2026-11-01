@@ -92,7 +92,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        configureAppCheck(this, intent)
+        configureAppCheck(this)
         enableEdgeToEdge()
         ScoutVectorEngine.initialize(applicationContext)
 

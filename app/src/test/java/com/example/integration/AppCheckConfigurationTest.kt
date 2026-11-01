@@ -3,10 +3,11 @@ package com.example.integration
 import android.content.Context
 import android.content.Intent
 import androidx.test.core.app.ApplicationProvider
+import com.example.testutil.TestFirebaseInitializer
 import com.example.util.configureAppCheck
 import com.google.firebase.FirebaseApp
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -16,20 +17,23 @@ import org.robolectric.annotation.Config
 @Config(sdk = [33])
 class AppCheckConfigurationTest {
 
-    private val debugTokenExtra = "FIREBASE_APPCHECK_DEBUG_TOKEN"
     private val debugStorePrefix = "com.google.firebase.appcheck.debug.store."
     private val debugSecretKey = "com.google.firebase.appcheck.debug.DEBUG_SECRET"
 
-    @Test
-    fun configureAppCheck_withDebugTokenIntent_storesDebugSecretInSharedPreferences() {
+    @Before
+    fun setUp() {
         val context = ApplicationProvider.getApplicationContext<Context>()
-        val testToken = "test-debug-token-guid-abcdef-123456"
+        TestFirebaseInitializer.initTestFirebase(context)
+    }
 
-        val intent = Intent().apply {
-            putExtra(debugTokenExtra, testToken)
-        }
+    @Test
+    fun configureAppCheck_executesGracefullyWithoutReadingIntentExtra() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val testToken = "injected-intent-token-should-be-ignored"
+        val intent = Intent().putExtra("FIREBASE_APPCHECK_DEBUG_TOKEN", testToken)
 
-        configureAppCheck(context, intent)
+        // Invoke configureAppCheck without passing intent
+        configureAppCheck(context)
 
         val persistenceKey = runCatching { FirebaseApp.getInstance().persistenceKey }.getOrDefault("[DEFAULT]")
         val prefs = context.getSharedPreferences(
@@ -38,18 +42,23 @@ class AppCheckConfigurationTest {
         )
 
         val savedToken = prefs.getString(debugSecretKey, null)
-        assertNotNull("Debug token must be saved to SharedPreferences", savedToken)
-        assertEquals(testToken, savedToken)
+        assertNull("Intent extra debug token must NOT be read or written to SharedPreferences", savedToken)
     }
 
     @Test
-    fun configureAppCheck_withoutIntentExtra_executesGracefullyWithoutCrashing() {
+    fun configureAppCheck_releaseMode_doesNotReadIntentExtraOrStoreToken() {
         val context = ApplicationProvider.getApplicationContext<Context>()
 
-        // Invoking with null Intent must succeed without throwing exception
-        configureAppCheck(context, null)
+        // Execute initialization
+        configureAppCheck(context)
 
-        // Invoking with empty Intent must also succeed gracefully
-        configureAppCheck(context, Intent())
+        val persistenceKey = runCatching { FirebaseApp.getInstance().persistenceKey }.getOrDefault("[DEFAULT]")
+        val prefs = context.getSharedPreferences(
+            "$debugStorePrefix$persistenceKey",
+            Context.MODE_PRIVATE
+        )
+
+        val savedToken = prefs.getString(debugSecretKey, null)
+        assertNull("Release-style initialization must never store any intent token in SharedPreferences", savedToken)
     }
 }
