@@ -407,7 +407,7 @@ fun PeerMeshRadarCard(
                     Column {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                text = if (isDemoActive) strings.communityDemoModeActive else strings.communitySavedLocally.uppercase(),
+                                text = if (isDemoActive) "PROTOTYPE • DEMO MESH ACTIVE" else strings.communitySavedLocally.uppercase(),
                                 style = MaterialTheme.typography.labelSmall.copy(
                                     fontWeight = FontWeight.Black,
                                     letterSpacing = 1.sp
@@ -425,9 +425,9 @@ fun PeerMeshRadarCard(
                         Text(
                             text = if (isDemoActive) {
                                 when (syncPhase) {
-                                    MeshSyncPhase.DISCOVERING_PEERS -> "Scanning BLE / Wi-Fi Mesh..."
-                                    MeshSyncPhase.EXCHANGING_GOSSIP -> "Exchanging Tip Vectors..."
-                                    MeshSyncPhase.SYNC_SUCCESS -> "Mesh Synchronized!"
+                                    MeshSyncPhase.DISCOVERING_PEERS -> "Prototype: Scanning Simulated Peers..."
+                                    MeshSyncPhase.EXCHANGING_GOSSIP -> "Prototype: Exchanging Demo Gossip..."
+                                    MeshSyncPhase.SYNC_SUCCESS -> "Prototype: Mesh Synchronized!"
                                     MeshSyncPhase.IDLE -> strings.communityDemoPeersConnected
                                 }
                             } else {
