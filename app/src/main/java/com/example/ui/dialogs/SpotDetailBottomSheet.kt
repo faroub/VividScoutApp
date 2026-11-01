@@ -81,6 +81,7 @@ import com.example.data.local.AppDatabase
 import com.example.data.model.WeatherReport
 import com.example.data.repository.CommunityTipRepository
 import com.example.data.repository.WeatherRepository
+import com.example.di.AppContainer
 import com.example.ui.components.WeatherCard
 import com.example.ui.theme.SecondaryContainer
 import com.example.ui.theme.SurfaceContainerLow
@@ -735,10 +736,10 @@ fun SpotDetailBottomSheet(
                 onPostTip(spotId, spotTitle, content, isStatus, category)
             } else {
                 val appContainer = (context.applicationContext as? VividScoutApplication)?.container
-                val repo = appContainer?.communityTipRepository
-                if (repo != null) {
+                if (!isAppContainerUnavailable(appContainer)) {
+                    val repo = appContainer?.communityTipRepository
                     scope.launch {
-                        repo.postTip(spotId, spotTitle, content, isStatus, category)
+                        repo?.postTip(spotId, spotTitle, content, isStatus, category)
                     }
                 } else {
                     Toast.makeText(
@@ -751,4 +752,11 @@ fun SpotDetailBottomSheet(
         },
         initialSpot = spot
     )
+}
+
+/**
+ * Evaluates whether the application DI container or community tip repository is unavailable for fallback tip posting.
+ */
+fun isAppContainerUnavailable(appContainer: AppContainer?): Boolean {
+    return appContainer?.communityTipRepository == null
 }
