@@ -1,15 +1,19 @@
 package com.example.data.repository
 
 import android.content.Context
+import android.util.Log
 import com.example.data.local.AppDatabase
 import com.example.data.local.CommunityTipDao
 import com.example.data.local.CommunityTipEntity
 import com.example.data.local.ScoutDao
 import com.example.data.local.TipVoteDao
+import com.example.data.local.TipVoteEntity
 import com.example.data.p2p.MeshSyncPhase
 import com.example.data.p2p.PeerMeshSyncEngine
 import com.example.data.p2p.PeerMeshSyncResult
 import com.example.data.sync.FirestoreSyncManager
+import com.example.data.sync.FirestoreTipUpvoteCloud
+import com.example.data.sync.TipUpvoteCloud
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -19,7 +23,8 @@ import java.util.UUID
 class CommunityTipRepository(
     private val dao: CommunityTipDao,
     private val tipVoteDao: TipVoteDao? = null,
-    private val context: Context? = null
+    private val context: Context? = null,
+    private val cloudService: TipUpvoteCloud = FirestoreTipUpvoteCloud(context)
 ) {
     val allTipsFlow: Flow<List<CommunityTipEntity>> = dao.getAllTipsFlow()
     val allStatusUpdatesFlow: Flow<List<CommunityTipEntity>> = dao.getAllStatusUpdatesFlow()
@@ -91,14 +96,17 @@ class CommunityTipRepository(
             return@withContext false
         }
 
-        // 2. Call cloud transaction first if cloud context is present
-        val appCtx = context
-        if (appCtx != null) {
-            val cloudSuccess = FirestoreSyncManager.incrementTipUpvoteInCloud(appCtx, tipId)
-            if (!cloudSuccess) {
-                // Cloud transaction failed or rejected duplicate vote: change nothing locally
-                return@withContext false
-            }
+        // 2. Call cloud transaction first
+        val cloudSuccess = try {
+            cloudService.incrementTipUpvote(tipId)
+        } catch (e: Exception) {
+            runCatching { Log.w("CommunityTipRepo", "Cloud upvote threw exception: ${e.message}") }
+            false
+        }
+
+        if (!cloudSuccess) {
+            // Cloud transaction failed or rejected duplicate vote: change nothing locally
+            return@withContext false
         }
 
         // 3. Record local vote in tip_votes and increment local count in ONE Room @Transaction
