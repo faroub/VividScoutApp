@@ -7,7 +7,7 @@ VividScout is a native Android application built with Jetpack Compose, Room, and
 ## Technical Requirements
 
 - **Android Studio**: Android Studio 2026.1.4 or newer
-- **JDK Version**: Java 17 / JDK 21 (target compatibility set to Java 11)
+- **JDK Version**: JDK 25 (required to run Gradle daemon) / Java 11 (app compilation language level)
 - **Minimum SDK (`minSdk`)**: 24 (Android 7.0 Nougat)
 - **Compile SDK (`compileSdk`)**: 36 (Android 15 / Android 16 Preview)
 - **Target SDK (`targetSdk`)**: 36
