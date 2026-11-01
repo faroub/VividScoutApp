@@ -211,6 +211,16 @@ object DatabaseMigrations {
         }
     }
 
+    /**
+     * Migration from version 8 to version 9:
+     * Adds isSyncedToCloud column (INTEGER NOT NULL DEFAULT 0) to community_tips table.
+     */
+    val MIGRATION_8_9 = object : Migration(8, 9) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `community_tips` ADD COLUMN `isSyncedToCloud` INTEGER NOT NULL DEFAULT 0")
+        }
+    }
+
     val ALL_MIGRATIONS: Array<Migration> = arrayOf(
         MIGRATION_1_2,
         MIGRATION_2_3,
@@ -218,6 +228,7 @@ object DatabaseMigrations {
         MIGRATION_4_5,
         MIGRATION_5_6,
         MIGRATION_6_7,
-        MIGRATION_7_8
+        MIGRATION_7_8,
+        MIGRATION_8_9
     )
 }

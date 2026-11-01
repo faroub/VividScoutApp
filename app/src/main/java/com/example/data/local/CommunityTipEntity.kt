@@ -27,7 +27,8 @@ data class CommunityTipEntity(
     val statusCategory: String = "INSIGHT", // STOCK_SHORTAGE, LINE_QUEUE, FRESH_BATCH, ATMOSPHERE, INSIGHT
     val upvotes: Int = 0,
     val peerNodeId: String = "local-device",
-    val isLocallyAuthored: Boolean = false
+    val isLocallyAuthored: Boolean = false,
+    val isSyncedToCloud: Boolean = false
 ) {
     /**
      * Flags pre-seeded or demo simulated tips so they are clearly presented
