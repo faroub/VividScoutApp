@@ -3,24 +3,43 @@
 ## System Architecture & Refactoring Status
 
 1. **Composable File Sizes**:
-   - `ExploreScreen.kt`: Refactored from 1,763 lines to **482 lines** (sub-composables extracted to `ExploreSearchBar.kt`, `ExploreFilterRibbon.kt`, `ExploreSpotCard.kt`, `ExploreRadarCard.kt`, `ExploreHeader.kt`, `ExploreState.kt`).
-   - `RadarScreen.kt`: Refactored from 1,032 lines to **362 lines** (sub-composables extracted to `RadarBanners.kt`, `RadarViewModeSelector.kt`, `RadarOsmScraperCard.kt`, `RadarDetectedSpotItem.kt`).
-   - `ProfileScreen.kt`: Refactored from 958 lines to **180 lines** (sub-composables extracted to `ProfileGpsTelemetryCard.kt`, `ProfileSettingsSection.kt`).
-   - `MapCanvasView.kt`: Refactored from 1,193 lines to **810 lines** (sub-composables extracted to `MapRegionDownloaderBar.kt`, `MapRouteHud.kt`, `MapCanvasControls.kt`).
-   - *Note on secondary overlay/sheet components*: `RoutePlannerSheet.kt` (816 lines), `SpotGemModal.kt` (788 lines), `SpotDetailBottomSheet.kt` (737 lines), and `ARNavigationOverlay.kt` (705 lines) remain functional as standalone modal sheets/overlays.
+   - `ExploreScreen.kt`: Refactored to **482 lines** (sub-composables modularized in `ExploreSearchBar.kt`, `ExploreFilterRibbon.kt`, `ExploreSpotCard.kt`, `ExploreRadarCard.kt`, `ExploreHeader.kt`, `ExploreState.kt`).
+   - `RadarScreen.kt`: Refactored to **362 lines** (sub-composables modularized in `RadarBanners.kt`, `RadarViewModeSelector.kt`, `RadarOsmScraperCard.kt`, `RadarDetectedSpotItem.kt`).
+   - `ProfileScreen.kt`: Refactored to **180 lines** (sub-composables modularized in `ProfileGpsTelemetryCard.kt`, `ProfileSettingsSection.kt`).
+   - `MapCanvasView.kt`: Refactored to **810 lines** (sub-composables modularized in `MapRegionDownloaderBar.kt`, `MapRouteHud.kt`, `MapCanvasControls.kt`).
+   - *Note on secondary overlay/sheet components*: `RoutePlannerSheet.kt`, `SpotGemModal.kt`, `SpotDetailBottomSheet.kt`, and `ARNavigationOverlay.kt` remain functional as standalone modal sheets/overlays.
 
-2. **PreScoutEngine Coverage**:
-   - `PreScoutEngine` is fully tested by unit tests in `PreScoutEngineTest.kt` covering initial anchor setup, same-city small movement filtering (<10km), city boundary crossing triggers, >10km distance boundary triggers, preference weight calculations, and pre-scout execution flow.
+2. **Route-Corridor Validation (Resolved)**:
+   - Added spherical cross-track distance calculations in `MovementVectorUtils.kt` and `OfflineRouteEngine.kt`.
+   - `GeminiQueryService` strictly filters AI-suggested corridor spots using `MovementVectorUtils.isPointInCorridor()`, rejecting any spot whose perpendicular cross-track distance from the polyline route corridor exceeds the corridor threshold.
 
-3. **Community Spot Submissions & Cloud Sync**:
-   - Community tips and spot submissions are stored locally in Room DB as offline draft entities (`isOfflineDraft = true`).
-   - Live cloud synchronization backend (e.g., Firestore or remote API sync endpoint) is pending integration; drafts currently queue locally in the Offline Submission Queue.
+3. **Discovery Radius Validation (Resolved)**:
+   - Enforced strict proportional tolerance (`radiusMeters * 1.15f`) in `GeminiSpotService.kt`.
+   - Removed previous `maxOf(..., 3000f)` minimum floor that inflated tight queries (e.g. 500m / 1km) to 3km.
 
-4. **Version Control & Repository Hygiene**:
-   - `.idea/` directory untracked from Git version control and added to `.gitignore`.
-   - `.aistudio/` artifacts untracked from Git version control and added to `.gitignore`.
-   - `metadata.json` and `public/assets/aistudio/` untracked from Git version control and added to `.gitignore`.
+4. **Ratings Truthfulness (Resolved)**:
+   - Removed artificial rating generation from Gemini prompt schemas in `GeminiSpotService` and `GeminiQueryService`.
+   - `rating = null` and `reviewCount = null` are assigned to AI and curated spots unless verified by authentic user reviews.
+   - Removed synthetic rating filter in `PreScoutEngine`, ranking instead by proximity and authentic relevance.
 
-5. **Automated Verification**:
-   - `clean assembleDebug assembleRelease`: Build succeeds for both Debug and Release.
-   - `testDebugUnitTest`: 112 / 112 unit tests passing, 0 skipped, 0 failed.
+5. **City-Independent Proximity Discovery (Resolved)**:
+   - Replaced hardcoded Lisbon references in AI queries and fallback generation with dynamic city resolution using `GlobalCityCatalog.findNearestCityName(lat, lng)`.
+   - Active fallback coordinates dynamically track the user-selected city in `DefaultLocationConfig`.
+
+6. **Fallback Location Status Visibility (Resolved)**:
+   - Added prominent fallback indicators across the app UI:
+     - `VividScoutTopBar`: Amber `"Fallback: <City>"` badge when GPS is inactive.
+     - `ExploreScreen`: Warning banner with quick action to change city or enable GPS.
+     - `RadarScreen`: Warning banner showing fallback status.
+     - `ProfileGpsTelemetryCard`: Simulated Fallback GPS badge with annotated coordinates.
+     - `SpotGemModal`: Amber tag banner alerting user that submission coordinates are at fallback location.
+
+7. **Community Cloud Synchronization (Resolved)**:
+   - Implemented real cloud synchronization with Firebase Firestore via `FirestoreSyncManager.kt`.
+   - Bidirectional sync for `community_submissions` and `community_tips`.
+   - Zero-trust Firestore security rules deployed and active (`firestore.rules`).
+
+8. **Automated Verification**:
+   - `compile_applet`: Compilation succeeds with zero errors.
+   - `gradle :app:testDebugUnitTest`: 125 unit and integration tests passing, 0 skipped, 0 failed.
+   - Integration tests covering Gemini failures, coordinate validation, corridor filtering, and App Check configuration.

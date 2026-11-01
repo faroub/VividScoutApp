@@ -157,7 +157,11 @@ class ExploreViewModel(
     init {
         viewModelScope.launch(Dispatchers.IO) {
             repository.initializeIfEmpty()
-            val banner = preScoutEngine.executePreScout(38.7112, -9.1423, _selectedGlobalCity.value)
+            val banner = preScoutEngine.executePreScout(
+                com.example.data.location.DefaultLocationConfig.activeFallbackLat,
+                com.example.data.location.DefaultLocationConfig.activeFallbackLng,
+                _selectedGlobalCity.value
+            )
             _preScoutBannerState.value = banner
         }
     }
@@ -223,12 +227,13 @@ class ExploreViewModel(
 
     fun selectGlobalCity(cityName: String) {
         _selectedGlobalCity.value = cityName
-        _cityProfile.value = com.example.data.model.CityProfileRegistry.getProfileForCity(cityName)
+        val profile = com.example.data.model.CityProfileRegistry.getProfileForCity(cityName)
+        _cityProfile.value = profile
         _showGlobalCityDialog.value = false
+        val lat = if (profile.lat != 0.0) profile.lat else com.example.data.location.DefaultLocationConfig.activeFallbackLat
+        val lng = if (profile.lng != 0.0) profile.lng else com.example.data.location.DefaultLocationConfig.activeFallbackLng
+        com.example.data.location.DefaultLocationConfig.setActiveFallbackCity(lat, lng, cityName)
         viewModelScope.launch(Dispatchers.IO) {
-            val profile = _cityProfile.value
-            val lat = if (profile.lat != 0.0) profile.lat else 38.7112
-            val lng = if (profile.lng != 0.0) profile.lng else -9.1423
             _userCoordinates.value = Pair(lat, lng)
             val banner = preScoutEngine.executePreScout(lat, lng, cityName)
             _preScoutBannerState.value = banner

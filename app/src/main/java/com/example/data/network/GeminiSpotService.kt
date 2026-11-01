@@ -151,8 +151,8 @@ class GeminiSpotService {
         val spotsArray = root.optJSONArray("spots") ?: return emptyList()
         val result = mutableListOf<ScoutSpotEntity>()
 
-        // Allow up to 20% margin or 3km minimum boundary threshold
-        val maxAllowedDistance = maxOf(radiusMeters.toFloat() * 1.2f, 3000f)
+        // Enforce strict proportional buffer (requested radius + 15% tolerance) without inflating small radii
+        val maxAllowedDistance = radiusMeters.toFloat() * 1.15f
 
         for (i in 0 until spotsArray.length()) {
             val item = spotsArray.getJSONObject(i)

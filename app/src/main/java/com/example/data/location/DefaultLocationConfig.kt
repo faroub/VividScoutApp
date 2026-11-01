@@ -13,10 +13,30 @@ object DefaultLocationConfig {
     const val DEFAULT_CITY_NAME = "Select City"
     const val DEFAULT_LOCATION_LABEL = "Fallback Location"
 
+    @Volatile
+    var activeFallbackLat: Double = DEFAULT_LAT
+        private set
+
+    @Volatile
+    var activeFallbackLng: Double = DEFAULT_LNG
+        private set
+
+    @Volatile
+    var activeFallbackCityName: String = DEFAULT_CITY_NAME
+        private set
+
+    fun setActiveFallbackCity(lat: Double, lng: Double, cityName: String) {
+        if (lat != 0.0 && lng != 0.0) {
+            activeFallbackLat = lat
+            activeFallbackLng = lng
+            activeFallbackCityName = cityName
+        }
+    }
+
     val defaultLocation: Location
         get() = Location("DefaultFallbackProvider").apply {
-            latitude = DEFAULT_LAT
-            longitude = DEFAULT_LNG
+            latitude = activeFallbackLat
+            longitude = activeFallbackLng
             accuracy = 100f
         }
 }
