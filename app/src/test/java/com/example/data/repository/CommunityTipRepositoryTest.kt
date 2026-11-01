@@ -244,6 +244,51 @@ class CommunityTipRepositoryTest {
     }
 
     @Test
+    fun upvoteTip_transactionRollbackOnSecondWriteFailure_preservesOriginalState() = runBlocking {
+        val tip = CommunityTipEntity(
+            id = "tip_rollback_999",
+            spotId = "spot_10",
+            spotTitle = "Rollback Spot",
+            authorName = "@test_author",
+            content = "Rollback test",
+            timestamp = System.currentTimeMillis(),
+            upvotes = 5,
+            isSyncedToCloud = true
+        )
+        tipDao.insertTip(tip)
+
+        // Create a throwing CommunityTipDao wrapper that forces incrementUpvote to throw an IllegalStateException
+        val throwingCommunityTipDao = object : CommunityTipDao by tipDao {
+            override suspend fun incrementUpvote(tipId: String) {
+                throw IllegalStateException("Forced database failure during second write operation in transaction")
+            }
+        }
+
+        val testRepo = CommunityTipRepository(
+            dao = throwingCommunityTipDao,
+            tipVoteDao = tipVoteDao,
+            context = null
+        )
+
+        val voteResult = try {
+            testRepo.upvoteTip("tip_rollback_999", "user_rollback")
+        } catch (e: Exception) {
+            false
+        }
+
+        assertFalse("Upvote should fail/return false when second write in transaction throws", voteResult)
+
+        // Assert that Room @Transaction rolled back the first write (vote row was NOT inserted)
+        val hasVoted = tipVoteDao.hasUserVoted("tip_rollback_999", "user_rollback")
+        assertFalse("Vote row must NOT be committed when transaction fails", hasVoted)
+
+        // Assert that the tip upvote count in database did NOT change (remains 5)
+        val tipAfterFailure = tipDao.getTipById("tip_rollback_999")
+        assertNotNull(tipAfterFailure)
+        assertEquals("Upvote count must remain unchanged at 5", 5, tipAfterFailure?.upvotes)
+    }
+
+    @Test
     fun upvoteTip_votePersistsAcrossNewRepositoryInstanceBackedBySameDatabase() = runBlocking {
         val initialTip = CommunityTipEntity(
             id = "tip_persisted",
