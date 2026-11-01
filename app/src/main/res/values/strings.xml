@@ -127,4 +127,5 @@
     <string name="pre_cache_vicinity">Pre-Cache Vicinity Now</string>
     <string name="prototype_badge">PROTOTYPE</string>
     <string name="voting_available_after_sync">Voting available after cloud sync</string>
+    <string name="post_tip_error_container_unavailable">Unable to post note: Application service container unavailable.</string>
 </resources>

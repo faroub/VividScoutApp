@@ -1,5 +1,6 @@
 package com.example.ui.dialogs
 
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -733,10 +734,18 @@ fun SpotDetailBottomSheet(
             if (onPostTip != null) {
                 onPostTip(spotId, spotTitle, content, isStatus, category)
             } else {
-                scope.launch {
-                    val appContainer = (context.applicationContext as? VividScoutApplication)?.container
-                    val repo = appContainer?.communityTipRepository
-                    repo?.postTip(spotId, spotTitle, content, isStatus, category)
+                val appContainer = (context.applicationContext as? VividScoutApplication)?.container
+                val repo = appContainer?.communityTipRepository
+                if (repo != null) {
+                    scope.launch {
+                        repo.postTip(spotId, spotTitle, content, isStatus, category)
+                    }
+                } else {
+                    Toast.makeText(
+                        context,
+                        strings.postTipErrorContainerUnavailable,
+                        Toast.LENGTH_SHORT
+                    ).show()
                 }
             }
         },
