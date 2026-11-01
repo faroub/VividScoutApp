@@ -1,5 +1,6 @@
 package com.example.ui.viewmodel
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.local.RecentSearchEntity
@@ -66,10 +67,12 @@ class ExploreViewModel(
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
-    private val _selectedGlobalCity = MutableStateFlow("Lisbon, Portugal")
+    private val _selectedGlobalCity = MutableStateFlow(DefaultLocationConfig.activeFallbackCityName)
     val selectedGlobalCity: StateFlow<String> = _selectedGlobalCity.asStateFlow()
 
-    private val _cityProfile = MutableStateFlow(com.example.data.model.CityProfileRegistry.LISBON_PROFILE)
+    private val _cityProfile = MutableStateFlow(
+        CityProfileRegistry.getProfileForCity(DefaultLocationConfig.activeFallbackCityName)
+    )
     val cityProfile: StateFlow<com.example.data.model.CityProfile> = _cityProfile.asStateFlow()
 
     private val _showGlobalCityDialog = MutableStateFlow(false)
@@ -225,14 +228,14 @@ class ExploreViewModel(
         _showGlobalCityDialog.value = false
     }
 
-    fun selectGlobalCity(cityName: String) {
+    fun selectGlobalCity(cityName: String, context: Context? = null) {
         _selectedGlobalCity.value = cityName
         val profile = com.example.data.model.CityProfileRegistry.getProfileForCity(cityName)
         _cityProfile.value = profile
         _showGlobalCityDialog.value = false
         val lat = if (profile.lat != 0.0) profile.lat else com.example.data.location.DefaultLocationConfig.activeFallbackLat
         val lng = if (profile.lng != 0.0) profile.lng else com.example.data.location.DefaultLocationConfig.activeFallbackLng
-        com.example.data.location.DefaultLocationConfig.setActiveFallbackCity(lat, lng, cityName)
+        DefaultLocationConfig.setActiveFallbackCity(lat, lng, cityName, context)
         viewModelScope.launch(Dispatchers.IO) {
             _userCoordinates.value = Pair(lat, lng)
             val banner = preScoutEngine.executePreScout(lat, lng, cityName)
@@ -246,7 +249,7 @@ class ExploreViewModel(
         }
     }
 
-    fun updateUserLocation(lat: Double, lng: Double) {
+    fun updateUserLocation(lat: Double, lng: Double, context: Context? = null) {
         if (lat == 0.0 && lng == 0.0) return
         val prev = _userCoordinates.value
         if (Math.abs(prev.first - lat) > 0.0005 || Math.abs(prev.second - lng) > 0.0005) {
@@ -255,6 +258,7 @@ class ExploreViewModel(
             val detectedCityName = GlobalCityCatalog.findNearestCityName(lat, lng)
             _selectedGlobalCity.value = detectedCityName
             _cityProfile.value = CityProfileRegistry.getProfileForCity(detectedCityName, lat, lng)
+            DefaultLocationConfig.setActiveFallbackCity(lat, lng, detectedCityName, context)
 
             viewModelScope.launch(Dispatchers.IO) {
                 val banner = preScoutEngine.executePreScout(lat, lng, detectedCityName)

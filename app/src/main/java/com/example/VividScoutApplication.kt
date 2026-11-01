@@ -1,6 +1,7 @@
 package com.example
 
 import android.app.Application
+import com.example.data.location.DefaultLocationConfig
 import com.example.di.AppContainer
 import com.example.di.DefaultAppContainer
 import com.google.firebase.FirebaseApp
@@ -15,6 +16,7 @@ class VividScoutApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        DefaultLocationConfig.initFromPreferences(this)
         container = DefaultAppContainer(this)
 
         CoroutineScope(Dispatchers.IO).launch {

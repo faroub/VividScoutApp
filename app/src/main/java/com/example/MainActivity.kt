@@ -153,7 +153,7 @@ fun VividScoutApp(
     // Automatically sync active location to ExploreViewModel for proximity sorting & auto-discovery
     LaunchedEffect(locationState.userCoordinates) {
         val (lat, lng) = locationState.userCoordinates
-        exploreViewModel.updateUserLocation(lat, lng)
+        exploreViewModel.updateUserLocation(lat, lng, context)
     }
 
     val locationPermissionLauncher = rememberLauncherForActivityResult(

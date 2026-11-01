@@ -3,6 +3,7 @@ package com.example.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.local.ScoutSpotEntity
+import com.example.data.location.DefaultLocationConfig
 import com.example.data.model.CacheHealthCalculator
 import com.example.data.model.CacheHealthLevel
 import com.example.data.model.VicinityCacheHealth
@@ -334,14 +335,20 @@ class OfflineMapsViewModel(
         }
     }
 
-    fun downloadCurrentGpsPack(lat: Double = 38.7112, lng: Double = -9.1423) {
+    fun downloadCurrentGpsPack(
+        lat: Double = DefaultLocationConfig.activeFallbackLat,
+        lng: Double = DefaultLocationConfig.activeFallbackLng
+    ) {
         viewModelScope.launch {
             offlineMapManager.downloadPack("custom_gps_pack", lat, lng)
             refreshDownloadedRegions()
         }
     }
 
-    fun runDiagnosticQuery(lat: Double = 38.7112, lng: Double = -9.1423) {
+    fun runDiagnosticQuery(
+        lat: Double = DefaultLocationConfig.activeFallbackLat,
+        lng: Double = DefaultLocationConfig.activeFallbackLng
+    ) {
         val repo = gemRepository ?: return
         viewModelScope.launch {
             _isDiagnosticRunning.value = true
