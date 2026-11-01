@@ -229,10 +229,10 @@ fun CommunityTipCard(
                             tint = PrimaryContainer,
                             modifier = Modifier.size(14.dp)
                         )
-                        if (tip.upvotes > 0) {
+                        if (tip.totalUpvotes > 0) {
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = "${tip.upvotes}",
+                                text = "${tip.totalUpvotes}",
                                 style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                                 color = PrimaryContainer
                             )

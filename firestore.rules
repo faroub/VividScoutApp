@@ -65,7 +65,7 @@ service cloud.firestore {
       allow create: if isAuthenticated()
                     && request.resource.data.keys().hasOnly([
                          'id', 'ownerUid', 'spotId', 'spotTitle', 'authorName', 'content',
-                         'timestamp', 'isStatusUpdate', 'statusCategory', 'upvotes'
+                         'timestamp', 'isStatusUpdate', 'statusCategory', 'legacyUpvotes', 'upvotes'
                        ])
                     && request.resource.data.ownerUid == request.auth.uid
                     && request.resource.data.id is string
@@ -76,10 +76,11 @@ service cloud.firestore {
                     && request.resource.data.content.size() >= 2
                     && request.resource.data.content.size() <= 500
                     && request.resource.data.timestamp is number
+                    && request.resource.data.legacyUpvotes is number
                     && request.resource.data.upvotes == 0;
 
       // Allow +1 upvote increment only when a corresponding vote document is created in the same request,
-      // OR owner-only tip retries (which CANNOT modify upvotes)
+      // OR owner-only tip retries (which CANNOT modify upvotes or legacyUpvotes)
       allow update: if isAuthenticated() && (
         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['upvotes'])
          && request.resource.data.upvotes == resource.data.upvotes + 1
@@ -88,7 +89,7 @@ service cloud.firestore {
          && request.resource.data.ownerUid == request.auth.uid
          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
               'id', 'ownerUid', 'spotId', 'spotTitle', 'authorName', 'content',
-              'timestamp', 'isStatusUpdate', 'statusCategory'
+              'timestamp', 'isStatusUpdate', 'statusCategory', 'legacyUpvotes'
             ]))
       );
 

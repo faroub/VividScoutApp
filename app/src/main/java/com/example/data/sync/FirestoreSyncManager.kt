@@ -161,6 +161,7 @@ object FirestoreSyncManager {
                 "timestamp" to tip.timestamp,
                 "isStatusUpdate" to tip.isStatusUpdate,
                 "statusCategory" to tip.statusCategory,
+                "legacyUpvotes" to tip.legacyUpvotes,
                 "upvotes" to 0
             )
 
@@ -276,6 +277,9 @@ object FirestoreSyncManager {
                 val content = rawContent.trim().take(500)
                 val author = (doc.getString("authorName") ?: "@scout").trim().take(50)
 
+                val legacyVotes = (doc.getLong("legacyUpvotes") ?: doc.getLong("upvotes") ?: 0L).toInt()
+                val recordedVotes = (if (doc.contains("legacyUpvotes")) (doc.getLong("upvotes") ?: 0L) else 0L).toInt()
+
                 remoteTips.add(
                     CommunityTipEntity(
                         id = id.take(128),
@@ -286,7 +290,8 @@ object FirestoreSyncManager {
                         timestamp = doc.getLong("timestamp") ?: System.currentTimeMillis(),
                         isStatusUpdate = doc.getBoolean("isStatusUpdate") ?: false,
                         statusCategory = (doc.getString("statusCategory") ?: "INSIGHT").trim().take(32),
-                        upvotes = (doc.getLong("upvotes") ?: 1L).toInt().coerceAtLeast(1),
+                        legacyUpvotes = legacyVotes,
+                        upvotes = recordedVotes,
                         peerNodeId = "cloud-firestore",
                         isLocallyAuthored = false,
                         isSyncedToCloud = true

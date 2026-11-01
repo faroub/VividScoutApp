@@ -58,8 +58,40 @@ class CommunityTipRepositoryTest {
         assertEquals("Frauenkirche View", tip.spotTitle)
         assertEquals("@dresden_scout", tip.authorName)
         assertEquals(0, tip.upvotes)
+        assertEquals(0, tip.totalUpvotes)
         assertFalse("Newly posted tip starts unsynced", tip.isSyncedToCloud)
         assertTrue(tip.isLocallyAuthored)
+    }
+
+    @Test
+    fun totalUpvotes_combinesLegacyUpvotesAndNewRecordedVotes() = runBlocking {
+        val legacyTip = CommunityTipEntity(
+            id = "tip_legacy_500",
+            spotId = "spot_5",
+            spotTitle = "Historical Bakery",
+            authorName = "@patricia",
+            content = "Pastel de nata out of oven",
+            timestamp = System.currentTimeMillis(),
+            legacyUpvotes = 24,
+            upvotes = 0,
+            isSyncedToCloud = true
+        )
+        tipDao.insertTip(legacyTip)
+
+        val fetchedBeforeVote = tipDao.getTipById("tip_legacy_500")
+        assertNotNull(fetchedBeforeVote)
+        assertEquals(24, fetchedBeforeVote?.legacyUpvotes)
+        assertEquals(0, fetchedBeforeVote?.upvotes)
+        assertEquals(24, fetchedBeforeVote?.totalUpvotes)
+
+        // Perform a new vote from user_101
+        val voteResult = repository.upvoteTip("tip_legacy_500", "user_101")
+        assertTrue(voteResult)
+
+        val fetchedAfterVote = tipDao.getTipById("tip_legacy_500")
+        assertEquals(24, fetchedAfterVote?.legacyUpvotes)
+        assertEquals(1, fetchedAfterVote?.upvotes)
+        assertEquals(25, fetchedAfterVote?.totalUpvotes)
     }
 
     @Test
@@ -81,6 +113,7 @@ class CommunityTipRepositoryTest {
 
         val updatedTip = tipDao.getTipById("tip_synced_100")
         assertEquals(4, updatedTip?.upvotes)
+        assertEquals(4, updatedTip?.totalUpvotes)
     }
 
     @Test

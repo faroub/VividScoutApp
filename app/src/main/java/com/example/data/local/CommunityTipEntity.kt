@@ -25,11 +25,14 @@ data class CommunityTipEntity(
     val timestamp: Long,
     val isStatusUpdate: Boolean = false,
     val statusCategory: String = "INSIGHT", // STOCK_SHORTAGE, LINE_QUEUE, FRESH_BATCH, ATMOSPHERE, INSIGHT
+    val legacyUpvotes: Int = 0,
     val upvotes: Int = 0,
     val peerNodeId: String = "local-device",
     val isLocallyAuthored: Boolean = false,
     val isSyncedToCloud: Boolean = false
 ) {
+    val totalUpvotes: Int
+        get() = legacyUpvotes + upvotes
     /**
      * Flags pre-seeded or demo simulated tips so they are clearly presented
      * as sample content rather than real live users' posts.
