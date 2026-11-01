@@ -159,7 +159,8 @@ data class AppStringsData(
     val communitySaveLocallyAction: String,
     val communityEmptyNotesDesc: String,
     val communityDemoModeActive: String,
-    val communityDemoPeersConnected: String
+    val communityDemoPeersConnected: String,
+    val prototypeBadge: String
 )
 
 val EnglishStrings = AppStringsData(
@@ -305,7 +306,8 @@ val EnglishStrings = AppStringsData(
     communitySaveLocallyAction = "Save Tip Locally",
     communityEmptyNotesDesc = "Save notes and live updates for Lisbon gems on this device.",
     communityDemoModeActive = "Demo Mode Active",
-    communityDemoPeersConnected = "Demo Peers: 3 sample nodes simulated"
+    communityDemoPeersConnected = "Demo Peers: 3 sample nodes simulated",
+    prototypeBadge = "PROTOTYPE"
 )
 
 val FrenchStrings = AppStringsData(
@@ -451,7 +453,8 @@ val FrenchStrings = AppStringsData(
     communitySaveLocallyAction = "Enregistrer le conseil localement",
     communityEmptyNotesDesc = "Enregistrez des notes et alertes en direct pour les pépites de Lisbonne sur cet appareil.",
     communityDemoModeActive = "Mode Démo Actif",
-    communityDemoPeersConnected = "Pairs de démo : 3 nœuds simulés"
+    communityDemoPeersConnected = "Pairs de démo : 3 nœuds simulés",
+    prototypeBadge = "PROTOTYPE"
 )
 
 val ArabicStrings = AppStringsData(
@@ -597,7 +600,8 @@ val ArabicStrings = AppStringsData(
     communitySaveLocallyAction = "حفظ النصيحة محليًا",
     communityEmptyNotesDesc = "احفظ الملاحظات والتحديثات الحية لمعالم لشبونة على هذا الجهاز.",
     communityDemoModeActive = "وضع العرض التوضيحي مفعّل",
-    communityDemoPeersConnected = "عقد تجريبية: 3 عقد تمثيلية"
+    communityDemoPeersConnected = "عقد تجريبية: 3 عقد تمثيلية",
+    prototypeBadge = "نموذج أولي"
 )
 
 val LocalAppLanguage = staticCompositionLocalOf { AppLanguage.ENGLISH }

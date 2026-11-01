@@ -125,4 +125,5 @@
     <string name="cache_health_fair">Sparse Cache</string>
     <string name="cache_health_critical">Needs Fetch</string>
     <string name="pre_cache_vicinity">Pre-Cache Vicinity Now</string>
+    <string name="prototype_badge">PROTOTYPE</string>
 </resources>

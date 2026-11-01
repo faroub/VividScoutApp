@@ -7,6 +7,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -62,6 +63,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.BuildConfig
 import com.example.data.local.CommunityTipEntity
 import com.example.data.local.ScoutSpotEntity
 import com.example.data.p2p.DemoModeProvider
@@ -185,13 +187,15 @@ fun CommunityFeedScreen(
                 }
             }
 
-            // Peer-to-Peer Mesh Radar & Sync Status Card
-            item {
-                PeerMeshRadarCard(
-                    syncPhase = syncPhase,
-                    lastSyncResult = lastSyncResult,
-                    onTriggerSync = onTriggerSync
-                )
+            // Peer-to-Peer Mesh Radar & Sync Status Card (Debug Builds Only)
+            if (BuildConfig.DEBUG) {
+                item {
+                    PeerMeshRadarCard(
+                        syncPhase = syncPhase,
+                        lastSyncResult = lastSyncResult,
+                        onTriggerSync = onTriggerSync
+                    )
+                }
             }
 
             // Filter Chips Row
@@ -406,8 +410,22 @@ fun PeerMeshRadarCard(
 
                     Column {
                         Row(verticalAlignment = Alignment.CenterVertically) {
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = BrandCoral.copy(alpha = 0.15f),
+                                border = BorderStroke(1.dp, BrandCoral.copy(alpha = 0.4f))
+                            ) {
+                                Text(
+                                    text = strings.prototypeBadge,
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Black),
+                                    color = BrandCoral,
+                                    fontSize = 9.sp,
+                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = if (isDemoActive) "PROTOTYPE • DEMO MESH ACTIVE" else strings.communitySavedLocally.uppercase(),
+                                text = if (isDemoActive) strings.communityDemoModeActive else strings.communitySavedLocally.uppercase(),
                                 style = MaterialTheme.typography.labelSmall.copy(
                                     fontWeight = FontWeight.Black,
                                     letterSpacing = 1.sp
