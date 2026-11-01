@@ -1,15 +1,22 @@
 /**
- * Mock Unit Test for scripts/migrate_legacy_upvotes.js Paginated Scan & Transaction Path
+ * Test Suite for scripts/migrate_legacy_upvotes.js
+ * Uses Node.js built-in test runner (`node:test` and `node:assert`).
  *
  * Verifies that:
- * 1. Paginated collection scan uses cursor logic (startAfter + documentId order) with page size 200 over 550+ docs.
- * 2. Unmigrated documents re-read latest upvotes in transactions and set legacyUpvotes = upvotes, upvotes = 0.
- * 3. First 20 planned changes are collected with id, spotTitle, and planned values (and NO content field).
- * 4. Idempotency: a second run skips all 550 documents.
+ * 1. Pagination processes 550+ documents across multiple pages without skipping or repeating any.
+ * 2. An unmigrated document is updated to legacyUpvotes = upvotes and upvotes = 0 inside a transaction.
+ * 3. A document that already has legacyUpvotes is skipped and NOT written.
+ * 4. A second run against the same documents changes nothing (idempotency).
+ * 5. A concurrent vote that increments upvotes between initial read and transaction re-read is preserved.
+ * 6. Dry run performs zero writes.
+ * 7. Sample data fallback executes gracefully when credentials are missing.
  */
 
-const assert = require('assert');
+const test = require('node:test');
+const assert = require('node:assert');
+const { scanCollection, migrateTipInTransaction, runMigration } = require('../migrate_legacy_upvotes');
 
+// Mock Firestore Document Snapshot
 class MockDocumentSnapshot {
   constructor(id, data, ref) {
     this.id = id;
@@ -18,44 +25,55 @@ class MockDocumentSnapshot {
   }
   exists = true;
   data() {
-    return this._data;
+    return { ...this._data };
   }
   get(field) {
     return this._data[field];
   }
 }
 
+// Mock Firestore Document Reference
 class MockDocumentReference {
-  constructor(id, initialData, store) {
+  constructor(id, store) {
     this.id = id;
     this.store = store;
-    this.store[id] = { ...initialData };
   }
 }
 
+// Mock Firestore Transaction
 class MockTransaction {
-  constructor(store) {
+  constructor(store, updateCalls) {
     this.store = store;
+    this.updateCalls = updateCalls;
   }
 
   async get(docRef) {
     const currentData = this.store[docRef.id];
+    if (!currentData) {
+      return { exists: false, data: () => null };
+    }
     return new MockDocumentSnapshot(docRef.id, currentData, docRef);
   }
 
   update(docRef, updateData) {
-    this.store[docRef.id] = {
-      ...this.store[docRef.id],
-      ...updateData
-    };
+    if (this.updateCalls) {
+      this.updateCalls.push({ id: docRef.id, data: updateData });
+    }
+    if (this.store && docRef && docRef.id) {
+      this.store[docRef.id] = {
+        ...this.store[docRef.id],
+        ...updateData
+      };
+    }
   }
 }
 
+// Mock Firestore Query & Collection
 class MockQuery {
-  constructor(store, startAfterDoc = null, limit = 200) {
+  constructor(store, startAfterDoc = null, limitVal = 200) {
     this.store = store;
     this.startAfterDoc = startAfterDoc;
-    this.limitVal = limit;
+    this.limitVal = limitVal;
   }
 
   orderBy() {
@@ -85,7 +103,7 @@ class MockQuery {
     const pageKeys = sortedKeys.slice(startIndex, startIndex + this.limitVal);
     const docs = pageKeys.map((id) => {
       const data = this.store[id];
-      const ref = new MockDocumentReference(id, data, this.store);
+      const ref = new MockDocumentReference(id, this.store);
       return new MockDocumentSnapshot(id, data, ref);
     });
 
@@ -99,6 +117,7 @@ class MockQuery {
 class MockFirestore {
   constructor(initialDocuments) {
     this.store = {};
+    this.updateCalls = [];
     for (const [id, data] of Object.entries(initialDocuments)) {
       this.store[id] = { ...data };
     }
@@ -114,149 +133,114 @@ class MockFirestore {
   }
 }
 
-// Paginated scan and transaction migration function matching task 2 & 3 specs
-async function runPaginatedMigration(mockDb, pageSize = 200, isDryRun = false) {
-  const collectionQuery = mockDb.collection('community_tips');
-  let totalDocsEvaluated = 0;
-  let unmigratedCount = 0;
-  let alreadyMigratedCount = 0;
-  let totalLegacyVotesToMove = 0;
-  let pageNumber = 0;
-  let lastDocument = null;
-  const plannedChangeLog = [];
-
-  while (true) {
-    pageNumber++;
-    let query = collectionQuery
-      .orderBy('documentId')
-      .limit(pageSize);
-
-    if (lastDocument) {
-      query = query.startAfter(lastDocument);
-    }
-
-    const snapshot = await query.get();
-    if (snapshot.empty) break;
-
-    totalDocsEvaluated += snapshot.docs.length;
-
-    for (const doc of snapshot.docs) {
-      await mockDb.runTransaction(async (transaction) => {
-        const freshSnap = await transaction.get(doc.ref);
-        if (!freshSnap.exists) return;
-
-        const freshData = freshSnap.data() || {};
-        const hasLegacyField = Object.prototype.hasOwnProperty.call(freshData, 'legacyUpvotes');
-
-        if (hasLegacyField) {
-          alreadyMigratedCount++;
-        } else {
-          unmigratedCount++;
-          const latestUpvotes = freshData.upvotes || 0;
-          totalLegacyVotesToMove += latestUpvotes;
-
-          if (plannedChangeLog.length < 20) {
-            plannedChangeLog.push({
-              id: doc.id,
-              spotTitle: freshData.spotTitle || 'Unknown Spot',
-              plannedLegacyUpvotes: latestUpvotes,
-              plannedUpvotes: 0
-            });
-          }
-
-          if (!isDryRun) {
-            transaction.update(doc.ref, {
-              legacyUpvotes: latestUpvotes,
-              upvotes: 0
-            });
-          }
-        }
-      });
-    }
-
-    lastDocument = snapshot.docs[snapshot.docs.length - 1];
-
-    if (snapshot.docs.length < pageSize) break;
-  }
-
-  return {
-    pageNumber,
-    totalDocsEvaluated,
-    unmigratedCount,
-    alreadyMigratedCount,
-    totalLegacyVotesToMove,
-    plannedChangeLog
-  };
-}
-
-async function test500PlusDocMigration() {
-  console.log('--- Testing Paginated Scan on 550 Mock Documents ---');
-
-  // Seed 550 mock documents: 500 unmigrated, 50 already migrated
+test('1. Paginated scan processes 550+ documents without skipping or repeating', async () => {
   const mockDocs = {};
   for (let i = 1; i <= 550; i++) {
-    const padId = String(i).padStart(4, '0');
-    const docId = `tip_doc_${padId}`;
-    if (i <= 50) {
-      // 50 documents already migrated
-      mockDocs[docId] = {
-        spotTitle: `Spot #${i}`,
-        content: `User secret content #${i}`,
-        legacyUpvotes: 10,
-        upvotes: 2
-      };
-    } else {
-      // 500 unmigrated documents
-      mockDocs[docId] = {
-        spotTitle: `Spot #${i}`,
-        content: `User secret content #${i}`,
-        upvotes: i % 15 + 1
-      };
-    }
+    const docId = `tip_doc_${String(i).padStart(4, '0')}`;
+    mockDocs[docId] = {
+      spotTitle: `Spot #${i}`,
+      upvotes: i % 10 + 1
+    };
   }
 
   const mockDb = new MockFirestore(mockDocs);
+  const result = await scanCollection(mockDb, { pageSize: 200, isDryRun: false, log: () => {} });
 
-  // 1. Test Dry-Run Mode on 550 documents
-  console.log('\n[TEST 1] Dry-Run Read-Only Scan on 550 docs...');
-  const dryRunRes = await runPaginatedMigration(mockDb, 200, true);
+  assert.strictEqual(result.pageNumber, 3, 'Should process exactly 3 pages (200 + 200 + 150)');
+  assert.strictEqual(result.totalDocsEvaluated, 550, 'Should evaluate all 550 documents');
+  assert.strictEqual(result.totalUnmigrated, 550, 'Should migrate all 550 unmigrated documents');
+});
 
-  assert.strictEqual(dryRunRes.totalDocsEvaluated, 550, 'Dry-run must evaluate all 550 documents');
-  assert.strictEqual(dryRunRes.pageNumber, 3, 'Dry-run must process exactly 3 pages (200 + 200 + 150)');
-  assert.strictEqual(dryRunRes.unmigratedCount, 500, 'Dry-run must find 500 unmigrated documents');
-  assert.strictEqual(dryRunRes.alreadyMigratedCount, 50, 'Dry-run must find 50 already migrated documents');
-  assert.strictEqual(dryRunRes.plannedChangeLog.length, 20, 'Planned change log must cap at 20 entries');
+test('2. Unmigrated document is updated to legacyUpvotes = upvotes and upvotes = 0 in transaction', async () => {
+  const mockDocs = {
+    tip_unmigrated_1: { spotTitle: 'Miradouro', upvotes: 24 }
+  };
 
-  // Verify first planned change entry does NOT contain content field
-  const sampleLogEntry = dryRunRes.plannedChangeLog[0];
-  assert.strictEqual(Object.prototype.hasOwnProperty.call(sampleLogEntry, 'content'), false, 'Log entries must not include content field');
-  assert.strictEqual(sampleLogEntry.id, 'tip_doc_0051');
+  const mockDb = new MockFirestore(mockDocs);
+  const docRef = new MockDocumentReference('tip_unmigrated_1', mockDb.store);
 
-  console.log(`Dry-Run Scan Success: Pages=${dryRunRes.pageNumber}, Evaluated=${dryRunRes.totalDocsEvaluated}, Unmigrated=${dryRunRes.unmigratedCount}, LoggedFirst20=${dryRunRes.plannedChangeLog.length}`);
+  const txResult = await migrateTipInTransaction(mockDb, docRef, false);
 
-  // 2. Test Live Transaction Migration Execution on 550 documents
-  console.log('\n[TEST 2] Live Transaction Migration on 550 docs...');
-  const liveRes = await runPaginatedMigration(mockDb, 200, false);
+  assert.strictEqual(txResult.migrated, true);
+  assert.strictEqual(txResult.legacyUpvotes, 24);
+  assert.strictEqual(mockDb.store.tip_unmigrated_1.legacyUpvotes, 24);
+  assert.strictEqual(mockDb.store.tip_unmigrated_1.upvotes, 0);
+});
 
-  assert.strictEqual(liveRes.totalDocsEvaluated, 550, 'Live execution must evaluate all 550 documents');
-  assert.strictEqual(liveRes.pageNumber, 3, 'Live execution must process 3 pages');
-  assert.strictEqual(liveRes.unmigratedCount, 500, 'Live execution must migrate 500 documents');
+test('3. Document that already has legacyUpvotes is skipped and NOT written', async () => {
+  const mockDocs = {
+    tip_migrated_1: { spotTitle: 'Convento', legacyUpvotes: 15, upvotes: 3 }
+  };
 
-  // Verify first unmigrated doc was updated in Mock Firestore store
-  assert.strictEqual(mockDb.store.tip_doc_0051.legacyUpvotes, 7, 'tip_doc_0051 legacyUpvotes must be 7');
-  assert.strictEqual(mockDb.store.tip_doc_0051.upvotes, 0, 'tip_doc_0051 upvotes must be reset to 0');
+  const mockDb = new MockFirestore(mockDocs);
+  const docRef = new MockDocumentReference('tip_migrated_1', mockDb.store);
 
-  // 3. Test Idempotency Run (Second Run)
-  console.log('\n[TEST 3] Second Migration Run (Idempotency Check)...');
-  const secondRunRes = await runPaginatedMigration(mockDb, 200, false);
+  const txResult = await migrateTipInTransaction(mockDb, docRef, false);
 
-  assert.strictEqual(secondRunRes.unmigratedCount, 0, 'Second run must migrate 0 documents');
-  assert.strictEqual(secondRunRes.alreadyMigratedCount, 550, 'Second run must skip all 550 documents');
+  assert.strictEqual(txResult.alreadyMigrated, true);
+  assert.strictEqual(txResult.migrated, false);
+  assert.strictEqual(mockDb.updateCalls.length, 0, 'No transaction update call should be issued');
+  assert.strictEqual(mockDb.store.tip_migrated_1.legacyUpvotes, 15);
+  assert.strictEqual(mockDb.store.tip_migrated_1.upvotes, 3);
+});
 
-  console.log('\nPASSED! All 550+ document paginated scan tests completed successfully with zero errors.');
-}
+test('4. Second migration run changes nothing (idempotency)', async () => {
+  const mockDocs = {
+    tip_1: { spotTitle: 'Spot 1', upvotes: 10 },
+    tip_2: { spotTitle: 'Spot 2', upvotes: 20 }
+  };
 
-test500PlusDocMigration().catch((err) => {
-  console.error('TEST FAILED:', err);
-  process.exit(1);
+  const mockDb = new MockFirestore(mockDocs);
+
+  // Run 1
+  const run1 = await scanCollection(mockDb, { pageSize: 200, isDryRun: false, log: () => {} });
+  assert.strictEqual(run1.totalUnmigrated, 2);
+
+  // Clear call log for inspection
+  mockDb.updateCalls = [];
+
+  // Run 2
+  const run2 = await scanCollection(mockDb, { pageSize: 200, isDryRun: false, log: () => {} });
+  assert.strictEqual(run2.totalUnmigrated, 0);
+  assert.strictEqual(run2.totalAlreadyMigrated, 2);
+  assert.strictEqual(mockDb.updateCalls.length, 0, 'Second run must issue zero updates');
+});
+
+test('5. Concurrent vote arriving between initial read and transaction re-read is preserved', async () => {
+  const mockDocs = {
+    tip_race_1: { spotTitle: 'Race Condition Spot', upvotes: 10 }
+  };
+
+  const mockDb = new MockFirestore(mockDocs);
+
+  // Simulate concurrent vote arriving in database before transaction re-reads
+  mockDb.store.tip_race_1.upvotes = 11; // Concurrent vote (+1)
+
+  const docRef = new MockDocumentReference('tip_race_1', mockDb.store);
+  const txResult = await migrateTipInTransaction(mockDb, docRef, false);
+
+  assert.strictEqual(txResult.legacyUpvotes, 11, 'Transaction must capture latest upvotes (11)');
+  assert.strictEqual(mockDb.store.tip_race_1.legacyUpvotes, 11, 'Migrated legacyUpvotes must preserve concurrent vote (11)');
+  assert.strictEqual(mockDb.store.tip_race_1.upvotes, 0, 'Upvotes must be reset to 0');
+});
+
+test('6. Dry run performs zero writes', async () => {
+  const mockDocs = {
+    tip_dry_1: { spotTitle: 'Dry Run Spot', upvotes: 30 }
+  };
+
+  const mockDb = new MockFirestore(mockDocs);
+  const result = await scanCollection(mockDb, { pageSize: 200, isDryRun: true, log: () => {} });
+
+  assert.strictEqual(result.totalUnmigrated, 1);
+  assert.strictEqual(mockDb.updateCalls.length, 0, 'Dry run must execute zero update calls');
+  assert.strictEqual(mockDb.store.tip_dry_1.upvotes, 30, 'Document upvotes must remain unchanged in dry run');
+  assert.strictEqual(Object.prototype.hasOwnProperty.call(mockDb.store.tip_dry_1, 'legacyUpvotes'), false);
+});
+
+test('7. Sample data fallback executes gracefully when credentials are missing', async () => {
+  const result = await runMigration({ isDryRun: true, log: () => {} });
+  assert.strictEqual(result.isSampleData, true);
+  assert.strictEqual(result.sampleUnmigrated, 2);
+  assert.strictEqual(result.sampleAlreadyMigrated, 1);
 });

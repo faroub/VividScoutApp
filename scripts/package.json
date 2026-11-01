@@ -1,0 +1,10 @@
+{
+  "name": "vividscout-scripts",
+  "version": "1.0.0",
+  "description": "Migration scripts and tests for VividScout",
+  "main": "migrate_legacy_upvotes.js",
+  "scripts": {
+    "test": "node --test scripts/__tests__/*.test.js"
+  },
+  "private": true
+}

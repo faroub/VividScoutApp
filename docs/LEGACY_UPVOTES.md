@@ -164,6 +164,11 @@ This runbook outlines the operational steps to execute the Option A database mig
 1. **Firestore Backup Taken**: A full export of the Cloud Firestore database has been created and verified using `gcloud firestore export gs://[YOUR_BUCKET_NAME]` or the Firebase CLI.
 2. **Released App Version**: The app version containing Option A client logic (Room v10, `legacyUpvotes` parsing, `totalUpvotes` UI rendering) has been released to active users.
 3. **Firestore Security Rules Deployed**: Updated security rules in `firestore.rules` (allowing `legacyUpvotes` on `create` and `update`) have been deployed to production in the Firebase Console.
+4. Approval:
+   - Decision: Option A (approved)
+   - Approver: Farid Oubbati
+   - Date: 01.11.2026
+   - Scope: the approach in sections 1 to 3 only. Any change to the approach needs a new approval.
 
 ### Execution Steps
 1. **Configure Service Account Credentials**:
@@ -193,3 +198,5 @@ This runbook outlines the operational steps to execute the Option A database mig
 - Prior to migration, unmigrated documents log warnings:
   > `Downloaded unmigrated tip document 'tip_123': missing 'legacyUpvotes' field. Treating count as legacy count until migration script is executed.`
 - **Success Criteria**: Following migration execution and app refresh, the unmigrated warning count from `syncRemoteContentDown()` should fall to **zero**.
+
+
