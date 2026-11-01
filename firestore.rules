@@ -95,9 +95,9 @@ service cloud.firestore {
 
       allow delete: if false;
 
-      // Per-user vote tracking subcollection: a user may create only their own vote document
+      // Per-user vote tracking subcollection: a user may read or create only their own vote document
       match /votes/{userId} {
-        allow read: if isAuthenticated();
+        allow read: if isAuthenticated() && userId == request.auth.uid;
         allow create: if isAuthenticated()
                       && userId == request.auth.uid
                       && request.resource.data.keys().hasOnly(['uid', 'timestamp'])
