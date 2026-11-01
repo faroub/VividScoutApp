@@ -26,12 +26,23 @@ android {
   // and updating Android apps in AI Studio.
   signingConfigs {
     create("release") {
-      val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks"
-      val keystoreFile = file(keystorePath)
-      storeFile = if (keystoreFile.exists()) keystoreFile else file("${rootDir}/debug.keystore")
-      storePassword = System.getenv("STORE_PASSWORD") ?: "android"
-      keyAlias = System.getenv("KEY_ALIAS") ?: if (keystoreFile.exists()) "upload" else "androiddebugkey"
-      keyPassword = System.getenv("KEY_PASSWORD") ?: "android"
+      val keystorePath = System.getenv("KEYSTORE_PATH")
+      val storePass = System.getenv("STORE_PASSWORD")
+      val alias = System.getenv("KEY_ALIAS")
+      val keyPass = System.getenv("KEY_PASSWORD")
+
+      if (!keystorePath.isNullOrBlank()) {
+        storeFile = file(keystorePath)
+      }
+      if (!storePass.isNullOrBlank()) {
+        storePassword = storePass
+      }
+      if (!alias.isNullOrBlank()) {
+        keyAlias = alias
+      }
+      if (!keyPass.isNullOrBlank()) {
+        keyPassword = keyPass
+      }
     }
     create("debugConfig") {
       storeFile = file("${rootDir}/debug.keystore")
@@ -154,4 +165,37 @@ dependencies {
   debugImplementation(libs.androidx.compose.ui.tooling)
   "ksp"(libs.androidx.room.compiler)
   "ksp"(libs.moshi.kotlin.codegen)
+}
+
+gradle.taskGraph.whenReady {
+  val hasReleaseTask = allTasks.any { task ->
+    task.name.contains("Release")
+  }
+  if (hasReleaseTask) {
+    val keystorePath = System.getenv("KEYSTORE_PATH")
+    val storePass = System.getenv("STORE_PASSWORD")
+    val alias = System.getenv("KEY_ALIAS")
+    val keyPass = System.getenv("KEY_PASSWORD")
+
+    val missingVars = mutableListOf<String>()
+    if (keystorePath.isNullOrBlank()) missingVars.add("KEYSTORE_PATH")
+    if (storePass.isNullOrBlank()) missingVars.add("STORE_PASSWORD")
+    if (alias.isNullOrBlank()) missingVars.add("KEY_ALIAS")
+    if (keyPass.isNullOrBlank()) missingVars.add("KEY_PASSWORD")
+
+    if (missingVars.isNotEmpty()) {
+      throw GradleException(
+        "Release build failed: Missing required environment variable(s) for release signing: " +
+        "${missingVars.joinToString(", ")}. " +
+        "Please configure KEYSTORE_PATH, STORE_PASSWORD, KEY_ALIAS, and KEY_PASSWORD to build release artifacts."
+      )
+    }
+
+    val keystoreFile = file(keystorePath!!)
+    if (!keystoreFile.exists()) {
+      throw GradleException(
+        "Release build failed: Keystore file defined by KEYSTORE_PATH does not exist at: ${keystoreFile.absolutePath}"
+      )
+    }
+  }
 }
