@@ -77,6 +77,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
 import com.example.data.local.AppDatabase
 import com.example.data.model.WeatherReport
+import com.example.data.repository.CommunityTipRepository
 import com.example.data.repository.WeatherRepository
 import com.example.ui.components.WeatherCard
 import com.example.ui.theme.SecondaryContainer
@@ -728,7 +729,11 @@ fun SpotDetailBottomSheet(
         onDismiss = { isPostTipOpen = false },
         onSubmit = { spotId, spotTitle, content, isStatus, category ->
             scope.launch {
-                val repo = com.example.data.repository.CommunityTipRepository(db.communityTipDao())
+                val repo = CommunityTipRepository(
+                    dao = db.communityTipDao(),
+                    tipVoteDao = db.tipVoteDao(),
+                    context = context
+                )
                 repo.postTip(spotId, spotTitle, content, isStatus, category)
             }
         },

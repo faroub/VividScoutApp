@@ -7,6 +7,8 @@ import com.example.data.local.AppDatabase
 import com.example.data.local.CommunityTipDao
 import com.example.data.local.CommunityTipEntity
 import com.example.data.local.TipVoteDao
+import com.example.data.sync.TipUpvoteCloud
+import junit.framework.TestCase
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -36,7 +38,12 @@ class CommunityTipRepositoryTest {
             .build()
         tipDao = db.communityTipDao()
         tipVoteDao = db.tipVoteDao()
-        repository = CommunityTipRepository(tipDao, tipVoteDao, context = null)
+        repository = CommunityTipRepository(
+            dao = tipDao,
+            tipVoteDao = tipVoteDao,
+            context = null,
+            cloudService = FakeTipUpvoteCloud(returnResult = true)
+        )
     }
 
     @After
@@ -209,6 +216,183 @@ class CommunityTipRepositoryTest {
     }
 
     @Test
+    fun upvoteTip_whenContextIsNullAndDefaultCloudServiceUsed_returnsFalseAndChangesNothing() = runBlocking {
+        val tip = CommunityTipEntity(
+            id = "tip_null_ctx_1",
+            spotId = "spot_1",
+            spotTitle = "Null Context Spot",
+            authorName = "@scout",
+            content = "Null context test",
+            timestamp = System.currentTimeMillis(),
+            upvotes = 3,
+            isSyncedToCloud = true
+        )
+        tipDao.insertTip(tip)
+
+        // Repository created with context = null and default cloudService (FirestoreTipUpvoteCloud(null))
+        val nullContextRepo = CommunityTipRepository(
+            dao = tipDao,
+            tipVoteDao = tipVoteDao,
+            context = null
+        )
+
+        val voteResult = nullContextRepo.upvoteTip("tip_null_ctx_1", "user_123")
+        assertFalse("upvoteTip must return false when context is null and default cloud service is used", voteResult)
+
+        // Local vote row must NOT be inserted
+        assertFalse("Local vote row must NOT be inserted when context is null", tipVoteDao.hasUserVoted("tip_null_ctx_1", "user_123"))
+
+        // Upvote count must remain unchanged at 3
+        val updatedTip = tipDao.getTipById("tip_null_ctx_1")
+        assertEquals(3, updatedTip?.upvotes)
+    }
+
+    @Test
+    fun upvoteTip_cloudReturnsTrue_localVoteRecordedAndCountIncremented() = runBlocking {
+        val tip = CommunityTipEntity(
+            id = "tip_cloud_true_1",
+            spotId = "spot_1",
+            spotTitle = "Cloud Spot",
+            authorName = "@cloud",
+            content = "Cloud test content",
+            timestamp = System.currentTimeMillis(),
+            upvotes = 2,
+            isSyncedToCloud = true
+        )
+        tipDao.insertTip(tip)
+
+        val fakeCloud = FakeTipUpvoteCloud(returnResult = true)
+        val cloudRepo = CommunityTipRepository(
+            dao = tipDao,
+            tipVoteDao = tipVoteDao,
+            context = null,
+            cloudService = fakeCloud
+        )
+
+        val voteResult = cloudRepo.upvoteTip("tip_cloud_true_1", "user_cloud_1")
+        assertTrue("upvoteTip should return true when cloud returns true", voteResult)
+        assertEquals("Cloud service should be invoked once", 1, fakeCloud.callCount)
+
+        // Local vote row must be inserted
+        assertTrue("Local vote row must be recorded", tipVoteDao.hasUserVoted("tip_cloud_true_1", "user_cloud_1"))
+
+        // Upvote count must be incremented by 1
+        val updatedTip = tipDao.getTipById("tip_cloud_true_1")
+        assertEquals(3, updatedTip?.upvotes)
+    }
+
+    @Test
+    fun upvoteTip_cloudReturnsFalse_noLocalVoteInserted_countUnchanged_returnsFalse() = runBlocking {
+        val tip = CommunityTipEntity(
+            id = "tip_cloud_false_2",
+            spotId = "spot_2",
+            spotTitle = "Cloud False Spot",
+            authorName = "@cloud_false",
+            content = "Content",
+            timestamp = System.currentTimeMillis(),
+            upvotes = 5,
+            isSyncedToCloud = true
+        )
+        tipDao.insertTip(tip)
+
+        val fakeCloud = FakeTipUpvoteCloud(returnResult = false)
+        val cloudRepo = CommunityTipRepository(
+            dao = tipDao,
+            tipVoteDao = tipVoteDao,
+            context = null,
+            cloudService = fakeCloud
+        )
+
+        val voteResult = cloudRepo.upvoteTip("tip_cloud_false_2", "user_cloud_2")
+        assertFalse("upvoteTip should return false when cloud returns false", voteResult)
+        assertEquals("Cloud service should be invoked once", 1, fakeCloud.callCount)
+
+        // Local vote row must NOT be inserted
+        assertFalse("No local vote row should be inserted on cloud failure", tipVoteDao.hasUserVoted("tip_cloud_false_2", "user_cloud_2"))
+
+        // Count must remain unchanged
+        val updatedTip = tipDao.getTipById("tip_cloud_false_2")
+        assertEquals(5, updatedTip?.upvotes)
+    }
+
+    @Test
+    fun upvoteTip_cloudThrowsException_handledGracefully_noLocalVoteInserted_countUnchanged() = runBlocking {
+        val tip = CommunityTipEntity(
+            id = "tip_cloud_throw_3",
+            spotId = "spot_3",
+            spotTitle = "Throw Spot",
+            authorName = "@throw_user",
+            content = "Throw content",
+            timestamp = System.currentTimeMillis(),
+            upvotes = 10,
+            isSyncedToCloud = true
+        )
+        tipDao.insertTip(tip)
+
+        val fakeCloud = FakeTipUpvoteCloud(shouldThrow = true)
+        val cloudRepo = CommunityTipRepository(
+            dao = tipDao,
+            tipVoteDao = tipVoteDao,
+            context = null,
+            cloudService = fakeCloud
+        )
+
+        val voteResult = try {
+            cloudRepo.upvoteTip("tip_cloud_throw_3", "user_cloud_3")
+        } catch (e: Exception) {
+            TestCase.fail("Exception must not escape upvoteTip: ${e.message}")
+            false
+        }
+
+        assertFalse("upvoteTip should return false when cloud throws exception", voteResult)
+
+        // Local vote row must NOT be inserted
+        assertFalse("No local vote row should be inserted on cloud exception", tipVoteDao.hasUserVoted("tip_cloud_throw_3", "user_cloud_3"))
+
+        // Count must remain unchanged
+        val updatedTip = tipDao.getTipById("tip_cloud_throw_3")
+        assertEquals(10, updatedTip?.upvotes)
+    }
+
+    @Test
+    fun upvoteTip_secondVoteAfterSuccessfulFirstVote_doesNotCallCloudAgain() = runBlocking {
+        val tip = CommunityTipEntity(
+            id = "tip_cloud_dedupe_4",
+            spotId = "spot_4",
+            spotTitle = "Dedupe Spot",
+            authorName = "@dedupe_user",
+            content = "Dedupe content",
+            timestamp = System.currentTimeMillis(),
+            upvotes = 0,
+            isSyncedToCloud = true
+        )
+        tipDao.insertTip(tip)
+
+        val fakeCloud = FakeTipUpvoteCloud(returnResult = true)
+        val cloudRepo = CommunityTipRepository(
+            dao = tipDao,
+            tipVoteDao = tipVoteDao,
+            context = null,
+            cloudService = fakeCloud
+        )
+
+        val userX = "user_dedupe_x"
+
+        // First vote succeeds and invokes cloud once
+        val firstVoteResult = cloudRepo.upvoteTip("tip_cloud_dedupe_4", userX)
+        assertTrue(firstVoteResult)
+        assertEquals(1, fakeCloud.callCount)
+
+        // Second vote from userX: local vote check fails first, cloud is NOT called again
+        val secondVoteResult = cloudRepo.upvoteTip("tip_cloud_dedupe_4", userX)
+        assertFalse(secondVoteResult)
+        assertEquals("Cloud call count must remain 1 after second duplicate vote attempt", 1, fakeCloud.callCount)
+
+        val updatedTip = tipDao.getTipById("tip_cloud_dedupe_4")
+        assertEquals(1, updatedTip?.upvotes)
+    }
+
+    @Test
     fun upvoteTip_firstVoteSucceeds_secondVoteFromSameUserRejected() = runBlocking {
         val initialTip = CommunityTipEntity(
             id = "tip_123",
@@ -267,7 +451,8 @@ class CommunityTipRepositoryTest {
         val testRepo = CommunityTipRepository(
             dao = throwingCommunityTipDao,
             tipVoteDao = tipVoteDao,
-            context = null
+            context = null,
+            cloudService = FakeTipUpvoteCloud(returnResult = true)
         )
 
         val voteResult = try {
@@ -312,7 +497,8 @@ class CommunityTipRepositoryTest {
         val newRepositoryInstance = CommunityTipRepository(
             dao = db.communityTipDao(),
             tipVoteDao = db.tipVoteDao(),
-            context = null
+            context = null,
+            cloudService = FakeTipUpvoteCloud(returnResult = true)
         )
 
         // Attempt second vote using new repository instance
@@ -321,5 +507,23 @@ class CommunityTipRepositoryTest {
 
         val finalTip = tipDao.getTipById("tip_persisted")
         assertEquals(1, finalTip?.upvotes)
+    }
+
+    // Fake TipUpvoteCloud implementation for unit testing
+    class FakeTipUpvoteCloud(
+        var returnResult: Boolean = true,
+        var shouldThrow: Boolean = false
+    ) : TipUpvoteCloud {
+        var callCount = 0
+        var lastTipIdCalled: String? = null
+
+        override suspend fun incrementTipUpvote(tipId: String): Boolean {
+            callCount++
+            lastTipIdCalled = tipId
+            if (shouldThrow) {
+                throw IllegalStateException("Fake Cloud Exception during upvote transaction")
+            }
+            return returnResult
+        }
     }
 }
