@@ -44,7 +44,7 @@ class CommunityTipRepository(
             timestamp = System.currentTimeMillis(),
             isStatusUpdate = isStatusUpdate,
             statusCategory = statusCategory,
-            upvotes = 1,
+            upvotes = 0,
             peerNodeId = "local-device",
             isLocallyAuthored = true
         )

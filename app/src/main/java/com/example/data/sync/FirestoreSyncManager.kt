@@ -160,7 +160,7 @@ object FirestoreSyncManager {
                 "timestamp" to tip.timestamp,
                 "isStatusUpdate" to tip.isStatusUpdate,
                 "statusCategory" to tip.statusCategory,
-                "upvotes" to tip.upvotes
+                "upvotes" to 0
             )
 
             firestore.collection(TIPS_COLLECTION)

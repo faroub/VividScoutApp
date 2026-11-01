@@ -36,6 +36,7 @@ class CommunityTipRepositoryTest {
         assertEquals("spot_dresden_1", tip.spotId)
         assertEquals("Frauenkirche View", tip.spotTitle)
         assertEquals("@dresden_scout", tip.authorName)
+        assertEquals(0, tip.upvotes)
         assertTrue(tip.isLocallyAuthored)
         assertEquals(1, fakeDao.tips.size)
     }
