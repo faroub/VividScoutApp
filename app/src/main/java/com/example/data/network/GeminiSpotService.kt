@@ -54,18 +54,18 @@ class GeminiSpotService {
         responseSchema = spotListSchema
     }
 
-    // Fast model initialization (Gemini 3.5 Flash-Lite for ultra-low latency inference)
+    // Primary recommended fast model initialization
     private val model by lazy {
         Firebase.ai.generativeModel(
-            modelName = "gemini-3.5-flash-lite",
+            modelName = GeminiModelConstants.PRIMARY_MODEL_ID,
             generationConfig = generativeConfig
         )
     }
 
-    // Secondary model (Gemini 3.8 Flash) if primary model is unavailable
+    // Secondary fallback model if primary model is unavailable
     private val secondaryModel by lazy {
         Firebase.ai.generativeModel(
-            modelName = "gemini-3.8-flash",
+            modelName = GeminiModelConstants.SECONDARY_MODEL_ID,
             generationConfig = generativeConfig
         )
     }

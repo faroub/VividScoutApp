@@ -56,14 +56,14 @@ class GeminiQueryService {
 
     private val model by lazy {
         Firebase.ai.generativeModel(
-            modelName = "gemini-3.5-flash-lite",
+            modelName = GeminiModelConstants.PRIMARY_MODEL_ID,
             generationConfig = generativeConfig
         )
     }
 
     private val secondaryModel by lazy {
         Firebase.ai.generativeModel(
-            modelName = "gemini-3.8-flash",
+            modelName = GeminiModelConstants.SECONDARY_MODEL_ID,
             generationConfig = generativeConfig
         )
     }
