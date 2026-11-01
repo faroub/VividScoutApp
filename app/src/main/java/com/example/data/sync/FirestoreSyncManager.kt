@@ -10,6 +10,7 @@ import com.example.data.local.ScoutSpotEntity
 import com.google.firebase.Firebase
 import com.google.firebase.FirebaseApp
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.SetOptions
 import com.google.firebase.firestore.firestore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.tasks.await
@@ -75,7 +76,7 @@ object FirestoreSyncManager {
 
             firestore.collection(SUBMISSIONS_COLLECTION)
                 .document(spot.id)
-                .set(docData)
+                .set(docData, SetOptions.merge())
                 .await()
 
             val syncedSpot = spot.copy(
@@ -133,7 +134,7 @@ object FirestoreSyncManager {
 
             firestore.collection(TIPS_COLLECTION)
                 .document(tip.id)
-                .set(tipData)
+                .set(tipData, SetOptions.merge())
                 .await()
 
             Log.i(TAG, "Posted community tip '${tip.id}' to cloud Firestore")

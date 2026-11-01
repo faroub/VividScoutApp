@@ -2,7 +2,7 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper functions for authentication and data validation
+    // Helper functions for authentication and coordinate validation
     function isAuthenticated() {
       return request.auth != null;
     }
@@ -25,7 +25,19 @@ service cloud.firestore {
                     && request.resource.data.longitude is number
                     && isValidCoordinates(request.resource.data.latitude, request.resource.data.longitude)
                     && request.resource.data.timestamp is number;
-      allow update, delete: if false;
+      // Idempotent retry rule: Allows the authenticated user to retry uploading their submission
+      allow update: if isAuthenticated()
+                    && resource.data.id == request.resource.data.id
+                    && request.resource.data.title is string
+                    && request.resource.data.title.size() >= 2
+                    && request.resource.data.title.size() <= 120
+                    && request.resource.data.category is string
+                    && request.resource.data.category.size() <= 32
+                    && request.resource.data.latitude is number
+                    && request.resource.data.longitude is number
+                    && isValidCoordinates(request.resource.data.latitude, request.resource.data.longitude)
+                    && request.resource.data.timestamp is number;
+      allow delete: if false;
     }
 
     match /community_tips/{tipId} {
@@ -39,10 +51,16 @@ service cloud.firestore {
                     && request.resource.data.content.size() >= 2
                     && request.resource.data.content.size() <= 500
                     && request.resource.data.timestamp is number;
-      // Upvotes update rule requires authentication and strictly enforces a +1 increment
-      allow update: if isAuthenticated()
-                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['upvotes'])
-                    && request.resource.data.upvotes == resource.data.upvotes + 1;
+      // Allow upvote increments (+1) OR idempotent retries of tip uploads
+      allow update: if isAuthenticated() && (
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['upvotes'])
+         && request.resource.data.upvotes == resource.data.upvotes + 1) ||
+        (resource.data.id == request.resource.data.id
+         && resource.data.spotId == request.resource.data.spotId
+         && request.resource.data.content is string
+         && request.resource.data.content.size() >= 2
+         && request.resource.data.content.size() <= 500)
+      );
       allow delete: if false;
     }
   }
