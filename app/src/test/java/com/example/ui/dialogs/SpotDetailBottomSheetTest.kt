@@ -12,6 +12,7 @@ import com.example.data.repository.ScoutRepository
 import com.example.di.AppContainer
 import com.example.engine.PreScoutEngine
 import com.example.sensor.CompassSensorManager
+import kotlinx.coroutines.flow.flowOf
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -28,19 +29,19 @@ class SpotDetailBottomSheetTest {
     fun isAppContainerUnavailable_whenContainerRepoIsAvailable_returnsFalse() {
         val fakeRepo = CommunityTipRepository(
             dao = object : CommunityTipDao {
-                override fun getAllTipsFlow() = TODO()
-                override fun getTipsForSpotFlow(spotId: String) = TODO()
-                override fun getLatestStatusForSpot(spotId: String) = TODO()
-                override fun getAllStatusUpdatesFlow() = TODO()
-                override suspend fun getTipById(tipId: String) = TODO()
-                override suspend fun insertTip(tip: CommunityTipEntity) = TODO()
-                override suspend fun insertTips(tips: List<CommunityTipEntity>) = TODO()
-                override suspend fun updateTip(tip: CommunityTipEntity) = TODO()
-                override suspend fun incrementUpvote(tipId: String) = TODO()
-                override suspend fun deleteTip(tipId: String) = TODO()
-                override suspend fun getLocallyAuthoredTipsSync() = TODO()
-                override suspend fun markTipAsSynced(tipId: String) = TODO()
-                override suspend fun getTipCount() = TODO()
+                override fun getAllTipsFlow() = flowOf(emptyList<CommunityTipEntity>())
+                override fun getTipsForSpotFlow(spotId: String) = flowOf(emptyList<CommunityTipEntity>())
+                override fun getLatestStatusForSpot(spotId: String) = flowOf(null)
+                override fun getAllStatusUpdatesFlow() = flowOf(emptyList<CommunityTipEntity>())
+                override suspend fun getTipById(tipId: String) = null
+                override suspend fun insertTip(tip: CommunityTipEntity) {}
+                override suspend fun insertTips(tips: List<CommunityTipEntity>) {}
+                override suspend fun updateTip(tip: CommunityTipEntity) {}
+                override suspend fun incrementUpvote(tipId: String) {}
+                override suspend fun deleteTip(tipId: String) {}
+                override suspend fun getLocallyAuthoredTipsSync() = emptyList<CommunityTipEntity>()
+                override suspend fun markTipAsSynced(tipId: String) {}
+                override suspend fun getTipCount() = 0
             }
         )
 
