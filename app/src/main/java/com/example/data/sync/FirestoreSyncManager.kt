@@ -277,8 +277,23 @@ object FirestoreSyncManager {
                 val content = rawContent.trim().take(500)
                 val author = (doc.getString("authorName") ?: "@scout").trim().take(50)
 
-                val legacyVotes = (doc.getLong("legacyUpvotes") ?: doc.getLong("upvotes") ?: 0L).toInt()
-                val recordedVotes = (if (doc.contains("legacyUpvotes")) (doc.getLong("upvotes") ?: 0L) else 0L).toInt()
+                val hasLegacyUpvotesField = doc.contains("legacyUpvotes")
+                val legacyVotes: Int
+                val recordedVotes: Int
+
+                if (hasLegacyUpvotesField) {
+                    legacyVotes = (doc.getLong("legacyUpvotes") ?: 0L).toInt()
+                    recordedVotes = (doc.getLong("upvotes") ?: 0L).toInt()
+                } else {
+                    val rawUpvotes = (doc.getLong("upvotes") ?: 0L).toInt()
+                    legacyVotes = rawUpvotes
+                    recordedVotes = 0
+                    Log.w(
+                        TAG,
+                        "Downloaded unmigrated tip document '$id': missing 'legacyUpvotes' field. " +
+                        "Treating $rawUpvotes as legacy count until migration script is executed."
+                    )
+                }
 
                 remoteTips.add(
                     CommunityTipEntity(

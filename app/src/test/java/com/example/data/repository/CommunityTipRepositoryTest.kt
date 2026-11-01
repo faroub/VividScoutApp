@@ -95,6 +95,53 @@ class CommunityTipRepositoryTest {
     }
 
     @Test
+    fun newVoteOnMigratedDocument_incrementsUpvotesAndLeavesLegacyUpvotesUnchanged() = runBlocking {
+        val migratedTip = CommunityTipEntity(
+            id = "tip_migrated_789",
+            spotId = "spot_8",
+            spotTitle = "Migrated Viewpoint",
+            authorName = "@migrated_author",
+            content = "Migrated tip with separate legacy upvotes",
+            timestamp = System.currentTimeMillis(),
+            legacyUpvotes = 42,
+            upvotes = 0,
+            isSyncedToCloud = true
+        )
+        tipDao.insertTip(migratedTip)
+
+        val voteResult = repository.upvoteTip("tip_migrated_789", "voter_user_1")
+        assertTrue("Vote on migrated document must succeed", voteResult)
+
+        val updatedTip = tipDao.getTipById("tip_migrated_789")
+        assertNotNull(updatedTip)
+        assertEquals("legacyUpvotes must remain unchanged at 42", 42, updatedTip?.legacyUpvotes)
+        assertEquals("recorded upvotes must be incremented to 1", 1, updatedTip?.upvotes)
+        assertEquals("totalUpvotes must evaluate to legacyUpvotes + upvotes (43)", 43, updatedTip?.totalUpvotes)
+    }
+
+    @Test
+    fun syncDown_migratedDocument_totalUpvotesEqualsLegacyPlusRecorded() = runBlocking {
+        val migratedTipFromCloud = CommunityTipEntity(
+            id = "tip_cloud_migrated_1",
+            spotId = "spot_9",
+            spotTitle = "Cloud Migrated Spot",
+            authorName = "@cloud_scout",
+            content = "Cloud content",
+            timestamp = System.currentTimeMillis(),
+            legacyUpvotes = 18,
+            upvotes = 5,
+            isSyncedToCloud = true
+        )
+        tipDao.insertTip(migratedTipFromCloud)
+
+        val entity = tipDao.getTipById("tip_cloud_migrated_1")
+        assertNotNull(entity)
+        assertEquals(18, entity?.legacyUpvotes)
+        assertEquals(5, entity?.upvotes)
+        assertEquals("totalUpvotes must equal legacyUpvotes + upvotes (18 + 5 = 23)", 23, entity?.totalUpvotes)
+    }
+
+    @Test
     fun upvoteTip_syncedTipCanBeVoted() = runBlocking {
         val syncedTip = CommunityTipEntity(
             id = "tip_synced_100",
