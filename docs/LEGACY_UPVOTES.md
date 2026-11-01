@@ -95,7 +95,8 @@ The following locations in the codebase read, write, or render `tip.upvotes`:
      val upvotes: Int = 0,
      val peerNodeId: String = "local-device",
      val isLocallyAuthored: Boolean = false,
-     val isSyncedToCloud: Boolean = false
+     val isSyncedToCloud: Boolean = false,
+     val isMigrated: Boolean = true
  ) {
      val totalUpvotes: Int
          get() = legacyUpvotes + upvotes
@@ -123,10 +124,12 @@ The following locations in the codebase read, write, or render `tip.upvotes`:
  if (hasLegacyUpvotesField) {
      legacyVotes = (doc.getLong("legacyUpvotes") ?: 0L).toInt()
      recordedVotes = (doc.getLong("upvotes") ?: 0L).toInt()
+     isMigrated = true
  } else {
      val rawUpvotes = (doc.getLong("upvotes") ?: 0L).toInt()
      legacyVotes = rawUpvotes
      recordedVotes = 0
+     isMigrated = false
      Log.w(TAG, "Downloaded unmigrated tip document '${id}': missing 'legacyUpvotes' field.")
  }
 ```
@@ -148,7 +151,7 @@ The following locations in the codebase read, write, or render `tip.upvotes`:
 ## Conclusion & Next Steps
 
 ### Decision
-**Option A adopted.** The application codebase and database schema (Room v10, `MIGRATION_9_10`) explicitly separate historical legacy upvotes (`legacyUpvotes`) from per-user recorded votes (`upvotes`).
+**Option A adopted.** The application codebase and database schema (Room v12, `MIGRATION_11_12`) explicitly separate historical legacy upvotes (`legacyUpvotes`) from per-user recorded votes (`upvotes`).
 
 ### Known Gap / Open Issue
 - **Pre-Existing Firestore Documents**: Historical documents in the cloud Firestore database created prior to Option A adoption still store their legacy counts in the `upvotes` field rather than `legacyUpvotes`.
@@ -161,25 +164,25 @@ The following locations in the codebase read, write, or render `tip.upvotes`:
 This runbook outlines the operational steps to execute the Option A database migration script (`scripts/migrate_legacy_upvotes.js`) against your live Cloud Firestore instance to backfill legacy documents missing the `legacyUpvotes` field.
 
 ### Preconditions
-1. **Firestore Backup Taken**: A full export of the Cloud Firestore database has been created and verified using `gcloud firestore export gs://[YOUR_BUCKET_NAME]` or the Firebase CLI.
-2. **Released App Version**: The app version containing Option A client logic (Room v10, `legacyUpvotes` parsing, `totalUpvotes` UI rendering) has been released to active users.
-3. **Firestore Security Rules Deployed**: Updated security rules in `firestore.rules` (allowing `legacyUpvotes` on `create` and `update`) have been deployed to production in the Firebase Console.
-4. Approval:
-   - Decision: Option A (approved)
-   - Approver: Farid Oubbati
-   - Date: 01.11.2026
-   - Scope: the approach in sections 1 to 3 only. Any change to the approach needs a new approval.
+
+Do not start the Execution Steps until every box is checked.
+
+- [ ] Firestore export taken and verified (`gcloud firestore export gs://[YOUR_BUCKET_NAME]`)
+- [ ] App version containing the Option A client logic (Room version 12) and the `isMigrated` gating released to users [App Version Number: ____]
+- [ ] Firestore rules containing the `legacyUpvotes` allowances deployed [Deployment Date: ____]
+- [ ] Option A approval recorded in section 4 [Approver: Farid Oubbati, Date: 01.11.2026]
 
 ### Execution Steps
 1. **Configure Service Account Credentials**:
    ```bash
    export GOOGLE_APPLICATION_CREDENTIALS="/path/to/service-account.json"
    ```
-2. **Execute Dry-Run Simulation**:
+2. **Execute Dry-Run Scan**:
    ```bash
    node scripts/migrate_legacy_upvotes.js --dry-run
    ```
-3. **Review Dry-Run Output**: Verify the count of unmigrated documents versus already-migrated documents displayed in the terminal console summary.
+   *(Note: When credentials are provided, the dry run performs a read-only scan against live Firestore documents using cursor pagination with page size 200, outputting exact document counts without executing writes).*
+3. **Review Dry-Run Output**: Review terminal output for total evaluated documents, documents needing migration, documents already migrated, and inspect the first 20 planned updates.
 4. **Execute Migration**:
    ```bash
    node scripts/migrate_legacy_upvotes.js --execute
@@ -187,7 +190,7 @@ This runbook outlines the operational steps to execute the Option A database mig
 5. **Verify Document Sample in Firebase Console**: Open Firebase Console > Firestore > `community_tips` collection, inspect 3–5 updated documents, and confirm:
    - `legacyUpvotes` equals the original historical count.
    - `upvotes` equals `0`.
-6. **Record Migrated Document Count**: Log the exact count of modified documents reported by the migration script for compliance tracking.
+6. **Record Migrated Document Count**: Record the exact count of modified documents reported by the script for compliance tracking.
 
 ### Rollback Strategy
 - **Restoration**: If migration issues or unintended data changes occur, restore the database from the precondition export using `gcloud firestore import gs://[YOUR_BUCKET_NAME]/[EXPORT_PREFIX]`.
@@ -198,5 +201,3 @@ This runbook outlines the operational steps to execute the Option A database mig
 - Prior to migration, unmigrated documents log warnings:
   > `Downloaded unmigrated tip document 'tip_123': missing 'legacyUpvotes' field. Treating count as legacy count until migration script is executed.`
 - **Success Criteria**: Following migration execution and app refresh, the unmigrated warning count from `syncRemoteContentDown()` should fall to **zero**.
-
-
