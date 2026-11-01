@@ -50,6 +50,20 @@ object FirestoreSyncManager {
         }
     }
 
+    private suspend fun ensureFirebaseAuth(): Boolean = withContext(Dispatchers.IO) {
+        return@withContext try {
+            val auth = com.google.firebase.auth.FirebaseAuth.getInstance()
+            if (auth.currentUser == null) {
+                auth.signInAnonymously().await()
+                Log.d(TAG, "Successfully authenticated Firebase user anonymously (${auth.currentUser?.uid})")
+            }
+            auth.currentUser != null
+        } catch (e: Exception) {
+            Log.w(TAG, "Firebase Auth anonymous sign-in failed: ${e.message}")
+            false
+        }
+    }
+
     /**
      * Uploads an individual offline draft spot to the Firestore 'community_submissions' collection.
      */
@@ -59,6 +73,10 @@ object FirestoreSyncManager {
         scoutDao: ScoutDao,
         discoveredGemDao: DiscoveredGemDao?
     ): Boolean = withContext(Dispatchers.IO) {
+        if (!ensureFirebaseAuth()) {
+            Log.w(TAG, "Cannot sync draft '${spot.id}': Firebase Auth required for Firestore writes")
+            return@withContext false
+        }
         val firestore = getFirestore(context) ?: return@withContext false
         try {
             val docData = hashMapOf(
@@ -119,6 +137,10 @@ object FirestoreSyncManager {
         context: Context,
         tip: CommunityTipEntity
     ): Boolean = withContext(Dispatchers.IO) {
+        if (!ensureFirebaseAuth()) {
+            Log.w(TAG, "Cannot post tip '${tip.id}': Firebase Auth required for Firestore writes")
+            return@withContext false
+        }
         val firestore = getFirestore(context) ?: return@withContext false
         try {
             val tipData = hashMapOf(
