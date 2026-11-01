@@ -501,6 +501,9 @@ fun VividScoutApp(
                             offlineMapsViewModel.openRoutePlanner(destination = spot)
                             mainViewModel.navigateToTab(MainTab.RADAR)
                         },
+                        onPostTip = { spotId, spotTitle, content, isStatus, category ->
+                            communityViewModel.postTip(spotId, spotTitle, content, isStatus, category)
+                        },
                         onReFetchImage = { _, callback -> callback(false, "") }
                     )
                 }

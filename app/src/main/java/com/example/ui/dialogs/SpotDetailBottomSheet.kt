@@ -75,6 +75,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
+import com.example.VividScoutApplication
 import com.example.data.local.AppDatabase
 import com.example.data.model.WeatherReport
 import com.example.data.repository.CommunityTipRepository
@@ -98,6 +99,7 @@ fun SpotDetailBottomSheet(
     onToggleAudio: () -> Unit,
     isPlayingAudio: Boolean,
     onPlanRoute: (() -> Unit)? = null,
+    onPostTip: ((spotId: String, spotTitle: String, content: String, isStatus: Boolean, category: String) -> Unit)? = null,
     onReFetchImage: (spotId: String, onResult: (Boolean, String) -> Unit) -> Unit = { _, _ -> }
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -728,13 +730,14 @@ fun SpotDetailBottomSheet(
         isOpen = isPostTipOpen,
         onDismiss = { isPostTipOpen = false },
         onSubmit = { spotId, spotTitle, content, isStatus, category ->
-            scope.launch {
-                val repo = CommunityTipRepository(
-                    dao = db.communityTipDao(),
-                    tipVoteDao = db.tipVoteDao(),
-                    context = context
-                )
-                repo.postTip(spotId, spotTitle, content, isStatus, category)
+            if (onPostTip != null) {
+                onPostTip(spotId, spotTitle, content, isStatus, category)
+            } else {
+                scope.launch {
+                    val appContainer = (context.applicationContext as? VividScoutApplication)?.container
+                    val repo = appContainer?.communityTipRepository
+                    repo?.postTip(spotId, spotTitle, content, isStatus, category)
+                }
             }
         },
         initialSpot = spot
