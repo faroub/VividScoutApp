@@ -237,17 +237,19 @@ class AppDatabaseTest {
 
     @Test
     @Throws(IOException::class)
-    fun testMigration7To8PlaceholderPattern() {
+    fun testMigration7To8AddsTipVotesTable() {
         val db = helper.createDatabase(TEST_DB, 7)
         assertEquals(7, db.version)
         assertEquals(7, DatabaseMigrations.MIGRATION_7_8.startVersion)
         assertEquals(8, DatabaseMigrations.MIGRATION_7_8.endVersion)
-        DatabaseMigrations.MIGRATION_7_8.migrate(db)
-        val versionCursor = db.query("PRAGMA user_version")
-        assertTrue(versionCursor.moveToFirst())
-        assertEquals(8, versionCursor.getInt(0))
-        versionCursor.close()
         db.close()
+
+        val migratedDb = helper.runMigrationsAndValidate(TEST_DB, 8, true, DatabaseMigrations.MIGRATION_7_8)
+        val cursor = migratedDb.query("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='tip_votes'")
+        assertTrue(cursor.moveToFirst())
+        assertEquals(1, cursor.getInt(0))
+        cursor.close()
+        migratedDb.close()
     }
 
     @Test
@@ -382,6 +384,13 @@ class AppDatabaseTest {
         assertEquals("Best sunset view", tipCursor.getString(tipCursor.getColumnIndexOrThrow("content")))
         assertEquals(99, tipCursor.getInt(tipCursor.getColumnIndexOrThrow("upvotes")))
         tipCursor.close()
+
+        // Migrate to version 8 (adds tip_votes)
+        db = helper.runMigrationsAndValidate(TEST_DB, 8, true, DatabaseMigrations.MIGRATION_7_8)
+        val voteTableCursor = db.query("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='tip_votes'")
+        assertTrue(voteTableCursor.moveToFirst())
+        assertEquals(1, voteTableCursor.getInt(0))
+        voteTableCursor.close()
 
         db.close()
     }

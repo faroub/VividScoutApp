@@ -1,7 +1,12 @@
 package com.example.data.repository
 
+import android.content.Context
+import com.example.data.local.AppDatabase
 import com.example.data.local.CommunityTipDao
 import com.example.data.local.CommunityTipEntity
+import com.example.data.local.ScoutDao
+import com.example.data.local.TipVoteDao
+import com.example.data.local.TipVoteEntity
 import com.example.data.p2p.MeshSyncPhase
 import com.example.data.p2p.PeerMeshSyncEngine
 import com.example.data.p2p.PeerMeshSyncResult
@@ -14,7 +19,8 @@ import java.util.UUID
 
 class CommunityTipRepository(
     private val dao: CommunityTipDao,
-    private val context: android.content.Context? = null
+    private val tipVoteDao: TipVoteDao? = null,
+    private val context: Context? = null
 ) {
     val allTipsFlow: Flow<List<CommunityTipEntity>> = dao.getAllTipsFlow()
     val allStatusUpdatesFlow: Flow<List<CommunityTipEntity>> = dao.getAllStatusUpdatesFlow()
@@ -50,36 +56,47 @@ class CommunityTipRepository(
         )
         dao.insertTip(newTip)
         context?.let { ctx ->
-            com.example.data.sync.FirestoreSyncManager.postCommunityTipToCloud(ctx, newTip)
+            FirestoreSyncManager.postCommunityTipToCloud(ctx, newTip)
         }
         newTip
     }
 
-    suspend fun syncWithCloud(scoutDao: com.example.data.local.ScoutDao? = null): Pair<Int, Int> = withContext(Dispatchers.IO) {
+    suspend fun syncWithCloud(scoutDao: ScoutDao? = null): Pair<Int, Int> = withContext(Dispatchers.IO) {
         val ctx = context ?: return@withContext Pair(0, 0)
-        val db = com.example.data.local.AppDatabase.getDatabase(ctx)
+        val db = AppDatabase.getDatabase(ctx)
         FirestoreSyncManager.syncPendingTipsToCloud(ctx, dao)
-        com.example.data.sync.FirestoreSyncManager.syncRemoteContentDown(
+        FirestoreSyncManager.syncRemoteContentDown(
             ctx, dao, scoutDao ?: db.scoutDao()
         )
     }
 
-    /** Per-user vote tracking registry to prevent duplicate voting from the same user */
-    private val votedKeys = mutableSetOf<String>()
+    /**
+     * Upvotes a community tip using persisted per-user vote tracking and cloud-first atomic synchronization.
+     * Rejects duplicate votes from the same user, and updates Room locally only if the cloud call succeeds.
+     */
+    suspend fun upvoteTip(tipId: String, userId: String): Boolean = withContext(Dispatchers.IO) {
+        if (userId.isBlank()) {
+            return@withContext false
+        }
 
-    suspend fun upvoteTip(tipId: String, userId: String = "local_user"): Boolean = withContext(Dispatchers.IO) {
-        val voteKey = "${tipId}_$userId"
-        synchronized(votedKeys) {
-            if (votedKeys.contains(voteKey)) {
+        // 1. Check persisted local vote table first. If user already voted, reject and change nothing.
+        if (tipVoteDao?.hasUserVoted(tipId, userId) == true) {
+            return@withContext false
+        }
+
+        // 2. Call cloud transaction first if cloud context is present
+        val appCtx = context
+        if (appCtx != null) {
+            val cloudSuccess = FirestoreSyncManager.incrementTipUpvoteInCloud(appCtx, tipId)
+            if (!cloudSuccess) {
+                // Cloud transaction failed or rejected duplicate vote: change nothing locally
                 return@withContext false
             }
-            votedKeys.add(voteKey)
         }
 
+        // 3. Record local vote in tip_votes and increment local count
+        tipVoteDao?.insertVote(TipVoteEntity(tipId = tipId, userId = userId))
         dao.incrementUpvote(tipId)
-        context?.let { ctx ->
-            FirestoreSyncManager.incrementTipUpvoteInCloud(ctx, tipId)
-        }
         true
     }
 

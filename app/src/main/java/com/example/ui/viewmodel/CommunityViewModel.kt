@@ -6,6 +6,7 @@ import com.example.data.local.CommunityTipEntity
 import com.example.data.p2p.MeshSyncPhase
 import com.example.data.p2p.PeerMeshSyncResult
 import com.example.data.repository.CommunityTipRepository
+import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -102,7 +103,10 @@ class CommunityViewModel(
 
     fun upvoteTip(tipId: String) {
         viewModelScope.launch {
-            communityRepository.upvoteTip(tipId)
+            val currentUid = FirebaseAuth.getInstance().currentUser?.uid ?: ""
+            if (currentUid.isNotBlank()) {
+                communityRepository.upvoteTip(tipId, currentUid)
+            }
         }
     }
 

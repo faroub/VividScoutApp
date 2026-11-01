@@ -58,7 +58,11 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
     }
 
     override val communityTipRepository: CommunityTipRepository by lazy {
-        CommunityTipRepository(database.communityTipDao(), context)
+        CommunityTipRepository(
+            dao = database.communityTipDao(),
+            tipVoteDao = database.tipVoteDao(),
+            context = context
+        )
     }
 
     override val preScoutEngine: PreScoutEngine by lazy {
