@@ -119,24 +119,16 @@ The following locations in the codebase read, write, or render `tip.upvotes`:
  )
 
  // In syncRemoteContentDown:
- val legacyVotes = (doc.getLong("legacyUpvotes") ?: doc.getLong("upvotes") ?: 0L).toInt()
- val recordedVotes = (if (doc.contains("legacyUpvotes")) (doc.getLong("upvotes") ?: 0L) else 0L).toInt()
-
- CommunityTipEntity(
-     id = id.take(128),
-     spotId = spotId.take(128),
-     spotTitle = (doc.getString("spotTitle") ?: "Community Gem").trim().take(120),
-     authorName = author,
-     content = content,
-     timestamp = doc.getLong("timestamp") ?: System.currentTimeMillis(),
-     isStatusUpdate = doc.getBoolean("isStatusUpdate") ?: false,
-     statusCategory = (doc.getString("statusCategory") ?: "INSIGHT").trim().take(32),
-     legacyUpvotes = legacyVotes,
-     upvotes = recordedVotes,
-     peerNodeId = "cloud-firestore",
-     isLocallyAuthored = false,
-     isSyncedToCloud = true
- )
+ val hasLegacyUpvotesField = doc.contains("legacyUpvotes")
+ if (hasLegacyUpvotesField) {
+     legacyVotes = (doc.getLong("legacyUpvotes") ?: 0L).toInt()
+     recordedVotes = (doc.getLong("upvotes") ?: 0L).toInt()
+ } else {
+     val rawUpvotes = (doc.getLong("upvotes") ?: 0L).toInt()
+     legacyVotes = rawUpvotes
+     recordedVotes = 0
+     Log.w(TAG, "Downloaded unmigrated tip document '${id}': missing 'legacyUpvotes' field.")
+ }
 ```
 
 ### D. UI Card Component (`app/src/main/java/com/example/ui/components/CommunityTipCard.kt`)
@@ -160,4 +152,44 @@ The following locations in the codebase read, write, or render `tip.upvotes`:
 
 ### Known Gap / Open Issue
 - **Pre-Existing Firestore Documents**: Historical documents in the cloud Firestore database created prior to Option A adoption still store their legacy counts in the `upvotes` field rather than `legacyUpvotes`.
-- When clients pull documents without `legacyUpvotes`, `FirestoreSyncManager.syncRemoteContentDown()` gracefully falls back by mapping `doc.upvotes` to `legacyUpvotes` locally. Moving the remote Firestore field from `upvotes` to `legacyUpvotes` on cloud documents is tracked as a separate server-side migration task.
+- When clients pull documents without `legacyUpvotes`, `FirestoreSyncManager.syncRemoteContentDown()` gracefully falls back by mapping `doc.upvotes` to `legacyUpvotes` locally. Moving the remote Firestore field from `upvotes` to `legacyUpvotes` on cloud documents is tracked in the Migration Runbook below.
+
+---
+
+## 4. Migration Runbook
+
+This runbook outlines the operational steps to execute the Option A database migration script (`scripts/migrate_legacy_upvotes.js`) against your live Cloud Firestore instance to backfill legacy documents missing the `legacyUpvotes` field.
+
+### Preconditions
+1. **Firestore Backup Taken**: A full export of the Cloud Firestore database has been created and verified using `gcloud firestore export gs://[YOUR_BUCKET_NAME]` or the Firebase CLI.
+2. **Released App Version**: The app version containing Option A client logic (Room v10, `legacyUpvotes` parsing, `totalUpvotes` UI rendering) has been released to active users.
+3. **Firestore Security Rules Deployed**: Updated security rules in `firestore.rules` (allowing `legacyUpvotes` on `create` and `update`) have been deployed to production in the Firebase Console.
+
+### Execution Steps
+1. **Configure Service Account Credentials**:
+   ```bash
+   export GOOGLE_APPLICATION_CREDENTIALS="/path/to/service-account.json"
+   ```
+2. **Execute Dry-Run Simulation**:
+   ```bash
+   node scripts/migrate_legacy_upvotes.js --dry-run
+   ```
+3. **Review Dry-Run Output**: Verify the count of unmigrated documents versus already-migrated documents displayed in the terminal console summary.
+4. **Execute Migration**:
+   ```bash
+   node scripts/migrate_legacy_upvotes.js --execute
+   ```
+5. **Verify Document Sample in Firebase Console**: Open Firebase Console > Firestore > `community_tips` collection, inspect 3–5 updated documents, and confirm:
+   - `legacyUpvotes` equals the original historical count.
+   - `upvotes` equals `0`.
+6. **Record Migrated Document Count**: Log the exact count of modified documents reported by the migration script for compliance tracking.
+
+### Rollback Strategy
+- **Restoration**: If migration issues or unintended data changes occur, restore the database from the precondition export using `gcloud firestore import gs://[YOUR_BUCKET_NAME]/[EXPORT_PREFIX]`.
+- **Client App Compatibility**: If a rollback occurs, the Android client app **continues to function normally without crashing or data loss**. `FirestoreSyncManager.syncRemoteContentDown()` handles both migrated and unmigrated document schemas gracefully by treating missing `legacyUpvotes` fields as legacy counts on-the-fly.
+
+### Monitoring: What to Watch
+- **Telemetry Warnings in Logcat**: Monitor `Logcat` logs filtering for `FirestoreSyncManager` tag.
+- Prior to migration, unmigrated documents log warnings:
+  > `Downloaded unmigrated tip document 'tip_123': missing 'legacyUpvotes' field. Treating count as legacy count until migration script is executed.`
+- **Success Criteria**: Following migration execution and app refresh, the unmigrated warning count from `syncRemoteContentDown()` should fall to **zero**.

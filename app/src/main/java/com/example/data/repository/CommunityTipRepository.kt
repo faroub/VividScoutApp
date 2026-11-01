@@ -6,7 +6,6 @@ import com.example.data.local.CommunityTipDao
 import com.example.data.local.CommunityTipEntity
 import com.example.data.local.ScoutDao
 import com.example.data.local.TipVoteDao
-import com.example.data.local.TipVoteEntity
 import com.example.data.p2p.MeshSyncPhase
 import com.example.data.p2p.PeerMeshSyncEngine
 import com.example.data.p2p.PeerMeshSyncResult
@@ -102,9 +101,12 @@ class CommunityTipRepository(
             }
         }
 
-        // 3. Record local vote in tip_votes and increment local count
-        tipVoteDao?.insertVote(TipVoteEntity(tipId = tipId, userId = userId))
-        dao.incrementUpvote(tipId)
+        // 3. Record local vote in tip_votes and increment local count in ONE Room @Transaction
+        if (tipVoteDao != null) {
+            tipVoteDao.recordVoteAndIncrementCount(tipId, userId, dao)
+        } else {
+            dao.incrementUpvote(tipId)
+        }
         true
     }
 
