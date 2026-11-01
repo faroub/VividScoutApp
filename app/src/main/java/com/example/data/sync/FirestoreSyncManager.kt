@@ -201,13 +201,18 @@ object FirestoreSyncManager {
             val voteRef = tipRef.collection("votes").document(currentUid)
 
             val voteSuccess = firestore.runTransaction { transaction ->
+                val tipSnap = transaction.get(tipRef)
+                if (!tipSnap.exists() || !tipSnap.contains("legacyUpvotes")) {
+                    Log.w(TAG, "Cannot upvote tip '$tipId': Document is missing 'legacyUpvotes' field. Aborting transaction.")
+                    return@runTransaction false
+                }
+
                 val voteSnap = transaction.get(voteRef)
                 if (voteSnap.exists()) {
                     Log.w(TAG, "User '$currentUid' has already voted on tip '$tipId'. Rejecting second vote.")
                     return@runTransaction false
                 }
 
-                val tipSnap = transaction.get(tipRef)
                 val currentUpvotes = tipSnap.getLong("upvotes") ?: 0L
 
                 val voteData = hashMapOf<String, Any>(
@@ -280,14 +285,17 @@ object FirestoreSyncManager {
                 val hasLegacyUpvotesField = doc.contains("legacyUpvotes")
                 val legacyVotes: Int
                 val recordedVotes: Int
+                val isMigrated: Boolean
 
                 if (hasLegacyUpvotesField) {
                     legacyVotes = (doc.getLong("legacyUpvotes") ?: 0L).toInt()
                     recordedVotes = (doc.getLong("upvotes") ?: 0L).toInt()
+                    isMigrated = true
                 } else {
                     val rawUpvotes = (doc.getLong("upvotes") ?: 0L).toInt()
                     legacyVotes = rawUpvotes
                     recordedVotes = 0
+                    isMigrated = false
                     Log.w(
                         TAG,
                         "Downloaded unmigrated tip document '$id': missing 'legacyUpvotes' field. " +
@@ -309,7 +317,8 @@ object FirestoreSyncManager {
                         upvotes = recordedVotes,
                         peerNodeId = "cloud-firestore",
                         isLocallyAuthored = false,
-                        isSyncedToCloud = true
+                        isSyncedToCloud = true,
+                        isMigrated = isMigrated
                     )
                 )
             }

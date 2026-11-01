@@ -231,6 +231,16 @@ object DatabaseMigrations {
         }
     }
 
+    /**
+     * Migration from version 10 to version 11:
+     * Adds isMigrated column (INTEGER NOT NULL DEFAULT 1) to community_tips table.
+     */
+    val MIGRATION_10_11 = object : Migration(10, 11) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `community_tips` ADD COLUMN `isMigrated` INTEGER NOT NULL DEFAULT 1")
+        }
+    }
+
     val ALL_MIGRATIONS: Array<Migration> = arrayOf(
         MIGRATION_1_2,
         MIGRATION_2_3,
@@ -240,6 +250,7 @@ object DatabaseMigrations {
         MIGRATION_6_7,
         MIGRATION_7_8,
         MIGRATION_8_9,
-        MIGRATION_9_10
+        MIGRATION_9_10,
+        MIGRATION_10_11
     )
 }

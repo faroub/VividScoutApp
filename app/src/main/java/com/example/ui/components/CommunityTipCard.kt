@@ -212,8 +212,8 @@ fun CommunityTipCard(
                     fontSize = 10.sp
                 )
 
-                // Upvote Button OR Unsynced Voting Note
-                if (tip.isSyncedToCloud) {
+                // Upvote Button OR Unsynced / Unmigrated Voting Note
+                if (tip.isSyncedToCloud && tip.isMigrated) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier

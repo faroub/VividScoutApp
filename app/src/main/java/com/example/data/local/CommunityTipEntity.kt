@@ -29,7 +29,8 @@ data class CommunityTipEntity(
     val upvotes: Int = 0,
     val peerNodeId: String = "local-device",
     val isLocallyAuthored: Boolean = false,
-    val isSyncedToCloud: Boolean = false
+    val isSyncedToCloud: Boolean = false,
+    val isMigrated: Boolean = true
 ) {
     val totalUpvotes: Int
         get() = legacyUpvotes + upvotes
