@@ -39,6 +39,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.example.BuildConfig
 import com.example.data.p2p.DemoModeProvider
 import com.example.ui.theme.BrandTeal
 import com.example.ui.theme.LocalAppLanguage
@@ -213,48 +214,50 @@ fun ProfileSettingsSection(
                 )
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            if (BuildConfig.DEBUG) {
+                Spacer(modifier = Modifier.height(8.dp))
 
-            // Demo Mode Peer Sync Toggle
-            var isDemoMode by remember { mutableStateOf(DemoModeProvider.isDemoPeerSyncEnabled) }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.CloudSync,
-                        contentDescription = null,
-                        tint = Secondary
-                    )
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Column {
-                        Text(
-                            text = "Simulate Peer Sync (Demo Mode)",
-                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                            color = MaterialTheme.colorScheme.onSurface
+                // Demo Mode Peer Sync Toggle (Debug Only)
+                var isDemoMode by remember { mutableStateOf(DemoModeProvider.isDemoPeerSyncEnabled) }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.CloudSync,
+                            contentDescription = null,
+                            tint = Secondary
                         )
-                        Text(
-                            text = "Simulates 3 sample peers for UI testing",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = "Simulate Peer Sync (Demo Mode)",
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = "Simulates 3 sample peers for UI testing",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
-                }
 
-                Switch(
-                    checked = isDemoMode,
-                    onCheckedChange = {
-                        isDemoMode = it
-                        DemoModeProvider.isDemoPeerSyncEnabled = it
-                    },
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = Color.White,
-                        checkedTrackColor = Secondary
-                    ),
-                    modifier = Modifier.testTag("toggle_demo_peer_sync_switch")
-                )
+                    Switch(
+                        checked = isDemoMode,
+                        onCheckedChange = {
+                            isDemoMode = it
+                            DemoModeProvider.isDemoPeerSyncEnabled = it
+                        },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = Secondary
+                        ),
+                        modifier = Modifier.testTag("toggle_demo_peer_sync_switch")
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(8.dp))
