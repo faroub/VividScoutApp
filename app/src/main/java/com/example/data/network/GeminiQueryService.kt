@@ -2,6 +2,7 @@ package com.example.data.network
 
 import android.util.Log
 import com.example.data.local.ScoutSpotEntity
+import com.example.util.LocationPhotoResolver
 import com.example.util.MovementVector
 import com.google.firebase.Firebase
 import com.google.firebase.ai.ai
@@ -176,6 +177,14 @@ class GeminiQueryService {
 
             val spotId = "prefetch_${title.lowercase(Locale.ROOT).replace(Regex("[^a-z0-9]"), "_")}_${i}"
 
+            val resolvedPhoto = LocationPhotoResolver.resolvePhotoSynchronous(
+                title = title,
+                category = mappedCategory,
+                districtOrLocation = locationName,
+                spotId = spotId
+            )
+            val isVerified = resolvedPhoto.isVerifiedLandmark
+
             result.add(
                 ScoutSpotEntity(
                     id = spotId,
@@ -186,14 +195,9 @@ class GeminiQueryService {
                     walkMinutes = ((i + 1) * 10).coerceAtLeast(3),
                     rating = rating,
                     reviewCount = reviewCount,
-                    imageUrl = com.example.util.LocationPhotoResolver.resolvePhotoSynchronous(
-                        title = title,
-                        category = mappedCategory,
-                        districtOrLocation = locationName,
-                        spotId = spotId
-                    ).url,
-                    badgeLabel = "PREFETCHED 5KM VECTOR",
-                    statusBadge = "Prefetched AI Cache",
+                    imageUrl = resolvedPhoto.url,
+                    badgeLabel = if (isVerified) "VERIFIED CORRIDOR LANDMARK" else "AI CORRIDOR CANDIDATE",
+                    statusBadge = if (isVerified) "OSM Verified" else "AI Candidate",
                     tagsRaw = tagsList.joinToString("|||"),
                     proTip = audioLore,
                     contributor = "@GeminiAI (Corridor Prefetch)",

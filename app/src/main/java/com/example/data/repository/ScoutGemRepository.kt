@@ -91,7 +91,10 @@ class ScoutGemRepository(
     /**
      * Reactive stream of all ScoutGems directly backed by Room database.
      */
-    fun observeGems(userLat: Double = 38.7112, userLng: Double = -9.1423): Flow<List<ScoutGem>> {
+    fun observeGems(
+        userLat: Double = DefaultLocationConfig.activeFallbackLat,
+        userLng: Double = DefaultLocationConfig.activeFallbackLng
+    ): Flow<List<ScoutGem>> {
         return scoutDao.getAllSpots().map { spotEntities ->
             spotEntities.map { entity -> entity.toScoutGem(userLat, userLng) }
         }
@@ -100,7 +103,10 @@ class ScoutGemRepository(
     /**
      * Reactive stream of bookmarked ScoutGems backed by Room.
      */
-    fun observeSavedGems(userLat: Double = 38.7112, userLng: Double = -9.1423): Flow<List<ScoutGem>> {
+    fun observeSavedGems(
+        userLat: Double = DefaultLocationConfig.activeFallbackLat,
+        userLng: Double = DefaultLocationConfig.activeFallbackLng
+    ): Flow<List<ScoutGem>> {
         return scoutDao.getSavedSpots().map { spotEntities ->
             spotEntities.map { entity -> entity.toScoutGem(userLat, userLng) }
         }
@@ -150,8 +156,8 @@ class ScoutGemRepository(
      * Strictly preserves all saved (isSaved=1), discovered (isDiscovered=1), and drafted (isOfflineDraft=1) gems.
      */
     suspend fun performAutoCleanup(
-        userLat: Double = 38.7112,
-        userLng: Double = -9.1423,
+        userLat: Double = DefaultLocationConfig.activeFallbackLat,
+        userLng: Double = DefaultLocationConfig.activeFallbackLng,
         maxAgeDays: Int = 30,
         maxRadiusKm: Double = 100.0
     ): AutoCleanupReport = withContext(Dispatchers.IO) {

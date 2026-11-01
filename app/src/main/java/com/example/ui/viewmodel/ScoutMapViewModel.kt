@@ -3,6 +3,7 @@ package com.example.ui.viewmodel
 import androidx.compose.ui.geometry.Offset
 import androidx.lifecycle.ViewModel
 import com.example.data.local.ScoutSpotEntity
+import com.example.data.location.DefaultLocationConfig
 import com.example.data.model.ScoutGem
 import com.example.data.model.toScoutGem
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -33,8 +34,8 @@ data class ScoutMapUiState(
     val zoomScale: Float = 1.0f,
     val zoomPreset: ZoomPreset? = null,
     val isEngineReady: Boolean = false,
-    val userLat: Double = 38.7112,
-    val userLng: Double = -9.1423,
+    val userLat: Double = DefaultLocationConfig.activeFallbackLat,
+    val userLng: Double = DefaultLocationConfig.activeFallbackLng,
     val userAccuracy: Float = 6f
 ) {
     val zoomPercentage: Int
@@ -68,7 +69,11 @@ class ScoutMapViewModel : ViewModel() {
     /**
      * Converts Room database ScoutSpotEntity items into ScoutGem domain models and updates state.
      */
-    fun loadGemsFromEntities(entities: List<ScoutSpotEntity>, userLat: Double = 38.7112, userLng: Double = -9.1423) {
+    fun loadGemsFromEntities(
+        entities: List<ScoutSpotEntity>,
+        userLat: Double = DefaultLocationConfig.activeFallbackLat,
+        userLng: Double = DefaultLocationConfig.activeFallbackLng
+    ) {
         val gemList = entities.map { it.toScoutGem(userLat, userLng) }
         setGems(gemList)
     }
