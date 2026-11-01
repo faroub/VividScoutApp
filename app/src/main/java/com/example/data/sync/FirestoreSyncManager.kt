@@ -8,6 +8,7 @@ import com.example.data.local.DiscoveredGemDao
 import com.example.data.local.ScoutDao
 import com.example.data.local.ScoutSpotEntity
 import com.example.data.model.ScoutCategory
+import com.example.util.configureAppCheck
 import com.google.firebase.Firebase
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
@@ -32,6 +33,7 @@ object FirestoreSyncManager {
 
     private fun getFirestore(context: Context): FirebaseFirestore? {
         return try {
+            configureAppCheck(context)
             if (FirebaseApp.getApps(context).isEmpty()) {
                 FirebaseApp.initializeApp(context)
             }

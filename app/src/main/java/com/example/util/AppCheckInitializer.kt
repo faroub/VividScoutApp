@@ -22,7 +22,7 @@ private const val RECAPTCHA_SITE_KEY_RES = "recaptcha_site_key"
  * Debug builds use DebugAppCheckProviderFactory with optional debug token extraction.
  * Release builds use RecaptchaAppCheckProviderFactory and fail closed if production site key is unavailable.
  */
-fun configureAppCheck(context: Context, intent: Intent?) {
+fun configureAppCheck(context: Context, intent: Intent? = null) {
     try {
         if (FirebaseApp.getApps(context).isEmpty()) {
             val options = try {
@@ -62,22 +62,10 @@ fun configureAppCheck(context: Context, intent: Intent?) {
             )
             Log.d(TAG, "DebugAppCheckProviderFactory installed.")
         } else {
-            val resId = context.resources.getIdentifier(RECAPTCHA_SITE_KEY_RES, "string", context.packageName)
-            val siteKey = if (resId != 0) context.getString(resId) else ""
-
-            if (siteKey.isNotBlank()) {
-                FirebaseAppCheck.getInstance().installAppCheckProviderFactory(
-                    RecaptchaAppCheckProviderFactory.getInstance(siteKey)
-                )
-                Log.d(TAG, "RecaptchaAppCheckProviderFactory installed for Release build.")
-            } else {
-                Log.e(
-                    TAG,
-                    "CRITICAL: Production App Check attestation unavailable. " +
-                    "recaptcha_site_key is missing or blank in Release build. " +
-                    "Failing closed: DebugAppCheckProviderFactory will NOT be installed in Release builds."
-                )
-            }
+            FirebaseAppCheck.getInstance().installAppCheckProviderFactory(
+                com.google.firebase.appcheck.playintegrity.PlayIntegrityAppCheckProviderFactory.getInstance()
+            )
+            Log.d(TAG, "PlayIntegrityAppCheckProviderFactory installed for Release build.")
         }
     } catch (e: Exception) {
         Log.e(TAG, "Failed to initialize Firebase App Check", e)
