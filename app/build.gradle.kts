@@ -85,8 +85,9 @@ android {
     includeInBundle = true
   }
   lint {
-    checkReleaseBuilds = false
-    abortOnError = false
+    checkReleaseBuilds = true
+    abortOnError = true
+    baseline = file("lint-baseline.xml")
   }
 }
 
@@ -170,7 +171,8 @@ dependencies {
 
 gradle.taskGraph.whenReady {
   val hasReleaseTask = allTasks.any { task ->
-    task.name.contains("Release")
+    val name = task.name
+    (name.startsWith("assemble") || name.startsWith("bundle") || name.startsWith("package")) && name.contains("Release")
   }
   if (hasReleaseTask) {
     val keystorePath = System.getenv("KEYSTORE_PATH")

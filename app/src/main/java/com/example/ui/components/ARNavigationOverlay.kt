@@ -93,6 +93,7 @@ import com.example.ui.theme.Secondary
 import com.example.util.AROffscreenDirection
 import com.example.util.ARProjectionUtils
 import com.example.util.ImageResolver
+import java.util.Locale
 import kotlin.math.roundToInt
 
 /**
@@ -414,7 +415,7 @@ private fun ARSpatialMarkerPin(
     val distanceText = if (projection.distanceMeters < 1000) {
         "${projection.distanceMeters.roundToInt()}m"
     } else {
-        String.format("%.1fkm", projection.distanceMeters / 1000f)
+        String.format(Locale.US, "%.1fkm", projection.distanceMeters / 1000f)
     }
 
     Column(
@@ -501,7 +502,8 @@ private fun AREdgeDirectionArrow(
 ) {
     if (direction == AROffscreenDirection.NONE) return
 
-    val distanceText = if (distanceMeters < 1000) "${distanceMeters.roundToInt()}m" else String.format("%.1fkm", distanceMeters / 1000f)
+    val distanceText = if (distanceMeters < 1000) "${distanceMeters.roundToInt()}m" else String.format(
+        Locale.US, "%.1fkm", distanceMeters / 1000f)
 
     Surface(
         shape = RoundedCornerShape(20.dp),
