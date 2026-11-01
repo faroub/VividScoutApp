@@ -71,6 +71,11 @@ class CommunityViewModel(
                 _meshSyncPhase.value = phase
             }
             _lastMeshSyncResult.value = result
+            try {
+                communityRepository.syncWithCloud()
+            } catch (e: Exception) {
+                android.util.Log.w("CommunityVM", "Cloud sync delayed: ${e.message}")
+            }
         }
     }
 
@@ -89,7 +94,7 @@ class CommunityViewModel(
                 isStatusUpdate = isStatusUpdate,
                 statusCategory = statusCategory
             )
-            _postTipSuccessMessage.value = "Tip saved locally on this device! (Sharing coming in a future release)"
+            _postTipSuccessMessage.value = "Tip shared with the global scout community via cloud sync!"
             delay(3000)
             _postTipSuccessMessage.value = null
         }

@@ -32,7 +32,6 @@ class GeminiSpotService {
             "audioLore" to Schema.string(description = "Immersive 2-3 sentence audio guide narrative"),
             "latitude" to Schema.double(description = "Latitude coordinate close to requested location"),
             "longitude" to Schema.double(description = "Longitude coordinate close to requested location"),
-            "rating" to Schema.double(description = "Rating out of 5.0 between 4.0 and 5.0"),
             "distanceText" to Schema.string(description = "Human readable distance string e.g. 300m away"),
             "tags" to Schema.array(
                 items = Schema.string(),
@@ -186,16 +185,10 @@ class GeminiSpotService {
             val category = item.optString("category", "gems").lowercase()
             val description = item.optString("description", "A discovered local spot.")
             val audioLore = item.optString("audioLore", description)
-            val upvotes: Int? = null // AI recommendations do not generate artificial upvote metrics; reserved for actual user activity
-            val rating = if (item.has("rating")) item.optDouble("rating").takeIf { !it.isNaN() } else null
-            val reviewCount: Int? = if (item.has("reviewCount")) {
-                val raw = item.opt("reviewCount")
-                when (raw) {
-                    is Number -> raw.toInt()
-                    is String -> raw.filter { it.isDigit() }.toIntOrNull()
-                    else -> null
-                }
-            } else null
+            val upvotes: Int? = null // AI recommendations do not generate artificial upvote metrics
+            // Eliminating artificial ratings: AI discovered spots must have rating = null (reserved for real user reviews)
+            val rating: Double? = null
+            val reviewCount: Int? = null
             val distanceText = item.optString("distanceText", "350m away")
             
             val tagsArray = item.optJSONArray("tags")
@@ -272,7 +265,7 @@ class GeminiSpotService {
             val description: String,
             val audioLore: String,
             val badgeLabel: String,
-            val rating: Double,
+            val rating: Double? = null,
             val latOffset: Double,
             val lngOffset: Double,
             val imageUrl: String,
@@ -290,7 +283,7 @@ class GeminiSpotService {
                     description = "Romantic bougainvillea-framed terrace overlooking the red terracotta roofs of Alfama down to the blue Tagus estuary.",
                     audioLore = "Legend says 18th-century sailors would look back up at these painted blue azulejo panels depicting Praça do Comércio before departing into the Atlantic.",
                     badgeLabel = "ICONIC VIEWPOINT",
-                    rating = 4.9,
+                    rating = null,
                     latOffset = 0.0018,
                     lngOffset = 0.0022,
                     imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/c/cd/MiradouroSantaLuzia.JPG/800px-MiradouroSantaLuzia.JPG",
@@ -303,7 +296,7 @@ class GeminiSpotService {
                     description = "Artisan bakery where pastel de nata custard tarts are hand-rolled and baked fresh continuously before your eyes.",
                     audioLore = "Listen closely for the bronze bell ringing over Camões square—every single chime signals a fresh hot tray coming right out of the 300-degree oven.",
                     badgeLabel = "MUST-TRY FOOD GEM",
-                    rating = 4.9,
+                    rating = null,
                     latOffset = -0.0012,
                     lngOffset = -0.0015,
                     imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/2/24/Pastel_de_Nata_Manteigaria.jpg/800px-Pastel_de_Nata_Manteigaria.jpg",
@@ -316,7 +309,7 @@ class GeminiSpotService {
                     description = "11th-century Moorish citadel perched atop the highest hill of the historic center offering 360-degree panoramic rampart walks.",
                     audioLore = "The ancient stone pine trees here cast deep shade over battlements that have withstood earthquakes, sieges, and eight centuries of royal intrigue.",
                     badgeLabel = "HISTORIC FORTRESS",
-                    rating = 4.8,
+                    rating = null,
                     latOffset = 0.0031,
                     lngOffset = 0.0008,
                     imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/6/69/Castelo_de_S%C3%A3o_Jorge_by_Augusto_Cabrita.jpg/800px-Castelo_de_S%C3%A3o_Jorge_by_Augusto_Cabrita.jpg",
@@ -329,7 +322,7 @@ class GeminiSpotService {
                     description = "Charming yellow funicular operating since 1892, climbing the steep, lantern-lit cobblestones between Rua de São Paulo and Calhariz.",
                     audioLore = "Designed by Raoul Mesnier du Ponsard, this twin-cable carriage is immortalized in vintage photographs with laundry fluttering above from wrought-iron balconies.",
                     badgeLabel = "LIVING HERITAGE",
-                    rating = 4.7,
+                    rating = null,
                     latOffset = -0.0025,
                     lngOffset = -0.0031,
                     imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d3/Elevador_da_Bica_01.jpg/800px-Elevador_da_Bica_01.jpg",
@@ -342,7 +335,7 @@ class GeminiSpotService {
                     description = "Roofless Gothic church preserved as a hauntingly beautiful open-air memorial following the Great 1755 Lisbon Earthquake.",
                     audioLore = "Look straight up through the pointed rib-vault arches to see open sky—the monument serves as a silent testament to survival and rebirth.",
                     badgeLabel = "GOTHIC MONUMENT",
-                    rating = 4.8,
+                    rating = null,
                     latOffset = 0.0009,
                     lngOffset = -0.0019,
                     imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d4/Convento_do_Carmo_Lisbon.jpg/800px-Convento_do_Carmo_Lisbon.jpg",
@@ -355,7 +348,7 @@ class GeminiSpotService {
                     description = "Cozy chalkboard-menu tavern championing seasonal Portuguese petiscos, cured cheeses, and fresh Atlantic seafood.",
                     audioLore = "There are no reservations here: patrons gather under the wooden awning sipping chilled vinho verde while chatting with locals.",
                     badgeLabel = "LOCAL TAVERN",
-                    rating = 4.7,
+                    rating = null,
                     latOffset = -0.0008,
                     lngOffset = -0.0011,
                     imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/a/ad/Taberna_tradicional_Lisboa_petiscos.jpg/800px-Taberna_tradicional_Lisboa_petiscos.jpg",
@@ -371,7 +364,7 @@ class GeminiSpotService {
                     description = "Vibrant historic square featuring grand architecture, open-air cafes, and century-old monuments.",
                     audioLore = "A central meeting place for locals and travelers alike, surrounded by historic facades and scenic streetscapes.",
                     badgeLabel = "ICONIC LANDMARK",
-                    rating = 4.8,
+                    rating = null,
                     latOffset = 0.0015,
                     lngOffset = 0.0020,
                     imageUrl = "https://images.unsplash.com/photo-1513688275127-1be5a8359473?auto=format&fit=crop&w=800&q=80",
@@ -384,7 +377,7 @@ class GeminiSpotService {
                     description = "Cozy local bakery specializing in fresh regional pastries, hand-brewed espresso, and artisan breads.",
                     audioLore = "Sample fresh traditional pastries baked in small batches daily by local pastry chefs.",
                     badgeLabel = "MUST-TRY FOOD GEM",
-                    rating = 4.9,
+                    rating = null,
                     latOffset = -0.0012,
                     lngOffset = -0.0015,
                     imageUrl = "https://images.unsplash.com/photo-1509440159596-0249088772ff?auto=format&fit=crop&w=800&q=80",
@@ -397,7 +390,7 @@ class GeminiSpotService {
                     description = "Centuries-old stone fortress and elevated ramparts offering 360-degree views over the surrounding city skyline.",
                     audioLore = "Explore stone battlements and historic arches that have stood through centuries of regional history.",
                     badgeLabel = "HISTORIC FORTRESS",
-                    rating = 4.8,
+                    rating = null,
                     latOffset = 0.0031,
                     lngOffset = 0.0008,
                     imageUrl = "https://images.unsplash.com/photo-1548707309-dcebeab9ea9b?auto=format&fit=crop&w=800&q=80",
@@ -410,7 +403,7 @@ class GeminiSpotService {
                     description = "Scenic waterside walking path with benches, street musicians, and sweeping waterfront vistas.",
                     audioLore = "A peaceful pedestrian boulevard popular for evening strolls and sunset views over the water.",
                     badgeLabel = "SCENIC WALKWAY",
-                    rating = 4.7,
+                    rating = null,
                     latOffset = -0.0025,
                     lngOffset = -0.0031,
                     imageUrl = "https://images.unsplash.com/photo-1588668214407-6ea9a6d8c272?auto=format&fit=crop&w=800&q=80",
@@ -423,7 +416,7 @@ class GeminiSpotService {
                     description = "Majestic Gothic cathedral featuring ornate stone carvings, stained glass windows, and quiet inner courtyards.",
                     audioLore = "Marvel at intricate architectural details and quiet sacred spaces in the heart of the historic center.",
                     badgeLabel = "GOTHIC MONUMENT",
-                    rating = 4.8,
+                    rating = null,
                     latOffset = 0.0009,
                     lngOffset = -0.0019,
                     imageUrl = "https://images.unsplash.com/photo-1513688275127-1be5a8359473?auto=format&fit=crop&w=800&q=80",
@@ -436,7 +429,7 @@ class GeminiSpotService {
                     description = "Bustling local market hall and cozy tavern serving seasonal specialties and regional delicacies.",
                     audioLore = "Gather under wooden timber beams to taste traditional dishes prepared with local ingredients.",
                     badgeLabel = "LOCAL TAVERN",
-                    rating = 4.7,
+                    rating = null,
                     latOffset = -0.0008,
                     lngOffset = -0.0011,
                     imageUrl = "https://images.unsplash.com/photo-1554118811-1e0d58224f24?auto=format&fit=crop&w=800&q=80",

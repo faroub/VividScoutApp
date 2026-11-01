@@ -242,7 +242,9 @@ fun SpotGemModal(
     onSubmit: (name: String, category: String, photoUri: String?, notes: String) -> Unit,
     draftCount: Int = 1,
     userLocation: Location? = null,
-    userCoordinates: Pair<Double, Double> = Pair(38.7112, -9.1423)
+    userCoordinates: Pair<Double, Double> = Pair(38.7112, -9.1423),
+    isUsingGpsLocation: Boolean = true,
+    selectedGlobalCity: String? = null
 ) {
     val strings = LocalAppStrings.current
 
@@ -536,10 +538,11 @@ fun SpotGemModal(
                         }
                     }
 
-                    // GPS Location Captured Card
+                    // GPS Location Captured Card (or prominent Fallback Location indicator)
                     Surface(
                         shape = RoundedCornerShape(14.dp),
-                        color = SecondaryContainer.copy(alpha = 0.35f),
+                        color = if (!isUsingGpsLocation) Color(0xFFFEF3C7) else SecondaryContainer.copy(alpha = 0.35f),
+                        border = if (!isUsingGpsLocation) androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFF59E0B)) else null,
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(
@@ -547,28 +550,39 @@ fun SpotGemModal(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
-                                imageVector = Icons.Default.SatelliteAlt,
+                                imageVector = if (!isUsingGpsLocation) Icons.Default.PinDrop else Icons.Default.SatelliteAlt,
                                 contentDescription = null,
-                                tint = Secondary,
+                                tint = if (!isUsingGpsLocation) Color(0xFFD97706) else Secondary,
                                 modifier = Modifier.size(24.dp)
                             )
                             Spacer(modifier = Modifier.width(10.dp))
                             Column {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(
-                                        text = strings.locationCaptured,
+                                        text = if (!isUsingGpsLocation) {
+                                            "📍 Tagging Fallback Location (${selectedGlobalCity ?: "Selected City"})"
+                                        } else {
+                                            strings.locationCaptured
+                                        },
                                         style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                                        color = if (!isUsingGpsLocation) Color(0xFF92400E) else MaterialTheme.colorScheme.onSecondaryContainer
                                     )
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Box(
                                         modifier = Modifier
-                                            .size(5.dp)
+                                            .size(6.dp)
                                             .clip(CircleShape)
-                                            .background(Secondary)
+                                            .background(if (!isUsingGpsLocation) Color(0xFFD97706) else Secondary)
                                     )
                                 }
-                                val gpsLabel = if (userLocation != null) {
+                                val gpsLabel = if (!isUsingGpsLocation) {
+                                    String.format(
+                                        Locale.US,
+                                        "Simulated coordinates: %.4f° N, %.4f° W",
+                                        userCoordinates.first,
+                                        userCoordinates.second
+                                    )
+                                } else if (userLocation != null) {
                                     String.format(
                                         Locale.US,
                                         "GPS live: %.4f° N, %.4f° W (±%dm)",
@@ -582,7 +596,7 @@ fun SpotGemModal(
                                 Text(
                                     text = gpsLabel,
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.85f)
+                                    color = if (!isUsingGpsLocation) Color(0xFFB45309) else MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.85f)
                                 )
                             }
                         }

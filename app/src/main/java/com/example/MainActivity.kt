@@ -273,6 +273,9 @@ fun VividScoutApp(
                                         userLocation = locationState.userLocation,
                                         userCoordinates = locationState.userCoordinates,
                                         hasLocationPermission = locationState.hasLocationPermission,
+                                        isUsingGpsLocation = locationState.isUsingGpsLocation,
+                                        selectedGlobalCity = exploreState.selectedGlobalCity,
+                                        onGpsClick = { exploreViewModel.openGlobalCityDialog() },
                                         onRequestLocationPermission = { requestLocationPermission() },
                                         onCategorySelected = { exploreViewModel.setCategory(it) },
                                         onSearchQueryChange = { exploreViewModel.setSearchQuery(it) },
@@ -311,6 +314,9 @@ fun VividScoutApp(
                                         userLocation = locationState.userLocation,
                                         hasLocationPermission = locationState.hasLocationPermission,
                                         isPreciseLocation = locationState.isPreciseLocation,
+                                        isUsingGpsLocation = locationState.isUsingGpsLocation,
+                                        selectedGlobalCity = exploreState.selectedGlobalCity,
+                                        onGpsClick = { exploreViewModel.openGlobalCityDialog() },
                                         onRequestLocationPermission = { requestLocationPermission() },
                                         onSpotClick = { mainViewModel.selectSpotForDetail(it) },
                                         onToggleSave = { exploreViewModel.toggleSave(it) },
@@ -396,6 +402,8 @@ fun VividScoutApp(
                                         hasLocationPermission = locationState.hasLocationPermission,
                                         isPreciseLocation = locationState.isPreciseLocation,
                                         userCoordinates = locationState.userCoordinates,
+                                        isUsingGpsLocation = locationState.isUsingGpsLocation,
+                                        selectedGlobalCity = exploreState.selectedGlobalCity,
                                         onRequestLocationPermission = { requestLocationPermission() },
                                         offlineMapPacks = offlineMapsState.offlineMapPacks,
                                         totalOfflineStorageBytes = offlineMapsState.offlineStorageBytes,
@@ -538,7 +546,9 @@ fun VividScoutApp(
                         },
                         draftCount = offlineMapsState.offlineDrafts.size,
                         userLocation = locationState.userLocation,
-                        userCoordinates = locationState.userCoordinates
+                        userCoordinates = locationState.userCoordinates,
+                        isUsingGpsLocation = locationState.isUsingGpsLocation,
+                        selectedGlobalCity = exploreState.selectedGlobalCity
                     )
                 }
 

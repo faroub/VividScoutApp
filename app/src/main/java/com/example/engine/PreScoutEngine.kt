@@ -141,8 +141,9 @@ class PreScoutEngine(
 
         val allSpots = scoutDao.getAllSpotsSync()
         val highRatedNearby = allSpots.filter { spot ->
-            (spot.rating ?: 0.0) >= 4.5 && spot.computedDistanceMeters(lat, lng) <= 10000f
-        }.take(5)
+            spot.computedDistanceMeters(lat, lng) <= 10000f
+        }.sortedByDescending { (it.rating ?: 0.0) + (if (it.isSaved) 2.0 else 0.0) + (if (it.offlineCached) 1.0 else 0.0) }
+        .take(5)
 
         val updatedSpots = highRatedNearby.map { spot ->
             spot.copy(

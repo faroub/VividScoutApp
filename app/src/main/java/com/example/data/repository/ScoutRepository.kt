@@ -17,7 +17,8 @@ import com.example.data.location.DefaultLocationConfig
 class ScoutRepository(
     private val scoutDao: ScoutDao,
     private val discoveredGemDao: DiscoveredGemDao? = null,
-    private val achievementDao: AchievementDao? = null
+    private val achievementDao: AchievementDao? = null,
+    private val context: android.content.Context? = null
 ) {
 
     private val achievementEvaluator = achievementDao?.let { AchievementEvaluator(scoutDao, it) }
@@ -126,12 +127,34 @@ class ScoutRepository(
     }
 
     suspend fun syncDraft(spot: ScoutSpotEntity) = withContext(Dispatchers.IO) {
-        val synced = spot.copy(
-            isOfflineDraft = false,
-            statusBadge = "Just Synced"
+        val appCtx = context
+        if (appCtx != null) {
+            val uploaded = com.example.data.sync.FirestoreSyncManager.syncDraftSpotToCloud(
+                appCtx, spot, scoutDao, discoveredGemDao
+            )
+            if (!uploaded) {
+                val synced = spot.copy(
+                    isOfflineDraft = false,
+                    statusBadge = "Synced Offline"
+                )
+                scoutDao.updateSpot(synced)
+                discoveredGemDao?.markAsSynced(spot.id)
+            }
+        } else {
+            val synced = spot.copy(
+                isOfflineDraft = false,
+                statusBadge = "Just Synced"
+            )
+            scoutDao.updateSpot(synced)
+            discoveredGemDao?.markAsSynced(spot.id)
+        }
+    }
+
+    suspend fun syncAllDraftsToCloud(): Int = withContext(Dispatchers.IO) {
+        val appCtx = context ?: return@withContext 0
+        com.example.data.sync.FirestoreSyncManager.syncAllOfflineDrafts(
+            appCtx, scoutDao, discoveredGemDao
         )
-        scoutDao.updateSpot(synced)
-        discoveredGemDao?.markAsSynced(spot.id)
     }
 
     private val overpassRetrofitClient = com.example.data.network.OverpassRetrofitClient()

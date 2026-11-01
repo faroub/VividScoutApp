@@ -44,7 +44,9 @@ fun ProfileGpsTelemetryCard(
     hasLocationPermission: Boolean,
     isPreciseLocation: Boolean,
     userCoordinates: Pair<Double, Double>,
-    onRequestLocationPermission: () -> Unit
+    onRequestLocationPermission: () -> Unit,
+    isUsingGpsLocation: Boolean = true,
+    selectedGlobalCity: String? = null
 ) {
     val strings = LocalAppStrings.current
 
@@ -73,6 +75,7 @@ fun ProfileGpsTelemetryCard(
                         .clip(RoundedCornerShape(999.dp))
                         .background(
                             when {
+                                !isUsingGpsLocation -> Color(0xFFFEF3C7)
                                 hasLocationPermission && isPreciseLocation -> SecondaryContainer.copy(alpha = 0.6f)
                                 hasLocationPermission -> Color(0xFFE0F2FE)
                                 else -> BrandCoral.copy(alpha = 0.15f)
@@ -82,12 +85,14 @@ fun ProfileGpsTelemetryCard(
                 ) {
                     Text(
                         text = when {
+                            !isUsingGpsLocation -> "Simulated Fallback GPS"
                             hasLocationPermission && isPreciseLocation -> strings.preciseGpsActive
                             hasLocationPermission -> strings.approximateGpsActive
                             else -> strings.gpsDisabled
                         },
                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                         color = when {
+                            !isUsingGpsLocation -> Color(0xFFB45309)
                             hasLocationPermission && isPreciseLocation -> Secondary
                             hasLocationPermission -> Color(0xFF0369A1)
                             else -> BrandCoral
@@ -131,7 +136,9 @@ fun ProfileGpsTelemetryCard(
                     Spacer(modifier = Modifier.width(10.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = if (hasLocationPermission) {
+                            text = if (!isUsingGpsLocation) {
+                                String.format(Locale.US, "%.4f° N, %.4f° W (Fallback: %s)", userCoordinates.first, userCoordinates.second, selectedGlobalCity ?: "Manual")
+                            } else if (hasLocationPermission) {
                                 String.format(Locale.US, "%.4f° N, %.4f° W", userCoordinates.first, userCoordinates.second)
                             } else {
                                 "38.7112° N, -9.1423° W (Default)"

@@ -71,6 +71,8 @@ fun ProfileScreen(
     hasLocationPermission: Boolean = true,
     isPreciseLocation: Boolean = true,
     userCoordinates: Pair<Double, Double> = Pair(38.7112, -9.1423),
+    isUsingGpsLocation: Boolean = true,
+    selectedGlobalCity: String? = null,
     onRequestLocationPermission: () -> Unit = {},
     offlineMapPacks: List<com.example.data.offline.OfflineMapPack> = emptyList(),
     totalOfflineStorageBytes: Long = 0L,
@@ -156,7 +158,9 @@ fun ProfileScreen(
                 hasLocationPermission = hasLocationPermission,
                 isPreciseLocation = isPreciseLocation,
                 userCoordinates = userCoordinates,
-                onRequestLocationPermission = onRequestLocationPermission
+                onRequestLocationPermission = onRequestLocationPermission,
+                isUsingGpsLocation = isUsingGpsLocation,
+                selectedGlobalCity = selectedGlobalCity
             )
         }
 

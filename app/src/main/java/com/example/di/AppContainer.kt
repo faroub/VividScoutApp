@@ -32,7 +32,8 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
         ScoutRepository(
             database.scoutDao(),
             database.discoveredGemDao(),
-            database.achievementDao()
+            database.achievementDao(),
+            context
         )
     }
 
@@ -57,7 +58,7 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
     }
 
     override val communityTipRepository: CommunityTipRepository by lazy {
-        CommunityTipRepository(database.communityTipDao())
+        CommunityTipRepository(database.communityTipDao(), context)
     }
 
     override val preScoutEngine: PreScoutEngine by lazy {

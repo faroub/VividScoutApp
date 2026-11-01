@@ -128,6 +128,99 @@ object MovementVectorUtils {
     }
 
     /**
+     * Calculates geodesic distance between two points in meters using the Haversine formula.
+     */
+    fun calculateDistanceMeters(
+        lat1: Double,
+        lng1: Double,
+        lat2: Double,
+        lng2: Double
+    ): Double {
+        val phi1 = Math.toRadians(lat1)
+        val phi2 = Math.toRadians(lat2)
+        val deltaPhi = Math.toRadians(lat2 - lat1)
+        val deltaLambda = Math.toRadians(lng2 - lng1)
+
+        val a = sin(deltaPhi / 2.0).let { it * it } +
+                cos(phi1) * cos(phi2) * sin(deltaLambda / 2.0).let { it * it }
+        val c = 2.0 * atan2(kotlin.math.sqrt(a), kotlin.math.sqrt(1.0 - a))
+        return EARTH_RADIUS_METERS * c
+    }
+
+    /**
+     * Calculates the lateral cross-track (perpendicular) distance in meters from a point
+     * (pointLat, pointLng) to the great-circle path from (startLat, startLng) to (endLat, endLng).
+     */
+    fun calculateCrossTrackDistanceMeters(
+        pointLat: Double,
+        pointLng: Double,
+        startLat: Double,
+        startLng: Double,
+        endLat: Double,
+        endLng: Double
+    ): Double {
+        val d13 = calculateDistanceMeters(startLat, startLng, pointLat, pointLng)
+        val delta13 = d13 / EARTH_RADIUS_METERS
+        val theta13 = Math.toRadians(calculateBearing(startLat, startLng, pointLat, pointLng).toDouble())
+        val theta12 = Math.toRadians(calculateBearing(startLat, startLng, endLat, endLng).toDouble())
+
+        val crossTrackDelta = asin(sin(delta13) * sin(theta13 - theta12))
+        return kotlin.math.abs(crossTrackDelta * EARTH_RADIUS_METERS)
+    }
+
+    /**
+     * Validates whether a given geographic coordinate falls within the movement vector's
+     * route corridor:
+     * 1. Valid coordinates within [-90, 90] and [-180, 180], not NaN, and not Null Island (0,0).
+     * 2. Perpendicular cross-track distance to the trajectory line <= maxLateralMeters (default 1500m).
+     * 3. Along-track position does not exceed the target point beyond the margin or lag far behind origin.
+     */
+    fun isPointInCorridor(
+        lat: Double,
+        lng: Double,
+        vector: MovementVector,
+        maxLateralMeters: Double = 1500.0,
+        marginMeters: Double = 500.0
+    ): Boolean {
+        if (lat !in -90.0..90.0 || lng !in -180.0..180.0 || lat.isNaN() || lng.isNaN()) {
+            return false
+        }
+        if (kotlin.math.abs(lat) < 0.0001 && kotlin.math.abs(lng) < 0.0001) {
+            return false
+        }
+
+        val distToOrigin = calculateDistanceMeters(vector.originLat, vector.originLng, lat, lng)
+        val distToTarget = calculateDistanceMeters(vector.targetLat, vector.targetLng, lat, lng)
+
+        val maxAllowedReach = vector.distanceMeters + maxLateralMeters + marginMeters
+        if (distToOrigin > maxAllowedReach && distToTarget > maxAllowedReach) {
+            return false
+        }
+
+        val crossTrack = calculateCrossTrackDistanceMeters(
+            pointLat = lat,
+            pointLng = lng,
+            startLat = vector.originLat,
+            startLng = vector.originLng,
+            endLat = vector.targetLat,
+            endLng = vector.targetLng
+        )
+
+        if (crossTrack > maxLateralMeters) {
+            return false
+        }
+
+        // Verify the candidate point is ahead of origin along the bearing vector (not 180 degrees behind)
+        val bearing13 = calculateBearing(vector.originLat, vector.originLng, lat, lng)
+        val bearingDiff = kotlin.math.abs((bearing13 - vector.bearingDegrees + 540f) % 360f - 180f)
+        if (bearingDiff > 105f && distToOrigin > marginMeters) {
+            return false
+        }
+
+        return true
+    }
+
+    /**
      * Evaluates a rolling list of recent GPS breadcrumbs to calculate the user's current
      * movement vector, extrapolating 5km ahead.
      */

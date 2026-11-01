@@ -162,4 +162,62 @@ object OfflineRouteEngine {
             elevationProfile = elevationProfile
         )
     }
+
+    /**
+     * Validates whether a candidate point falls within a maximum lateral deviation distance
+     * of any segment in the offline walking trail corridor.
+     */
+    fun isPointWithinRouteCorridor(
+        pointLat: Double,
+        pointLng: Double,
+        trail: OfflineWalkingTrail,
+        maxDeviationMeters: Double = 500.0
+    ): Boolean {
+        if (trail.pathPoints.isEmpty()) return false
+        if (pointLat !in -90.0..90.0 || pointLng !in -180.0..180.0 || pointLat.isNaN() || pointLng.isNaN()) {
+            return false
+        }
+        if (kotlin.math.abs(pointLat) < 0.0001 && kotlin.math.abs(pointLng) < 0.0001) {
+            return false
+        }
+
+        // Fast check against each waypoint first
+        for (wp in trail.waypoints) {
+            if (haversineMeters(wp.latitude, wp.longitude, pointLat, pointLng) <= maxDeviationMeters) {
+                return true
+            }
+        }
+
+        // Check against segments in trail.pathPoints
+        for (i in 0 until trail.pathPoints.size - 1) {
+            val (lat1, lng1) = trail.pathPoints[i]
+            val (lat2, lng2) = trail.pathPoints[i + 1]
+
+            val d13 = haversineMeters(lat1, lng1, pointLat, pointLng)
+            val d23 = haversineMeters(lat2, lng2, pointLat, pointLng)
+            if (d13 <= maxDeviationMeters || d23 <= maxDeviationMeters) {
+                return true
+            }
+
+            val d12 = haversineMeters(lat1, lng1, lat2, lng2)
+            if (d12 > 1.0) {
+                val crossTrack = com.example.util.MovementVectorUtils.calculateCrossTrackDistanceMeters(
+                    pointLat = pointLat,
+                    pointLng = pointLng,
+                    startLat = lat1,
+                    startLng = lng1,
+                    endLat = lat2,
+                    endLng = lng2
+                )
+                if (crossTrack <= maxDeviationMeters) {
+                    // Check that the projection falls on the segment between (lat1, lng1) and (lat2, lng2)
+                    if (d13 * d13 <= d12 * d12 + crossTrack * crossTrack &&
+                        d23 * d23 <= d12 * d12 + crossTrack * crossTrack) {
+                        return true
+                    }
+                }
+            }
+        }
+        return false
+    }
 }

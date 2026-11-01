@@ -1,0 +1,50 @@
+{
+  "entities": {
+    "CommunitySubmission": {
+      "title": "CommunitySubmission",
+      "description": "User-submitted scout spot or hidden gem uploaded from offline drafts",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "category": { "type": "string" },
+        "locationName": { "type": "string" },
+        "latitude": { "type": "number" },
+        "longitude": { "type": "number" },
+        "photoUri": { "type": "string" },
+        "userNotes": { "type": "string" },
+        "contributor": { "type": "string" },
+        "timestamp": { "type": "number" }
+      },
+      "required": ["id", "title", "category", "latitude", "longitude", "timestamp"]
+    },
+    "CommunityTip": {
+      "title": "CommunityTip",
+      "description": "Community tip or peer status update for a scout spot",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "spotId": { "type": "string" },
+        "spotTitle": { "type": "string" },
+        "authorName": { "type": "string" },
+        "content": { "type": "string" },
+        "timestamp": { "type": "number" },
+        "isStatusUpdate": { "type": "boolean" },
+        "statusCategory": { "type": "string" },
+        "upvotes": { "type": "number" }
+      },
+      "required": ["id", "spotId", "content", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/community_submissions/{submissionId}": {
+      "schema": "CommunitySubmission",
+      "description": "Public community submissions and discovered hidden gems synchronized from offline drafts"
+    },
+    "/community_tips/{tipId}": {
+      "schema": "CommunityTip",
+      "description": "Community tips, insights, and peer status updates for scout spots"
+    }
+  }
+}

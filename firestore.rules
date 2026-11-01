@@ -1,0 +1,25 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /community_submissions/{submissionId} {
+      allow read: if true;
+      allow create: if request.resource.data.id is string
+                    && request.resource.data.title is string
+                    && request.resource.data.category is string
+                    && request.resource.data.latitude is number
+                    && request.resource.data.longitude is number
+                    && request.resource.data.timestamp is number;
+      allow update, delete: if false;
+    }
+
+    match /community_tips/{tipId} {
+      allow read: if true;
+      allow create: if request.resource.data.id is string
+                    && request.resource.data.spotId is string
+                    && request.resource.data.content is string
+                    && request.resource.data.timestamp is number;
+      allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly(['upvotes']);
+      allow delete: if false;
+    }
+  }
+}

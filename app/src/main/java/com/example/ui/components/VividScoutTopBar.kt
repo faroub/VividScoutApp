@@ -156,21 +156,21 @@ fun VividScoutTopBar(
                         )
                         Spacer(modifier = Modifier.width(5.dp))
 
-                        val cityLabel = if (!isUsingGpsLocation && !selectedGlobalCity.isNullOrBlank()) {
-                            selectedGlobalCity
+                        val cityLabel = if (!isUsingGpsLocation) {
+                            if (!selectedGlobalCity.isNullOrBlank()) "Fallback: $selectedGlobalCity" else "Fallback Location"
                         } else if (hasLocationPermission) {
                             strings.liveGpsStatus
                         } else {
                             "GPS Off"
                         }
 
-                        // Global Location / City Selector Pill
+                        // Global Location / City Selector Pill (with prominent fallback state)
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
                                 .clip(RoundedCornerShape(999.dp))
                                 .background(
-                                    if (!isUsingGpsLocation && selectedGlobalCity != null) BrandTeal.copy(alpha = 0.2f)
+                                    if (!isUsingGpsLocation) Color(0xFFFEF3C7)
                                     else if (hasLocationPermission) SecondaryContainer.copy(alpha = 0.45f)
                                     else BrandCoral.copy(alpha = 0.15f)
                                 )
@@ -180,16 +180,16 @@ fun VividScoutTopBar(
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .size(5.dp)
+                                    .size(6.dp)
                                     .scale(pulseScale)
                                     .clip(CircleShape)
-                                    .background(if (!isUsingGpsLocation || hasLocationPermission) Secondary else BrandCoral)
+                                    .background(if (!isUsingGpsLocation) Color(0xFFD97706) else if (hasLocationPermission) Secondary else BrandCoral)
                             )
-                            Spacer(modifier = Modifier.width(3.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
                             Text(
                                 text = cityLabel,
                                 style = MaterialTheme.typography.labelSmall,
-                                color = if (!isUsingGpsLocation && selectedGlobalCity != null) BrandTeal
+                                color = if (!isUsingGpsLocation) Color(0xFFB45309)
                                        else if (hasLocationPermission) MaterialTheme.colorScheme.onSecondaryContainer else BrandCoral,
                                 fontSize = 9.sp,
                                 fontWeight = FontWeight.Bold

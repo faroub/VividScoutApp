@@ -31,7 +31,6 @@ class GeminiQueryService {
             "audioLore" to Schema.string(description = "Brief 2-sentence narration for audio listening"),
             "latitude" to Schema.double(description = "Latitude along the 5km corridor"),
             "longitude" to Schema.double(description = "Longitude along the 5km corridor"),
-            "rating" to Schema.double(description = "Rating out of 5.0 between 4.3 and 5.0"),
             "distanceText" to Schema.string(description = "Distance along corridor e.g. 1.2km ahead"),
             "tags" to Schema.array(
                 items = Schema.string(),
@@ -73,19 +72,20 @@ class GeminiQueryService {
      */
     suspend fun queryCorridorGems(vector: MovementVector): Result<List<ScoutSpotEntity>> {
         return try {
+            val cityName = com.example.data.model.GlobalCityCatalog.findNearestCityName(vector.originLat, vector.originLng)
             val prompt = """
-                You are VividScout Proximity Prefetch, an expert Lisbon guide AI.
+                You are VividScout Proximity Prefetch, an expert guide AI for $cityName.
                 The traveler is at start coordinates (${vector.originLat}, ${vector.originLng}) 
                 moving along heading ${vector.bearingDegrees.toInt()}° (${vector.cardinalDirection}) 
                 toward predicted destination coordinates (${vector.targetLat}, ${vector.targetLng}) 5000 meters ahead.
 
-                Identify 5 to 7 authentic, real, verified historical monuments, scenic miradouros, pastry shops, or hidden alleyways 
-                situated along this 5km movement corridor in Lisbon.
-                Coordinates must lie between the start coordinates and destination coordinates along this vector.
+                Identify 5 to 7 authentic, real, verified historical monuments, scenic viewpoints, culinary artisans, or hidden alleyways 
+                situated along this 5km movement corridor in $cityName.
+                Coordinates must lie strictly along the movement corridor between the start and destination coordinates.
                 Provide engaging 2-sentence audio lore for each spot.
             """.trimIndent()
 
-            Log.i(TAG, "Executing Proximity Prefetch query along 5km vector: ${vector.cardinalDirection} (${vector.bearingDegrees.toInt()}°)")
+            Log.i(TAG, "Executing Proximity Prefetch query for $cityName along 5km vector: ${vector.cardinalDirection} (${vector.bearingDegrees.toInt()}°)")
 
             val jsonText = try {
                 val response = withTimeout(15_000L) {
@@ -119,10 +119,11 @@ class GeminiQueryService {
         }
     }
 
-    private fun parseSpots(jsonString: String, vector: MovementVector): List<ScoutSpotEntity> {
+    internal fun parseSpots(jsonString: String, vector: MovementVector): List<ScoutSpotEntity> {
         val root = JSONObject(jsonString)
         val spotsArray = root.optJSONArray("spots") ?: return emptyList()
         val result = mutableListOf<ScoutSpotEntity>()
+        val detectedCityName = com.example.data.model.GlobalCityCatalog.findNearestCityName(vector.originLat, vector.originLng)
 
         for (i in 0 until spotsArray.length()) {
             val item = spotsArray.getJSONObject(i)
@@ -138,21 +139,21 @@ class GeminiQueryService {
                 continue
             }
 
-            val title = item.optString("title", "Lisbon Gem")
-            val locationName = item.optString("locationName", "Movement Corridor")
+            // Actual route corridor validation: candidate must fall within the defined movement vector corridor
+            if (!com.example.util.MovementVectorUtils.isPointInCorridor(spotLat, spotLng, vector)) {
+                Log.d(TAG, "Rejecting AI spot '${item.optString("title")}' at ($spotLat, $spotLng): outside 5km route corridor")
+                continue
+            }
+
+            val title = item.optString("title", "$detectedCityName Gem")
+            val locationName = item.optString("locationName", "$detectedCityName Corridor")
             val rawCategory = item.optString("category", "gems").lowercase()
             val description = item.optString("description", "Prefetched point of interest along your path.")
             val audioLore = item.optString("audioLore", description)
-            val upvotes: Int? = null // AI recommendations do not generate artificial upvote metrics; reserved for actual user activity
-            val rating = if (item.has("rating")) item.optDouble("rating").takeIf { !it.isNaN() } else null
-            val reviewCount: Int? = if (item.has("reviewCount")) {
-                val raw = item.opt("reviewCount")
-                when (raw) {
-                    is Number -> raw.toInt()
-                    is String -> raw.filter { it.isDigit() }.toIntOrNull()
-                    else -> null
-                }
-            } else null
+            val upvotes: Int? = null // AI recommendations do not generate artificial upvote metrics
+            // Eliminating artificial ratings: AI prefetched spots must have rating = null (reserved for genuine reviews)
+            val rating: Double? = null
+            val reviewCount: Int? = null
             val distanceText = item.optString("distanceText", "${(i + 1) * 800}m ahead")
 
             val tagsArray = item.optJSONArray("tags")
@@ -213,10 +214,16 @@ class GeminiQueryService {
     }
 
     /**
-     * Curated catalog of authentic Lisbon locations distributed proportionally along
+     * Curated catalog of authentic locations distributed proportionally along
      * the 5km trajectory vector when offline or experiencing high latency.
+     * Uses dynamic city detection via GlobalCityCatalog to ensure city-independence.
      */
     fun generateCuratedCorridorGems(vector: MovementVector): List<ScoutSpotEntity> {
+        val detectedCityName = com.example.data.model.GlobalCityCatalog.findNearestCityName(vector.originLat, vector.originLng)
+        val isLisbonArea = com.example.data.location.LocationTracker.distanceBetween(
+            vector.originLat, vector.originLng, 38.7112, -9.1423
+        ) < 80000f
+
         data class CorridorBlueprint(
             val title: String,
             val district: String,
@@ -226,48 +233,94 @@ class GeminiQueryService {
             val fraction: Double // Distance fraction along the 5km line (0.1 .. 0.9)
         )
 
-        val blueprints = listOf(
-            CorridorBlueprint(
-                title = "Miradouro do Chão do Loureiro",
-                district = "Castelo Slope",
-                category = "sights",
-                description = "Panoramic terrace atop an old market building with sweeping southern vistas over Baixa rooftops to the 25 de Abril Bridge.",
-                audioLore = "Built over the historic ramparts of the old Roman circus, this rooftop now hosts street artists and dusk acoustic sets.",
-                fraction = 0.2
-            ),
-            CorridorBlueprint(
-                title = "A Ginjinha do Rossio — Historic Kiosk",
-                district = "Largo de São Domingos",
-                category = "eats",
-                description = "Traditional 1840 hole-in-the-wall serving dark sour cherry liqueur steeped with Portuguese sugar cane brandy.",
-                audioLore = "Founded by a Galician friar named Francisco Rocha, who perfected the recipe with church sacristy herbs.",
-                fraction = 0.35
-            ),
-            CorridorBlueprint(
-                title = "Escadinhas da Saúde Cobblestone Staircase",
-                district = "Mouraria Ramparts",
-                category = "shortcut",
-                description = "Steep scenic pedestrian staircase connecting the Moorish quarter directly to Martim Moniz square beneath climbing wisteria.",
-                audioLore = "These steps survived the great earthquake of 1755 and served as a clandestine meeting route for fado singers in the 19th century.",
-                fraction = 0.5
-            ),
-            CorridorBlueprint(
-                title = "Igreja de São Domingos Historical Ruins",
-                district = "Praça Dom Pedro IV",
-                category = "history",
-                description = "Stunning 13th-century church whose scorched ochre pillars and dramatic unpainted ceiling bear marks of the catastrophic 1959 fire.",
-                audioLore = "Known as Lisbon's most atmospheric church, services are held under scorched stones that tell stories of eight centuries.",
-                fraction = 0.7
-            ),
-            CorridorBlueprint(
-                title = "Tasca do Jaime — Fado Vadio",
-                district = "Graça Promenade",
-                category = "eats",
-                description = "Intimate tavern where local neighborhood residents perform spontaneous amateur fado on weekend afternoons over petiscos.",
-                audioLore = "Don't expect menus here; Jaime serves whatever the morning market offered, paired with robust Alentejo red wine.",
-                fraction = 0.85
+        val blueprints = if (isLisbonArea) {
+            listOf(
+                CorridorBlueprint(
+                    title = "Miradouro do Chão do Loureiro",
+                    district = "Castelo Slope",
+                    category = "sights",
+                    description = "Panoramic terrace atop an old market building with sweeping southern vistas over Baixa rooftops to the 25 de Abril Bridge.",
+                    audioLore = "Built over the historic ramparts of the old Roman circus, this rooftop now hosts street artists and dusk acoustic sets.",
+                    fraction = 0.2
+                ),
+                CorridorBlueprint(
+                    title = "A Ginjinha do Rossio — Historic Kiosk",
+                    district = "Largo de São Domingos",
+                    category = "eats",
+                    description = "Traditional 1840 hole-in-the-wall serving dark sour cherry liqueur steeped with Portuguese sugar cane brandy.",
+                    audioLore = "Founded by a Galician friar named Francisco Rocha, who perfected the recipe with church sacristy herbs.",
+                    fraction = 0.35
+                ),
+                CorridorBlueprint(
+                    title = "Escadinhas da Saúde Cobblestone Staircase",
+                    district = "Mouraria Ramparts",
+                    category = "shortcut",
+                    description = "Steep scenic pedestrian staircase connecting the Moorish quarter directly to Martim Moniz square beneath climbing wisteria.",
+                    audioLore = "These steps survived the great earthquake of 1755 and served as a clandestine meeting route for fado singers in the 19th century.",
+                    fraction = 0.5
+                ),
+                CorridorBlueprint(
+                    title = "Igreja de São Domingos Historical Ruins",
+                    district = "Praça Dom Pedro IV",
+                    category = "history",
+                    description = "Stunning 13th-century church whose scorched ochre pillars and dramatic unpainted ceiling bear marks of the catastrophic 1959 fire.",
+                    audioLore = "Known as Lisbon's most atmospheric church, services are held under scorched stones that tell stories of eight centuries.",
+                    fraction = 0.7
+                ),
+                CorridorBlueprint(
+                    title = "Tasca do Jaime — Fado Vadio",
+                    district = "Graça Promenade",
+                    category = "eats",
+                    description = "Intimate tavern where local neighborhood residents perform spontaneous amateur fado on weekend afternoons over petiscos.",
+                    audioLore = "Don't expect menus here; Jaime serves whatever the morning market offered, paired with robust Alentejo red wine.",
+                    fraction = 0.85
+                )
             )
-        )
+        } else {
+            val simpleCity = detectedCityName.split(",").first().trim()
+            listOf(
+                CorridorBlueprint(
+                    title = "$simpleCity Panoramic Viewpoint",
+                    district = "$simpleCity Heights",
+                    category = "sights",
+                    description = "Elevated vantage point offering panoramic views over the historic rooftops and surrounding landscape of $simpleCity.",
+                    audioLore = "A celebrated scenic terrace providing sweeping vistas over $simpleCity's architectural landmarks.",
+                    fraction = 0.2
+                ),
+                CorridorBlueprint(
+                    title = "Old Town Artisan Bakery & Cafe",
+                    district = "$simpleCity Historic Center",
+                    category = "eats",
+                    description = "Charming neighborhood bakery specializing in handcrafted regional pastries, fresh breads, and espresso.",
+                    audioLore = "Family-owned artisan establishment renowned among local residents for morning delicacies.",
+                    fraction = 0.35
+                ),
+                CorridorBlueprint(
+                    title = "Cobblestone Passage & Historic Steps",
+                    district = "Old Quarter",
+                    category = "shortcut",
+                    description = "Picturesque pedestrian walkway offering a quiet detour away from main roads along historic masonry walls.",
+                    audioLore = "Historic pathway preserved through urban renovations, connecting ancient quarters.",
+                    fraction = 0.5
+                ),
+                CorridorBlueprint(
+                    title = "$simpleCity Heritage Monument",
+                    district = "Central Square",
+                    category = "history",
+                    description = "Centuries-old stone landmark and commemorative monument witnessing centuries of cultural transformation.",
+                    audioLore = "One of the most storied architectural monuments defining the heritage of $simpleCity.",
+                    fraction = 0.7
+                ),
+                CorridorBlueprint(
+                    title = "Local Culinary Taverna",
+                    district = "Market District",
+                    category = "eats",
+                    description = "Cozy local tavern serving regional specialties prepared daily with ingredients from nearby markets.",
+                    audioLore = "Beloved gathering place celebrating traditional regional recipes and hospitality.",
+                    fraction = 0.85
+                )
+            )
+        }
 
         return blueprints.mapIndexed { index, bp ->
             // Interpolate position along the vector from origin to target

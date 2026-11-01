@@ -12,7 +12,8 @@ import kotlinx.coroutines.withContext
 import java.util.UUID
 
 class CommunityTipRepository(
-    private val dao: CommunityTipDao
+    private val dao: CommunityTipDao,
+    private val context: android.content.Context? = null
 ) {
     val allTipsFlow: Flow<List<CommunityTipEntity>> = dao.getAllTipsFlow()
     val allStatusUpdatesFlow: Flow<List<CommunityTipEntity>> = dao.getAllStatusUpdatesFlow()
@@ -47,7 +48,18 @@ class CommunityTipRepository(
             isLocallyAuthored = true
         )
         dao.insertTip(newTip)
+        context?.let { ctx ->
+            com.example.data.sync.FirestoreSyncManager.postCommunityTipToCloud(ctx, newTip)
+        }
         newTip
+    }
+
+    suspend fun syncWithCloud(scoutDao: com.example.data.local.ScoutDao? = null): Pair<Int, Int> = withContext(Dispatchers.IO) {
+        val ctx = context ?: return@withContext Pair(0, 0)
+        val db = com.example.data.local.AppDatabase.getDatabase(ctx)
+        com.example.data.sync.FirestoreSyncManager.syncRemoteContentDown(
+            ctx, dao, scoutDao ?: db.scoutDao()
+        )
     }
 
     suspend fun upvoteTip(tipId: String) = withContext(Dispatchers.IO) {

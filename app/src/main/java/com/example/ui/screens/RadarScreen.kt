@@ -128,6 +128,9 @@ fun RadarScreen(
     userLocation: Location? = null,
     hasLocationPermission: Boolean = true,
     isPreciseLocation: Boolean = true,
+    isUsingGpsLocation: Boolean = true,
+    selectedGlobalCity: String? = null,
+    onGpsClick: () -> Unit = {},
     onRequestLocationPermission: () -> Unit = {},
     onSpotClick: (ScoutSpotEntity) -> Unit,
     onToggleSave: (ScoutSpotEntity) -> Unit = {},
@@ -209,6 +212,61 @@ fun RadarScreen(
         contentPadding = PaddingValues(bottom = 120.dp, top = 8.dp, start = 16.dp, end = 16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
+        // 0. Fallback Location Status Indicator Banner
+        if (!isUsingGpsLocation) {
+            item {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color(0xFFFEF3C7),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFF59E0B)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onGpsClick() }
+                        .testTag("radar_fallback_location_banner")
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(text = "📍", fontSize = 18.sp)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                Text(
+                                    text = "Fallback Location Mode Active",
+                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = Color(0xFF92400E)
+                                )
+                                Text(
+                                    text = "Simulated radar for ${selectedGlobalCity ?: "selected city"}. Tap to change.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color(0xFFB45309),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(999.dp),
+                            color = Color(0xFFD97706)
+                        ) {
+                            Text(
+                                text = "GPS OFF",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                color = Color.White,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                fontSize = 10.sp
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         // 1. Permission Rationale Banner (if permission not yet granted)
         if (!hasLocationPermission) {
             item {
