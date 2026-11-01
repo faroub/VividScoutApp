@@ -160,7 +160,8 @@ data class AppStringsData(
     val communityEmptyNotesDesc: String,
     val communityDemoModeActive: String,
     val communityDemoPeersConnected: String,
-    val prototypeBadge: String
+    val prototypeBadge: String,
+    val votingAvailableAfterSync: String
 )
 
 val EnglishStrings = AppStringsData(
@@ -307,7 +308,8 @@ val EnglishStrings = AppStringsData(
     communityEmptyNotesDesc = "Save notes and live updates for Lisbon gems on this device.",
     communityDemoModeActive = "Demo Mode Active",
     communityDemoPeersConnected = "Demo Peers: 3 sample nodes simulated",
-    prototypeBadge = "PROTOTYPE"
+    prototypeBadge = "PROTOTYPE",
+    votingAvailableAfterSync = "Voting available after cloud sync"
 )
 
 val FrenchStrings = AppStringsData(
@@ -454,7 +456,8 @@ val FrenchStrings = AppStringsData(
     communityEmptyNotesDesc = "Enregistrez des notes et alertes en direct pour les pépites de Lisbonne sur cet appareil.",
     communityDemoModeActive = "Mode Démo Actif",
     communityDemoPeersConnected = "Pairs de démo : 3 nœuds simulés",
-    prototypeBadge = "PROTOTYPE"
+    prototypeBadge = "PROTOTYPE",
+    votingAvailableAfterSync = "Vote disponible après synchronisation cloud"
 )
 
 val ArabicStrings = AppStringsData(
@@ -601,7 +604,8 @@ val ArabicStrings = AppStringsData(
     communityEmptyNotesDesc = "احفظ الملاحظات والتحديثات الحية لمعالم لشبونة على هذا الجهاز.",
     communityDemoModeActive = "وضع العرض التوضيحي مفعّل",
     communityDemoPeersConnected = "عقد تجريبية: 3 عقد تمثيلية",
-    prototypeBadge = "نموذج أولي"
+    prototypeBadge = "نموذج أولي",
+    votingAvailableAfterSync = "التصويت متاح بعد المزامنة السحابية"
 )
 
 val LocalAppLanguage = staticCompositionLocalOf { AppLanguage.ENGLISH }

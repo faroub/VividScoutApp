@@ -141,7 +141,8 @@ object FirestoreSyncManager {
      */
     suspend fun postCommunityTipToCloud(
         context: Context,
-        tip: CommunityTipEntity
+        tip: CommunityTipEntity,
+        tipDao: CommunityTipDao? = null
     ): Boolean = withContext(Dispatchers.IO) {
         if (!ensureFirebaseAuth()) {
             Log.w(TAG, "Cannot post tip '${tip.id}': Firebase Auth required for Firestore writes")
@@ -168,6 +169,7 @@ object FirestoreSyncManager {
                 .set(tipData, SetOptions.merge())
                 .await()
 
+            tipDao?.markTipAsSynced(tip.id)
             Log.i(TAG, "Posted community tip '${tip.id}' to cloud Firestore")
             true
         } catch (e: Exception) {
@@ -235,10 +237,10 @@ object FirestoreSyncManager {
         context: Context,
         tipDao: CommunityTipDao
     ): Int = withContext(Dispatchers.IO) {
-        val pendingTips = tipDao.getLocallyAuthoredTipsSync()
+        val pendingTips = tipDao.getLocallyAuthoredTipsSync().filter { !it.isSyncedToCloud }
         var successCount = 0
         for (tip in pendingTips) {
-            if (postCommunityTipToCloud(context, tip)) {
+            if (postCommunityTipToCloud(context, tip, tipDao)) {
                 successCount++
             }
         }
@@ -286,7 +288,8 @@ object FirestoreSyncManager {
                         statusCategory = (doc.getString("statusCategory") ?: "INSIGHT").trim().take(32),
                         upvotes = (doc.getLong("upvotes") ?: 1L).toInt().coerceAtLeast(1),
                         peerNodeId = "cloud-firestore",
-                        isLocallyAuthored = false
+                        isLocallyAuthored = false,
+                        isSyncedToCloud = true
                     )
                 )
             }

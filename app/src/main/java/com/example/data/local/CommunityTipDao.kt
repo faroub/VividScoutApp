@@ -43,6 +43,9 @@ interface CommunityTipDao {
     @Query("SELECT * FROM community_tips WHERE isLocallyAuthored = 1")
     suspend fun getLocallyAuthoredTipsSync(): List<CommunityTipEntity>
 
+    @Query("UPDATE community_tips SET isSyncedToCloud = 1 WHERE id = :tipId")
+    suspend fun markTipAsSynced(tipId: String)
+
     @Query("SELECT COUNT(*) FROM community_tips")
     suspend fun getTipCount(): Int
 }

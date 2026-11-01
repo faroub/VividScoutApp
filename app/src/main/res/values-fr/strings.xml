@@ -120,4 +120,5 @@
     <string name="location_settings_card_title">Télémétrie GPS &amp; Autorisations</string>
     <string name="location_settings_card_desc">Suivi FusedLocationProvider haute précision</string>
     <string name="prototype_badge">PROTOTYPE</string>
+    <string name="voting_available_after_sync">Vote disponible après synchronisation cloud</string>
 </resources>

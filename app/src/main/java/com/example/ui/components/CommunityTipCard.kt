@@ -1,6 +1,7 @@
 package com.example.ui.components
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -211,28 +212,50 @@ fun CommunityTipCard(
                     fontSize = 10.sp
                 )
 
-                // Upvote Button
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(999.dp))
-                        .background(PrimaryContainer.copy(alpha = 0.08f))
-                        .clickable { onUpvoteClick(tip.id) }
-                        .padding(horizontal = 10.dp, vertical = 4.dp)
-                        .testTag("upvote_tip_${tip.id}")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.ThumbUp,
-                        contentDescription = "Upvote",
-                        tint = PrimaryContainer,
-                        modifier = Modifier.size(14.dp)
-                    )
-                    if (tip.upvotes > 0) {
-                        Spacer(modifier = Modifier.width(4.dp))
+                // Upvote Button OR Unsynced Voting Note
+                if (tip.isSyncedToCloud) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(PrimaryContainer.copy(alpha = 0.08f))
+                            .clickable { onUpvoteClick(tip.id) }
+                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                            .testTag("upvote_tip_${tip.id}")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ThumbUp,
+                            contentDescription = "Upvote",
+                            tint = PrimaryContainer,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        if (tip.upvotes > 0) {
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "${tip.upvotes}",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                color = PrimaryContainer
+                            )
+                        }
+                    }
+                } else {
+                    Surface(
+                        shape = RoundedCornerShape(999.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        border = BorderStroke(
+                            1.dp,
+                            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                        ),
+                        modifier = Modifier.testTag("unsynced_voting_note_${tip.id}")
+                    ) {
                         Text(
-                            text = "${tip.upvotes}",
-                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                            color = PrimaryContainer
+                            text = strings.votingAvailableAfterSync,
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Medium
+                            ),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                         )
                     }
                 }

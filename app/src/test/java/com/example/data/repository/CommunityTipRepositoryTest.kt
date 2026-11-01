@@ -58,7 +58,74 @@ class CommunityTipRepositoryTest {
         assertEquals("Frauenkirche View", tip.spotTitle)
         assertEquals("@dresden_scout", tip.authorName)
         assertEquals(0, tip.upvotes)
+        assertFalse("Newly posted tip starts unsynced", tip.isSyncedToCloud)
         assertTrue(tip.isLocallyAuthored)
+    }
+
+    @Test
+    fun upvoteTip_syncedTipCanBeVoted() = runBlocking {
+        val syncedTip = CommunityTipEntity(
+            id = "tip_synced_100",
+            spotId = "spot_1",
+            spotTitle = "Synced Spot",
+            authorName = "@synced_scout",
+            content = "Great view!",
+            timestamp = System.currentTimeMillis(),
+            upvotes = 3,
+            isSyncedToCloud = true
+        )
+        tipDao.insertTip(syncedTip)
+
+        val voteResult = repository.upvoteTip("tip_synced_100", "user_123")
+        assertTrue("Synced tip must be votable", voteResult)
+
+        val updatedTip = tipDao.getTipById("tip_synced_100")
+        assertEquals(4, updatedTip?.upvotes)
+    }
+
+    @Test
+    fun upvoteTip_unsyncedTipCannotBeVoted() = runBlocking {
+        val unsyncedTip = CommunityTipEntity(
+            id = "tip_unsynced_200",
+            spotId = "spot_2",
+            spotTitle = "Unsynced Local Draft",
+            authorName = "@local_scout",
+            content = "Local note",
+            timestamp = System.currentTimeMillis(),
+            upvotes = 0,
+            isSyncedToCloud = false
+        )
+        tipDao.insertTip(unsyncedTip)
+
+        val voteResult = repository.upvoteTip("tip_unsynced_200", "user_123")
+        assertFalse("Unsynced tip must NOT be votable", voteResult)
+
+        val updatedTip = tipDao.getTipById("tip_unsynced_200")
+        assertEquals(0, updatedTip?.upvotes)
+    }
+
+    @Test
+    fun markTipAsSynced_setsFlagAfterSuccessfulSync() = runBlocking {
+        val draftTip = CommunityTipEntity(
+            id = "tip_to_sync",
+            spotId = "spot_3",
+            spotTitle = "Draft Spot",
+            authorName = "@author",
+            content = "Local content",
+            timestamp = System.currentTimeMillis(),
+            upvotes = 0,
+            isSyncedToCloud = false
+        )
+        tipDao.insertTip(draftTip)
+
+        assertFalse("Initial draft is unsynced", tipDao.getTipById("tip_to_sync")?.isSyncedToCloud == true)
+
+        // Mark as synced after successful cloud write
+        tipDao.markTipAsSynced("tip_to_sync")
+
+        val syncedTip = tipDao.getTipById("tip_to_sync")
+        assertNotNull(syncedTip)
+        assertTrue("isSyncedToCloud flag must be set to true after sync", syncedTip?.isSyncedToCloud == true)
     }
 
     @Test
@@ -70,7 +137,8 @@ class CommunityTipRepositoryTest {
             authorName = "@test",
             content = "Great spot!",
             timestamp = System.currentTimeMillis(),
-            upvotes = 3
+            upvotes = 3,
+            isSyncedToCloud = true
         )
         tipDao.insertTip(initialTip)
 
@@ -104,7 +172,8 @@ class CommunityTipRepositoryTest {
             authorName = "@scout",
             content = "Awesome view!",
             timestamp = System.currentTimeMillis(),
-            upvotes = 0
+            upvotes = 0,
+            isSyncedToCloud = true
         )
         tipDao.insertTip(initialTip)
 

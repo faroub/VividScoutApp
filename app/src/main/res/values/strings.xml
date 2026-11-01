@@ -126,4 +126,5 @@
     <string name="cache_health_critical">Needs Fetch</string>
     <string name="pre_cache_vicinity">Pre-Cache Vicinity Now</string>
     <string name="prototype_badge">PROTOTYPE</string>
+    <string name="voting_available_after_sync">Voting available after cloud sync</string>
 </resources>

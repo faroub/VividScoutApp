@@ -120,4 +120,5 @@
     <string name="location_settings_card_title">بيانات GPS والأذونات</string>
     <string name="location_settings_card_desc">تتبع FusedLocationProvider عالي الدقة</string>
     <string name="prototype_badge">نموذج أولي</string>
+    <string name="voting_available_after_sync">التصويت متاح بعد المزامنة السحابية</string>
 </resources>
