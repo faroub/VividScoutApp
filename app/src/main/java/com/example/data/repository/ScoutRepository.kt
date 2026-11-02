@@ -158,6 +158,24 @@ class ScoutRepository(
     }
 
     private val overpassRetrofitClient = com.example.data.network.OverpassRetrofitClient()
+    private val wikidataSearchService = com.example.data.network.WikidataSearchService()
+
+    suspend fun fetchAndSaveWikidataGems(
+        lat: Double,
+        lng: Double,
+        category: String = "all",
+        radiusKm: Double = 5.0
+    ): Result<Int> = withContext(Dispatchers.IO) {
+        try {
+            val spots = wikidataSearchService.fetchNearbyWikidataSpots(lat, lng, category, radiusKm)
+            if (spots.isNotEmpty()) {
+                scoutDao.insertSpots(spots)
+            }
+            Result.success(spots.size)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
 
     suspend fun scrapeAndSaveOsmGems(
         lat: Double,

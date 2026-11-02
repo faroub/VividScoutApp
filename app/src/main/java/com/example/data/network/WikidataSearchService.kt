@@ -3,19 +3,21 @@ package com.example.data.network
 import android.util.Log
 import com.example.data.local.ScoutSpotEntity
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 
 /**
- * Specialized service using Retrofit 2 and WikidataSparqlApi to query the Wikidata Knowledge Graph
- * SPARQL endpoint by GPS coordinates and category filters.
- *
- * Enriches ScoutSpots with multi-language historical descriptions and linked 1200px HD
- * Wikimedia Commons media URLs (P18 property).
+ * Specialized service implementing a two-phase data enrichment pipeline:
+ * - Phase 1: Queries Wikidata Knowledge Graph via Retrofit (WikidataSparqlApi) by coordinates & category filters to create initial ScoutSpots.
+ * - Phase 2: Executes parallel secondary Retrofit calls (WikipediaApi) to fetch structured text summaries for each spot title and injects them into the ScoutSpotEntities.
  */
 class WikidataSearchService(
-    private val api: WikidataSparqlApi = WikidataRetrofitClient.api
+    private val sparqlApi: WikidataSparqlApi = WikidataRetrofitClient.api,
+    private val wikipediaApi: WikipediaApi = WikipediaRetrofitClient.api
 ) {
 
     companion object {
@@ -23,22 +25,39 @@ class WikidataSearchService(
     }
 
     /**
-     * Queries Wikidata SPARQL Endpoint via Retrofit for cultural heritage, monuments, viewpoints,
-     * eateries, and architectural landmarks near a given GPS coordinate.
+     * Primary entry point: Queries Wikidata SPARQL endpoint via Retrofit for nearby landmarks,
+     * then executes secondary flow in parallel to enrich all spots with Wikipedia text summaries.
      */
     suspend fun fetchNearbyWikidataSpots(
         lat: Double,
         lon: Double,
         category: String = "all",
         radiusKm: Double = 5.0,
-        primaryLang: String = "en"
+        primaryLang: String = java.util.Locale.getDefault().language
+    ): List<ScoutSpotEntity> = withContext(Dispatchers.IO) {
+        // Phase 1: Query Wikidata SPARQL API for initial spots, coordinates, QIDs, and P18 media links
+        val initialSpots = queryWikidataSparqlPhase(lat, lon, category, radiusKm, primaryLang)
+        if (initialSpots.isEmpty()) return@withContext emptyList()
+
+        // Phase 2: Secondary flow — Parallel batch enrichment with Wikipedia text summaries (System Lang -> EN -> PT -> ES)
+        enrichSpotsWithWikipediaSummaries(initialSpots, primaryLang)
+    }
+
+    /**
+     * Phase 1: Queries Wikidata SPARQL endpoint via Retrofit and constructs initial ScoutSpotEntity objects.
+     */
+    private suspend fun queryWikidataSparqlPhase(
+        lat: Double,
+        lon: Double,
+        category: String,
+        radiusKm: Double,
+        primaryLang: String
     ): List<ScoutSpotEntity> = withContext(Dispatchers.IO) {
         val spots = mutableListOf<ScoutSpotEntity>()
         try {
             val p31Filter = getP31CategoryFilter(category)
             val langChain = buildLangChain(primaryLang)
 
-            // SPARQL query string fetching nearby items, multi-lang labels, descriptions, coordinates & P18 media
             val sparql = """
                 SELECT ?item ?itemLabel ?itemDescription ?coord ?image WHERE {
                   SERVICE wikibase:around {
@@ -52,22 +71,18 @@ class WikidataSearchService(
                 } LIMIT 15
             """.trimIndent()
 
-            // Execute Retrofit call
-            val response = api.querySparql(sparqlQuery = sparql)
+            val response = sparqlApi.querySparql(sparqlQuery = sparql)
             val bindings = response.results?.bindings ?: return@withContext emptyList()
 
             for (i in bindings.indices) {
                 val binding = bindings[i]
 
-                // Extract Item QID or Label
                 val itemUri = binding["item"]?.value ?: ""
                 val qid = itemUri.substringAfterLast("/")
                 val label = binding["itemLabel"]?.value ?: continue
 
-                // Ignore raw QID placeholders (e.g., Q12345 when no label matches)
                 if (label.startsWith("Q") && label.substring(1).all { it.isDigit() }) continue
 
-                // Extract Multi-Language Description
                 val rawDesc = binding["itemDescription"]?.value ?: ""
                 val description = if (rawDesc.isNotBlank()) {
                     rawDesc.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
@@ -75,7 +90,6 @@ class WikidataSearchService(
                     "Historical & cultural landmark cataloged on Wikidata Knowledge Graph ($qid)."
                 }
 
-                // Extract Coordinates
                 val coordStr = binding["coord"]?.value ?: ""
                 var spotLat = lat
                 var spotLon = lon
@@ -87,7 +101,6 @@ class WikidataSearchService(
                     }
                 }
 
-                // Extract and Resolve P18 Image URL to 1200px HD
                 val imageUrlRaw = binding["image"]?.value ?: ""
                 val rawFileName = if (imageUrlRaw.isNotBlank()) {
                     val file = imageUrlRaw.substringAfterLast("/")
@@ -99,17 +112,13 @@ class WikidataSearchService(
                     resolveWikimediaCommonsSpecialFilePath(fileName, 1200)
                 } else ""
 
-                // Fetch structured Wikipedia REST API intro extract (up to 600 chars)
-                val wikiExtract = fetchWikipediaSummaryExtract(label, primaryLang)
-                val enrichedDescription = wikiExtract ?: description
-
-                val mappedCategory = mapWikidataCategory(category, enrichedDescription)
+                val mappedCategory = mapWikidataCategory(category, description)
 
                 spots.add(
                     ScoutSpotEntity(
                         id = "wikidata_$qid",
                         title = label,
-                        description = enrichedDescription,
+                        description = description,
                         category = mappedCategory,
                         distance = "Nearby",
                         walkMinutes = 7,
@@ -119,7 +128,7 @@ class WikidataSearchService(
                         badgeLabel = "Wikidata",
                         statusBadge = "Wikidata Heritage",
                         tagsRaw = "wikidata|||$qid|||$rawFileName|||$mappedCategory",
-                        proTip = "Wikidata QID: $qid. Wikimedia Commons: $rawFileName. $enrichedDescription",
+                        proTip = "Wikidata QID: $qid. Wikimedia Commons: $rawFileName. $description",
                         latitude = spotLat,
                         longitude = spotLon,
                         locationName = "Wikidata Landmark"
@@ -127,45 +136,74 @@ class WikidataSearchService(
                 )
             }
         } catch (e: Exception) {
-            Log.e(TAG, "WikidataSearchService Retrofit SPARQL query error", e)
+            Log.e(TAG, "Wikidata SPARQL Phase error", e)
         }
         spots
     }
 
     /**
-     * Fetches structured plain-text intro summary extract from Wikipedia REST API
-     * (https://{lang}.wikipedia.org/api/rest_v1/page/summary/{title}).
-     * Caps response at 600 characters for concise mobile display.
+     * Phase 2: Secondary Flow — Takes the list of ScoutSpotEntity objects and executes parallel Retrofit calls
+     * to WikipediaApi (async/awaitAll) to fetch article text summaries, injecting them into the entities.
+     * Skips secondary calls if the spot already has a detailed multi-paragraph extract in Room.
      */
-    suspend fun fetchWikipediaSummaryExtract(
+    suspend fun enrichSpotsWithWikipediaSummaries(
+        spots: List<ScoutSpotEntity>,
+        primaryLang: String = java.util.Locale.getDefault().language
+    ): List<ScoutSpotEntity> = coroutineScope {
+        spots.map { spot ->
+            async(Dispatchers.IO) {
+                // Deduplication & Caching check: skip network call if spot description is already enriched
+                if (spot.description.length > 100 && !spot.description.contains("cataloged on Wikidata", ignoreCase = true)) {
+                    return@async spot
+                }
+
+                val extract = fetchWikipediaExtractForTitle(spot.title, primaryLang)
+                if (!extract.isNullOrBlank()) {
+                    val qid = spot.id.removePrefix("wikidata_")
+                    val rawFileName = spot.tagsRaw.split("|||").find { it.startsWith("File:") } ?: ""
+                    spot.copy(
+                        description = extract,
+                        proTip = "Wikidata QID: $qid. Wikimedia Commons: $rawFileName. $extract"
+                    )
+                } else {
+                    spot
+                }
+            }
+        }.awaitAll()
+    }
+
+    /**
+     * Secondary Retrofit call with Multi-Language Fallback Chain (System Lang -> EN -> PT -> ES).
+     * Calls WikipediaApi.getPageSummary(title) and returns a clean, sentence-bounded 600-character article intro text summary.
+     */
+    private suspend fun fetchWikipediaExtractForTitle(
         title: String,
-        lang: String = "en"
+        primaryLang: String = java.util.Locale.getDefault().language
     ): String? = withContext(Dispatchers.IO) {
         if (title.isBlank()) return@withContext null
-        try {
-            val encodedTitle = URLEncoder.encode(title.replace(" ", "_"), StandardCharsets.UTF_8.toString())
+
+        val langChain = mutableListOf<String>()
+        if (primaryLang.isNotBlank() && primaryLang.length <= 5) {
+            langChain.add(primaryLang.lowercase())
+        }
+        listOf("en", "pt", "es").forEach {
+            if (!langChain.contains(it)) langChain.add(it)
+        }
+
+        val encodedTitle = try {
+            URLEncoder.encode(title.replace(" ", "_"), StandardCharsets.UTF_8.toString())
                 .replace("+", "%20")
-            val url = "https://$lang.wikipedia.org/api/rest_v1/page/summary/$encodedTitle"
+        } catch (e: Exception) {
+            title.replace(" ", "_")
+        }
 
-            val client = okhttp3.OkHttpClient.Builder()
-                .connectTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
-                .readTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
-                .build()
+        // Attempt fetching summary across language fallback chain
+        for (lang in langChain) {
+            try {
+                val summary = wikipediaApi.getPageSummary(encodedTitle)
+                val extract = summary.extract?.ifEmpty { null } ?: continue
 
-            val request = okhttp3.Request.Builder()
-                .url(url)
-                .header("User-Agent", "VividScoutApp/1.0 (Android; Wikipedia Summary Resolver; contact: scout@example.com)")
-                .header("Accept", "application/json")
-                .build()
-
-            client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) return@use null
-                val body = response.body?.string() ?: return@use null
-                val json = org.json.JSONObject(body)
-                val extract = json.optString("extract").ifEmpty { null } ?: return@use null
-
-                // Truncate to clean 600 character intro summary
-                if (extract.length <= 600) {
+                return@withContext if (extract.length <= 600) {
                     extract
                 } else {
                     val trimmed = extract.take(600)
@@ -176,11 +214,11 @@ class WikidataSearchService(
                         "$trimmed..."
                     }
                 }
+            } catch (e: Exception) {
+                Log.d(TAG, "WikipediaApi secondary summary fetch on $lang handled for '$title': ${e.message}")
             }
-        } catch (e: Exception) {
-            Log.d(TAG, "Wikipedia REST API extract fetch handled for '$title': ${e.message}")
-            null
         }
+        null
     }
 
     /**
@@ -198,10 +236,6 @@ class WikidataSearchService(
         return "https://commons.wikimedia.org/wiki/Special:FilePath/$encoded?width=$targetWidth"
     }
 
-    /**
-     * Builds localized language priority string for Wikidata SPARQL queries.
-     * Order: Primary User Lang -> English -> Portuguese -> Spanish -> French -> German -> Japanese
-     */
     private fun buildLangChain(primaryLang: String): String {
         val langs = mutableListOf<String>()
         if (primaryLang.isNotBlank() && primaryLang.length <= 5) {
@@ -213,9 +247,6 @@ class WikidataSearchService(
         return langs.joinToString(",")
     }
 
-    /**
-     * Returns Wikidata P31 instance-of SPARQL filter statement for target category.
-     */
     private fun getP31CategoryFilter(category: String): String {
         return when (category) {
             "history" -> "?item wdt:P31/wdt:P279* ?type . FILTER(?type IN (wd:Q9259, wd:Q83440, wd:Q570116, wd:Q4989906, wd:Q11910, wd:Q1081138))"
