@@ -44,7 +44,13 @@ class ScoutGemRepository(
     private val discoveredGemDao: DiscoveredGemDao? = null,
     private val recentSearchDao: RecentSearchDao? = null,
     val overpassClient: OverpassRetrofitClient = OverpassRetrofitClient(),
-    val geminiSpotService: GeminiSpotService = GeminiSpotService()
+    val geminiSpotService: GeminiSpotService = GeminiSpotService(),
+    val openTripMapService: com.example.data.network.OpenTripMapService = com.example.data.network.OpenTripMapService(),
+    val geonamesService: com.example.data.network.GeonamesService = com.example.data.network.GeonamesService(),
+    val unescoService: com.example.data.network.UnescoHeritageService = com.example.data.network.UnescoHeritageService(),
+    val europeanaService: com.example.data.network.EuropeanaCulturalService = com.example.data.network.EuropeanaCulturalService(),
+    val municipalService: com.example.data.network.MunicipalOpenDataService = com.example.data.network.MunicipalOpenDataService(),
+    val wikidataSearchService: com.example.data.network.WikidataSearchService = com.example.data.network.WikidataSearchService()
 ) {
 
     val recentSearches: Flow<List<RecentSearchEntity>> =
@@ -297,6 +303,148 @@ class ScoutGemRepository(
                 }
             )
         }
+    }
+
+    /**
+     * Fetches touristic spots directly from OpenTripMap global POI service into Room.
+     */
+    suspend fun syncOpenTripMapGems(
+        userLat: Double = DefaultLocationConfig.DEFAULT_LAT,
+        userLng: Double = DefaultLocationConfig.DEFAULT_LNG,
+        radiusMeters: Int = 3000
+    ): Result<Int> = withContext(Dispatchers.IO) {
+        val spots = openTripMapService.fetchTouristicPlaces(userLat, userLng, radiusMeters)
+        if (spots.isNotEmpty()) {
+            deduplicateAndInsert(spots)
+            CoroutineScope(Dispatchers.IO).launch {
+                enrichSpotsPhotosInBackground(spots)
+            }
+        }
+        Result.success(spots.size)
+    }
+
+    /**
+     * Fetches heritage monuments and landmarks from Wikidata SPARQL graph service into Room.
+     */
+    suspend fun syncWikidataGems(
+        userLat: Double = DefaultLocationConfig.DEFAULT_LAT,
+        userLng: Double = DefaultLocationConfig.DEFAULT_LNG,
+        category: String = "all"
+    ): Result<Int> = withContext(Dispatchers.IO) {
+        val spots = wikidataSearchService.fetchNearbyWikidataSpots(userLat, userLng, category)
+        if (spots.isNotEmpty()) {
+            deduplicateAndInsert(spots)
+            CoroutineScope(Dispatchers.IO).launch {
+                enrichSpotsPhotosInBackground(spots)
+            }
+        }
+        Result.success(spots.size)
+    }
+
+    /**
+     * Fetches gazetteer geographical POIs from GeoNames database into Room.
+     */
+    suspend fun syncGeonamesGems(
+        userLat: Double = DefaultLocationConfig.DEFAULT_LAT,
+        userLng: Double = DefaultLocationConfig.DEFAULT_LNG
+    ): Result<Int> = withContext(Dispatchers.IO) {
+        val spots = geonamesService.fetchNearbyGeonamesPOIs(userLat, userLng)
+        if (spots.isNotEmpty()) {
+            deduplicateAndInsert(spots)
+            CoroutineScope(Dispatchers.IO).launch {
+                enrichSpotsPhotosInBackground(spots)
+            }
+        }
+        Result.success(spots.size)
+    }
+
+    /**
+     * Fetches official UNESCO World Heritage properties into Room.
+     */
+    suspend fun syncUnescoGems(
+        userLat: Double = DefaultLocationConfig.DEFAULT_LAT,
+        userLng: Double = DefaultLocationConfig.DEFAULT_LNG
+    ): Result<Int> = withContext(Dispatchers.IO) {
+        val spots = unescoService.fetchNearbyUnescoSites(userLat, userLng)
+        if (spots.isNotEmpty()) {
+            deduplicateAndInsert(spots)
+            CoroutineScope(Dispatchers.IO).launch {
+                enrichSpotsPhotosInBackground(spots)
+            }
+        }
+        Result.success(spots.size)
+    }
+
+    /**
+     * Fetches European cultural heritage repository items into Room.
+     */
+    suspend fun syncEuropeanaGems(
+        locationName: String = "Lisbon",
+        userLat: Double = DefaultLocationConfig.DEFAULT_LAT,
+        userLng: Double = DefaultLocationConfig.DEFAULT_LNG
+    ): Result<Int> = withContext(Dispatchers.IO) {
+        val spots = europeanaService.fetchEuropeanaCulturalSpots(locationName, userLat, userLng)
+        if (spots.isNotEmpty()) {
+            deduplicateAndInsert(spots)
+            CoroutineScope(Dispatchers.IO).launch {
+                enrichSpotsPhotosInBackground(spots)
+            }
+        }
+        Result.success(spots.size)
+    }
+
+    /**
+     * Fetches municipal open data public art, walking trails, and parks into Room.
+     */
+    suspend fun syncMunicipalGems(
+        cityName: String = "Lisbon",
+        userLat: Double = DefaultLocationConfig.DEFAULT_LAT,
+        userLng: Double = DefaultLocationConfig.DEFAULT_LNG
+    ): Result<Int> = withContext(Dispatchers.IO) {
+        val spots = municipalService.fetchMunicipalDataSpots(cityName, userLat, userLng)
+        if (spots.isNotEmpty()) {
+            deduplicateAndInsert(spots)
+            CoroutineScope(Dispatchers.IO).launch {
+                enrichSpotsPhotosInBackground(spots)
+            }
+        }
+        Result.success(spots.size)
+    }
+
+    /**
+     * Queries all active touristic place sources simultaneously (OpenTripMap, Wikidata, Overpass, GeoNames, UNESCO, Europeana, Municipal Open Data, Gemini AI).
+     */
+    suspend fun syncMultiSourceGems(
+        userLat: Double = DefaultLocationConfig.DEFAULT_LAT,
+        userLng: Double = DefaultLocationConfig.DEFAULT_LNG,
+        cityName: String = "Lisbon",
+        sourceIds: List<String> = listOf("open_trip_map", "wikivoyage_wikidata", "overpass_osm", "geonames_gazetteer", "unesco_world_heritage", "europeana_cultural", "municipal_open_data", "firebase_gemini_ai")
+    ): Result<Int> = withContext(Dispatchers.IO) {
+        var totalFetched = 0
+
+        if (sourceIds.contains("open_trip_map")) {
+            totalFetched += syncOpenTripMapGems(userLat, userLng).getOrDefault(0)
+        }
+        if (sourceIds.contains("wikivoyage_wikidata")) {
+            totalFetched += syncWikidataGems(userLat, userLng).getOrDefault(0)
+        }
+        if (sourceIds.contains("geonames_gazetteer")) {
+            totalFetched += syncGeonamesGems(userLat, userLng).getOrDefault(0)
+        }
+        if (sourceIds.contains("unesco_world_heritage")) {
+            totalFetched += syncUnescoGems(userLat, userLng).getOrDefault(0)
+        }
+        if (sourceIds.contains("europeana_cultural")) {
+            totalFetched += syncEuropeanaGems(cityName, userLat, userLng).getOrDefault(0)
+        }
+        if (sourceIds.contains("municipal_open_data")) {
+            totalFetched += syncMunicipalGems(cityName, userLat, userLng).getOrDefault(0)
+        }
+        if (sourceIds.contains("overpass_osm") || sourceIds.contains("firebase_gemini_ai")) {
+            totalFetched += syncLiveOsmGems(userLat, userLng).getOrDefault(0)
+        }
+
+        Result.success(totalFetched)
     }
 
     private suspend fun deduplicateAndInsert(spots: List<ScoutSpotEntity>) {

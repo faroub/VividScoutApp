@@ -46,6 +46,7 @@ import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.PauseCircle
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
@@ -160,6 +161,7 @@ fun ExploreScreen(
     preScoutState: com.example.engine.PreScoutBannerState = com.example.engine.PreScoutBannerState(),
     onDismissPreScout: () -> Unit = {},
     onViewPreScout: () -> Unit = {},
+    onOpenTouristicSources: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val strings = LocalAppStrings.current
@@ -385,6 +387,37 @@ fun ExploreScreen(
                                     text = "Discover Gems",
                                     style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                                     color = PrimaryContainer
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.width(6.dp))
+
+                        Surface(
+                            shape = RoundedCornerShape(999.dp),
+                            color = BrandTeal.copy(alpha = 0.15f),
+                            modifier = Modifier
+                                .clickable { onOpenTouristicSources() }
+                                .testTag("open_touristic_sources_button")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Public,
+                                    contentDescription = null,
+                                    tint = BrandTeal,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "Sources",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.sp
+                                    ),
+                                    color = BrandTeal
                                 )
                             }
                         }

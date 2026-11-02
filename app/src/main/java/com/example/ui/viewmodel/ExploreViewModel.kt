@@ -44,7 +44,9 @@ data class ExploreUiState(
     val playingAudioId: String? = null,
     val isAwaitingLocation: Boolean = true,
     val isDiscoveringGems: Boolean = false,
-    val activeMapLayers: Set<ExploreMapLayer> = ExploreMapLayer.ALL_LAYERS
+    val activeMapLayers: Set<ExploreMapLayer> = ExploreMapLayer.ALL_LAYERS,
+    val showTouristicSourcesModal: Boolean = false,
+    val isSyncingTouristicSources: Boolean = false
 )
 
 class ExploreViewModel(
@@ -141,6 +143,12 @@ class ExploreViewModel(
     private val _activeMapLayers = MutableStateFlow<Set<ExploreMapLayer>>(ExploreMapLayer.ALL_LAYERS)
     val activeMapLayers: StateFlow<Set<ExploreMapLayer>> = _activeMapLayers.asStateFlow()
 
+    private val _showTouristicSourcesModal = MutableStateFlow(false)
+    val showTouristicSourcesModal: StateFlow<Boolean> = _showTouristicSourcesModal.asStateFlow()
+
+    private val _isSyncingTouristicSources = MutableStateFlow(false)
+    val isSyncingTouristicSources: StateFlow<Boolean> = _isSyncingTouristicSources.asStateFlow()
+
     val uiState: StateFlow<ExploreUiState> = combine(
         filteredSpots,
         allSpots,
@@ -152,7 +160,9 @@ class ExploreViewModel(
         _selectedGlobalCity,
         _showGlobalCityDialog,
         _preScoutBannerState,
-        _activeMapLayers
+        _activeMapLayers,
+        _showTouristicSourcesModal,
+        _isSyncingTouristicSources
     ) { vals: Array<Any?> ->
         @Suppress("UNCHECKED_CAST")
         ExploreUiState(
@@ -173,7 +183,9 @@ class ExploreViewModel(
             playingAudioId = _playingAudioId.value,
             isAwaitingLocation = _isAwaitingLocation.value,
             isDiscoveringGems = _isDiscoveringGems.value,
-            activeMapLayers = vals[10] as Set<ExploreMapLayer>
+            activeMapLayers = vals[10] as Set<ExploreMapLayer>,
+            showTouristicSourcesModal = vals[11] as Boolean,
+            isSyncingTouristicSources = vals[12] as Boolean
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ExploreUiState())
 
@@ -382,6 +394,52 @@ class ExploreViewModel(
                 _isScrapingOsm.value = false
                 delay(4000)
                 _osmScrapeMessage.value = null
+            }
+        }
+    }
+
+    fun openTouristicSourcesModal() {
+        _showTouristicSourcesModal.value = true
+    }
+
+    fun dismissTouristicSourcesModal() {
+        _showTouristicSourcesModal.value = false
+    }
+
+    fun syncTouristicSource(sourceId: String) {
+        val coords = _userCoordinates.value ?: Pair(DefaultLocationConfig.DEFAULT_LAT, DefaultLocationConfig.DEFAULT_LNG)
+        val city = _selectedGlobalCity.value
+        viewModelScope.launch(Dispatchers.IO) {
+            _isSyncingTouristicSources.value = true
+            try {
+                when (sourceId) {
+                    "open_trip_map" -> gemRepository.syncOpenTripMapGems(coords.first, coords.second)
+                    "wikivoyage_wikidata" -> gemRepository.syncWikidataGems(coords.first, coords.second)
+                    "geonames_gazetteer" -> gemRepository.syncGeonamesGems(coords.first, coords.second)
+                    "unesco_world_heritage" -> gemRepository.syncUnescoGems(coords.first, coords.second)
+                    "europeana_cultural" -> gemRepository.syncEuropeanaGems(city, coords.first, coords.second)
+                    "municipal_open_data" -> gemRepository.syncMunicipalGems(city, coords.first, coords.second)
+                    else -> gemRepository.syncLiveOsmGems(coords.first, coords.second)
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("ExploreViewModel", "Failed to sync touristic source $sourceId: ${e.message}")
+            } finally {
+                _isSyncingTouristicSources.value = false
+            }
+        }
+    }
+
+    fun syncAllTouristicSources() {
+        val coords = _userCoordinates.value ?: Pair(DefaultLocationConfig.DEFAULT_LAT, DefaultLocationConfig.DEFAULT_LNG)
+        val city = _selectedGlobalCity.value
+        viewModelScope.launch(Dispatchers.IO) {
+            _isSyncingTouristicSources.value = true
+            try {
+                gemRepository.syncMultiSourceGems(coords.first, coords.second, cityName = city)
+            } catch (e: Exception) {
+                android.util.Log.w("ExploreViewModel", "Failed multi-source sync: ${e.message}")
+            } finally {
+                _isSyncingTouristicSources.value = false
             }
         }
     }

@@ -54,7 +54,7 @@ class VividScoutApplication : Application(), ImageLoaderFactory {
                 val originalRequest = chain.request()
                 val requestWithUserAgent = originalRequest.newBuilder()
                     .header("User-Agent", "VividScoutApp/1.0 (Android; Location Photo Resolver; contact: scout@example.com)")
-                    .header("Accept", "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8")
+                    .header("Accept", "image/jpeg,image/png,image/webp,image/svg+xml,*/*;q=0.8")
                     .build()
                 chain.proceed(requestWithUserAgent)
             }

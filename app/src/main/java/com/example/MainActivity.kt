@@ -336,7 +336,8 @@ fun VividScoutApp(
                                         },
                                         preScoutState = exploreState.preScoutBannerState,
                                         onDismissPreScout = { exploreViewModel.dismissPreScoutBanner() },
-                                        onViewPreScout = { exploreViewModel.filterPreScoutedSpots() }
+                                        onViewPreScout = { exploreViewModel.filterPreScoutedSpots() },
+                                        onOpenTouristicSources = { exploreViewModel.openTouristicSourcesModal() }
                                     )
                                 }
 
@@ -598,6 +599,16 @@ fun VividScoutApp(
                             }
                         },
                         onDismiss = { exploreViewModel.dismissGlobalCityDialog() }
+                    )
+                }
+
+                // Touristic Place Sources Modal Dialog
+                if (exploreState.showTouristicSourcesModal) {
+                    com.example.ui.dialogs.TouristicSourcesModal(
+                        onDismiss = { exploreViewModel.dismissTouristicSourcesModal() },
+                        onSyncSource = { sourceId -> exploreViewModel.syncTouristicSource(sourceId) },
+                        onSyncAllSources = { exploreViewModel.syncAllTouristicSources() },
+                        isSyncing = exploreState.isSyncingTouristicSources
                     )
                 }
 
