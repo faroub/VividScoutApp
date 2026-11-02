@@ -99,13 +99,17 @@ class WikidataSearchService(
                     resolveWikimediaCommonsSpecialFilePath(fileName, 1200)
                 } else ""
 
-                val mappedCategory = mapWikidataCategory(category, description)
+                // Fetch structured Wikipedia REST API intro extract (up to 600 chars)
+                val wikiExtract = fetchWikipediaSummaryExtract(label, primaryLang)
+                val enrichedDescription = wikiExtract ?: description
+
+                val mappedCategory = mapWikidataCategory(category, enrichedDescription)
 
                 spots.add(
                     ScoutSpotEntity(
                         id = "wikidata_$qid",
                         title = label,
-                        description = description,
+                        description = enrichedDescription,
                         category = mappedCategory,
                         distance = "Nearby",
                         walkMinutes = 7,
@@ -115,7 +119,7 @@ class WikidataSearchService(
                         badgeLabel = "Wikidata",
                         statusBadge = "Wikidata Heritage",
                         tagsRaw = "wikidata|||$qid|||$rawFileName|||$mappedCategory",
-                        proTip = "Wikidata QID: $qid. Wikimedia Commons: $rawFileName. $description",
+                        proTip = "Wikidata QID: $qid. Wikimedia Commons: $rawFileName. $enrichedDescription",
                         latitude = spotLat,
                         longitude = spotLon,
                         locationName = "Wikidata Landmark"
@@ -126,6 +130,57 @@ class WikidataSearchService(
             Log.e(TAG, "WikidataSearchService Retrofit SPARQL query error", e)
         }
         spots
+    }
+
+    /**
+     * Fetches structured plain-text intro summary extract from Wikipedia REST API
+     * (https://{lang}.wikipedia.org/api/rest_v1/page/summary/{title}).
+     * Caps response at 600 characters for concise mobile display.
+     */
+    suspend fun fetchWikipediaSummaryExtract(
+        title: String,
+        lang: String = "en"
+    ): String? = withContext(Dispatchers.IO) {
+        if (title.isBlank()) return@withContext null
+        try {
+            val encodedTitle = URLEncoder.encode(title.replace(" ", "_"), StandardCharsets.UTF_8.toString())
+                .replace("+", "%20")
+            val url = "https://$lang.wikipedia.org/api/rest_v1/page/summary/$encodedTitle"
+
+            val client = okhttp3.OkHttpClient.Builder()
+                .connectTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+                .readTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+                .build()
+
+            val request = okhttp3.Request.Builder()
+                .url(url)
+                .header("User-Agent", "VividScoutApp/1.0 (Android; Wikipedia Summary Resolver; contact: scout@example.com)")
+                .header("Accept", "application/json")
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@use null
+                val body = response.body?.string() ?: return@use null
+                val json = org.json.JSONObject(body)
+                val extract = json.optString("extract").ifEmpty { null } ?: return@use null
+
+                // Truncate to clean 600 character intro summary
+                if (extract.length <= 600) {
+                    extract
+                } else {
+                    val trimmed = extract.take(600)
+                    val lastPeriod = trimmed.lastIndexOf('.')
+                    if (lastPeriod > 200) {
+                        trimmed.substring(0, lastPeriod + 1)
+                    } else {
+                        "$trimmed..."
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.d(TAG, "Wikipedia REST API extract fetch handled for '$title': ${e.message}")
+            null
+        }
     }
 
     /**
