@@ -51,108 +51,73 @@ import com.example.ui.viewmodel.MainTab
 fun BottomNavigationDock(
     currentTab: MainTab,
     onTabSelected: (MainTab) -> Unit,
-    onAddSpotClick: () -> Unit,
+    onAddSpotClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val strings = com.example.ui.theme.LocalAppStrings.current
 
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .navigationBarsPadding()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        contentAlignment = Alignment.BottomCenter
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        color = SurfaceContainerLowest.copy(alpha = 0.98f),
+        shadowElevation = 8.dp,
+        border = androidx.compose.foundation.BorderStroke(
+            0.5.dp,
+            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+        )
     ) {
-        Surface(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(66.dp)
-                .shadow(
-                    elevation = 16.dp,
-                    shape = RoundedCornerShape(999.dp),
-                    spotColor = Color(0x2E111827),
-                    ambientColor = Color(0x1F111827)
-                ),
-            shape = RoundedCornerShape(999.dp),
-            color = SurfaceContainerLowest.copy(alpha = 0.96f)
+                .navigationBarsPadding()
+                .height(64.dp)
+                .padding(horizontal = 12.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.SpaceAround,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Tab 1: Explore
-                NavTabItem(
-                    title = strings.explore,
-                    selected = currentTab == MainTab.EXPLORE,
-                    selectedIcon = Icons.Filled.Explore,
-                    unselectedIcon = Icons.Outlined.Explore,
-                    testTag = "nav_tab_explore",
-                    onClick = { onTabSelected(MainTab.EXPLORE) },
-                    modifier = Modifier.weight(1f)
-                )
+            // Tab 1: Explore
+            NavTabItem(
+                title = strings.explore,
+                selected = currentTab == MainTab.EXPLORE,
+                selectedIcon = Icons.Filled.Explore,
+                unselectedIcon = Icons.Outlined.Explore,
+                testTag = "nav_tab_explore",
+                onClick = { onTabSelected(MainTab.EXPLORE) },
+                modifier = Modifier.weight(1f)
+            )
 
+            // Tab 2: Community
+            NavTabItem(
+                title = "Community",
+                selected = currentTab == MainTab.COMMUNITY,
+                selectedIcon = Icons.Filled.Forum,
+                unselectedIcon = Icons.Outlined.Forum,
+                showDot = true,
+                testTag = "nav_tab_community",
+                onClick = { onTabSelected(MainTab.COMMUNITY) },
+                modifier = Modifier.weight(1f)
+            )
 
-                // Tab 3: Community
-                NavTabItem(
-                    title = "Community",
-                    selected = currentTab == MainTab.COMMUNITY,
-                    selectedIcon = Icons.Filled.Forum,
-                    unselectedIcon = Icons.Outlined.Forum,
-                    showDot = true,
-                    testTag = "nav_tab_community",
-                    onClick = { onTabSelected(MainTab.COMMUNITY) },
-                    modifier = Modifier.weight(1f)
-                )
+            // Tab 3: Saved
+            NavTabItem(
+                title = strings.saved,
+                selected = currentTab == MainTab.SAVED,
+                selectedIcon = Icons.Filled.Favorite,
+                unselectedIcon = Icons.Outlined.FavoriteBorder,
+                testTag = "nav_tab_saved",
+                onClick = { onTabSelected(MainTab.SAVED) },
+                modifier = Modifier.weight(1f)
+            )
 
-                // Center Primary '+' FAB
-                Box(
-                    modifier = Modifier
-                        .padding(horizontal = 2.dp)
-                        .size(46.dp)
-                        .shadow(
-                            elevation = 8.dp,
-                            shape = CircleShape,
-                            spotColor = PrimaryContainer.copy(alpha = 0.5f)
-                        )
-                        .clip(CircleShape)
-                        .background(PrimaryContainer)
-                        .clickable { onAddSpotClick() }
-                        .testTag("nav_add_spot_button"),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Add,
-                        contentDescription = strings.spotAGem,
-                        tint = Color.White,
-                        modifier = Modifier.size(26.dp)
-                    )
-                }
-
-                // Tab 4: Saved
-                NavTabItem(
-                    title = strings.saved,
-                    selected = currentTab == MainTab.SAVED,
-                    selectedIcon = Icons.Filled.Favorite,
-                    unselectedIcon = Icons.Outlined.FavoriteBorder,
-                    testTag = "nav_tab_saved",
-                    onClick = { onTabSelected(MainTab.SAVED) },
-                    modifier = Modifier.weight(1f)
-                )
-
-                // Tab 5: Profile
-                NavTabItem(
-                    title = strings.profile,
-                    selected = currentTab == MainTab.PROFILE,
-                    selectedIcon = Icons.Filled.Person,
-                    unselectedIcon = Icons.Outlined.PersonOutline,
-                    testTag = "nav_tab_profile",
-                    onClick = { onTabSelected(MainTab.PROFILE) },
-                    modifier = Modifier.weight(1f)
-                )
-            }
+            // Tab 4: Profile
+            NavTabItem(
+                title = strings.profile,
+                selected = currentTab == MainTab.PROFILE,
+                selectedIcon = Icons.Filled.Person,
+                unselectedIcon = Icons.Outlined.PersonOutline,
+                testTag = "nav_tab_profile",
+                onClick = { onTabSelected(MainTab.PROFILE) },
+                modifier = Modifier.weight(1f)
+            )
         }
     }
 }

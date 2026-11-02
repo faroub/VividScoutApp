@@ -255,6 +255,7 @@ fun VividScoutApp(
                             onSearchClick = { mainViewModel.navigateToTab(MainTab.EXPLORE) },
                             onRouteClick = { offlineMapsViewModel.openRoutePlanner() },
                             onProfileClick = { mainViewModel.navigateToTab(MainTab.PROFILE) },
+                            onAddSpotClick = { mainViewModel.openSubmitModal() },
                             onToggleHeaderStyle = { exploreViewModel.cycleHeaderStyle() },
                             onLanguageClick = { profileViewModel.openLanguageDialog() },
                             onGpsClick = { exploreViewModel.openGlobalCityDialog() },

@@ -66,7 +66,6 @@ import com.example.data.local.computedWalkMinutes
 import androidx.compose.material.icons.filled.Route
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -117,8 +116,8 @@ import com.example.ui.theme.SurfaceContainer
 import com.example.ui.theme.SurfaceContainerHigh
 import com.example.ui.theme.SurfaceContainerLow
 import com.example.ui.theme.SurfaceContainerLowest
+import androidx.compose.material.icons.filled.Layers
 import com.example.data.model.ExploreMapLayer
-import com.example.ui.components.ExploreLayerController
 import com.example.ui.theme.Tertiary
 import com.example.ui.theme.TertiaryFixed
 
@@ -170,7 +169,7 @@ fun ExploreScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .testTag("explore_feed_list"),
-            contentPadding = PaddingValues(bottom = 120.dp),
+            contentPadding = PaddingValues(bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // 0. Fallback Location Status Indicator Banner
@@ -328,6 +327,17 @@ fun ExploreScreen(
                 }
             }
 
+            // Pinned Inline Toolbar Strip: Map & Route + Map Overlays (No floating buttons)
+            item {
+                Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)) {
+                    ExploreControlToolbarStrip(
+                        activeMapLayers = activeMapLayers,
+                        onToggleMapLayer = onToggleMapLayer,
+                        onPlanRouteClick = onPlanRouteClick
+                    )
+                }
+            }
+
             // Section Title: Trending Around You
             item {
                 Row(
@@ -450,130 +460,137 @@ fun ExploreScreen(
                 }
             }
         }
+    }
+}
 
-        // Sticky Quick Action Floating Bar above Bottom Nav
-        Box(
+/**
+ * Pinned inline toolbar strip for Explore screen containing Map & Route launcher
+ * and multi-select Historical, Culinary, and Shortcut overlay chips (Zero floating buttons).
+ */
+@Composable
+fun ExploreControlToolbarStrip(
+    activeMapLayers: Set<ExploreMapLayer>,
+    onToggleMapLayer: (ExploreMapLayer) -> Unit,
+    onPlanRouteClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = SurfaceContainerLow,
+        shadowElevation = 2.dp,
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+        ),
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag("explore_control_toolbar_strip")
+    ) {
+        Column(
             modifier = Modifier
-                .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .padding(bottom = 76.dp, start = 16.dp, end = 16.dp)
-                .testTag("sticky_quick_action_bar"),
-            contentAlignment = Alignment.Center
+                .padding(horizontal = 14.dp, vertical = 10.dp)
         ) {
-            Surface(
-                shape = RoundedCornerShape(999.dp),
-                color = SurfaceContainerLowest.copy(alpha = 0.95f),
-                shadowElevation = 14.dp,
-                modifier = Modifier.fillMaxWidth()
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                // Map & Route Action Button (Inline, non-floating)
+                Surface(
+                    onClick = onPlanRouteClick,
+                    shape = RoundedCornerShape(999.dp),
+                    color = BrandNight,
+                    shadowElevation = 3.dp,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, BrandTeal.copy(alpha = 0.5f)),
+                    modifier = Modifier.testTag("inline_map_route_button")
                 ) {
                     Row(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clickable {
-                                if (!hasLocationPermission) {
-                                    onRequestLocationPermission()
-                                }
-                            }
-                            .testTag("explore_gps_status_bar"),
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(8.dp)
-                                .clip(CircleShape)
-                                .background(if (hasLocationPermission) Secondary else BrandCoral)
+                        Icon(
+                            imageVector = Icons.Default.Route,
+                            contentDescription = "Map & Route",
+                            tint = BrandTeal,
+                            modifier = Modifier.size(16.dp)
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        val gpsText = if (hasLocationPermission) {
-                            if (userLocation != null) {
-                                "GPS Active (±${userLocation.accuracy.toInt()}m)"
-                            } else {
-                                strings.gpsActive
-                            }
-                        } else {
-                            strings.gpsInactiveTap
-                        }
+                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = gpsText,
-                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                            color = if (hasLocationPermission) MaterialTheme.colorScheme.onSurface else BrandCoral,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            text = "Map & Route",
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.5.sp
+                            ),
+                            color = Color.White
                         )
                     }
+                }
 
-                    Button(
-                        onClick = onAddSpotClick,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = PrimaryContainer,
-                            contentColor = Color.White
-                        ),
+                // Map Overlays Title
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Layers,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(15.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "Map Overlays",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Inline segmented layer toggle chips (Historical, Culinary, Shortcut)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                ExploreMapLayer.entries.forEach { layer ->
+                    val isActive = activeMapLayers.contains(layer)
+                    Surface(
+                        onClick = { onToggleMapLayer(layer) },
                         shape = RoundedCornerShape(999.dp),
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                        modifier = Modifier.testTag("floating_spot_gem_button")
+                        color = if (isActive) layer.color.copy(alpha = 0.18f) else SurfaceContainerLowest,
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            if (isActive) layer.color else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                        ),
+                        shadowElevation = if (isActive) 2.dp else 0.dp,
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("inline_layer_chip_${layer.id}")
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.AddLocationAlt,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
+                        Row(
+                            modifier = Modifier.padding(vertical = 7.dp),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(7.dp)
+                                    .clip(CircleShape)
+                                    .background(if (isActive) layer.color else Color.Gray.copy(alpha = 0.4f))
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = strings.spotAGem,
-                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                                text = layer.displayName,
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium,
+                                    fontSize = 11.sp
+                                ),
+                                color = if (isActive) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
                 }
             }
         }
-
-        // Floating Layer Controller for Historical, Culinary & Shortcut Overlays
-        ExploreLayerController(
-            activeLayers = activeMapLayers,
-            spots = spots,
-            onToggleLayer = onToggleMapLayer,
-            onSetAllLayers = onSetAllMapLayers,
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(bottom = 208.dp, end = 16.dp)
-        )
-
-        // Floating Map & Route Planner Action Button directly on Explore feed
-        ExtendedFloatingActionButton(
-            onClick = onPlanRouteClick,
-            icon = {
-                Icon(
-                    imageVector = Icons.Default.Route,
-                    contentDescription = "Plan Walking Route",
-                    modifier = Modifier.size(20.dp)
-                )
-            },
-            text = {
-                Text(
-                    text = "Map & Route",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 13.sp
-                )
-            },
-            containerColor = BrandNight,
-            contentColor = BrandTeal,
-            shape = RoundedCornerShape(999.dp),
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(bottom = 142.dp, end = 16.dp)
-                .shadow(12.dp, RoundedCornerShape(999.dp))
-                .border(1.dp, BrandTeal.copy(alpha = 0.5f), RoundedCornerShape(999.dp))
-                .testTag("floating_route_planner_button")
-        )
     }
 }
 

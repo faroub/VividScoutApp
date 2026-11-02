@@ -59,11 +59,14 @@ import com.example.ui.theme.SecondaryContainer
 import com.example.ui.theme.SecondaryFixed
 import com.example.ui.theme.SurfaceContainerLowest
 
+import androidx.compose.material.icons.filled.AddLocationAlt
+
 @Composable
 fun VividScoutTopBar(
     onSearchClick: () -> Unit,
     onRouteClick: () -> Unit = {},
     onProfileClick: () -> Unit,
+    onAddSpotClick: () -> Unit = {},
     onToggleHeaderStyle: () -> Unit,
     onLanguageClick: () -> Unit,
     onGpsClick: () -> Unit = {},
@@ -332,6 +335,33 @@ fun VividScoutTopBar(
                         tint = Secondary,
                         modifier = Modifier.size(20.dp)
                     )
+                }
+
+                // Spot a Gem Action Button (Integrated non-floating)
+                Surface(
+                    onClick = onAddSpotClick,
+                    shape = RoundedCornerShape(999.dp),
+                    color = PrimaryContainer,
+                    shadowElevation = 2.dp,
+                    modifier = Modifier.testTag("topbar_add_spot_button")
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AddLocationAlt,
+                            contentDescription = "Spot a Gem",
+                            tint = Color.White,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "Spot",
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                            color = Color.White
+                        )
+                    }
                 }
 
                 // Search button

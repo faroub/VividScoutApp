@@ -44,7 +44,6 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -130,30 +129,63 @@ fun CommunityFeedScreen(
     Box(modifier = modifier.fillMaxSize().testTag("community_feed_screen")) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             // Header Section
             item {
-                Column(modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)) {
-                    Text(
-                        text = strings.communityNotesTitle,
-                        style = MaterialTheme.typography.labelMedium.copy(
-                            fontWeight = FontWeight.Black,
-                            letterSpacing = 1.2.sp
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp, bottom = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                        Text(
+                            text = strings.communityNotesTitle,
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontWeight = FontWeight.Black,
+                                letterSpacing = 1.2.sp
+                            ),
+                            color = PrimaryContainer
+                        )
+                        Text(
+                            text = "Lisbon Scout Notes & Insights",
+                            style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = strings.communityNotesSubtitle,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Button(
+                        onClick = { isPostModalOpen = true },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = PrimaryContainer,
+                            contentColor = Color.White
                         ),
-                        color = PrimaryContainer
-                    )
-                    Text(
-                        text = "Lisbon Scout Notes & Insights",
-                        style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        text = strings.communityNotesSubtitle,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                        modifier = Modifier.testTag("nav_post_tip_fab")
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = "Post Note",
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Text(
+                                text = "Post",
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                            )
+                        }
+                    }
                 }
             }
 
@@ -310,29 +342,6 @@ fun CommunityFeedScreen(
             }
         }
 
-        // Floating Broadcast Action Button
-        FloatingActionButton(
-            onClick = { isPostModalOpen = true },
-            containerColor = PrimaryContainer,
-            contentColor = Color.White,
-            shape = RoundedCornerShape(16.dp),
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(end = 16.dp, bottom = 80.dp)
-                .testTag("nav_post_tip_fab")
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Icon(imageVector = Icons.Default.Add, contentDescription = "Post Note")
-                Text(
-                    text = "Post Note",
-                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
-                )
-            }
-        }
 
         // Modal Composer Bottom Sheet
         PostTipDialog(
