@@ -91,14 +91,29 @@ class ScoutGemRepository(
     val lastDiagnosticLog: kotlinx.coroutines.flow.StateFlow<com.example.data.network.OverpassDiagnosticLog?> =
         overpassClient.lastDiagnosticLog
 
+    private val attemptedEnrichmentIds = java.util.Collections.synchronizedSet(HashSet<String>())
+    private val repositoryScope = CoroutineScope(Dispatchers.IO)
+
     /**
      * Reactive stream of all ScoutGems directly backed by Room database.
+     * Automatically triggers reactive background photo resolution via Wikimedia Commons API
+     * whenever new spot entities stream into Room.
      */
     fun observeGems(
         userLat: Double = DefaultLocationConfig.activeFallbackLat,
         userLng: Double = DefaultLocationConfig.activeFallbackLng
     ): Flow<List<ScoutGem>> {
         return scoutDao.getAllSpots().map { spotEntities ->
+            val unEnriched = spotEntities.filter { spot ->
+                !attemptedEnrichmentIds.contains(spot.id) &&
+                        com.example.util.LocationPhotoResolver.isGenericOrStockPhoto(spot.imageUrl)
+            }
+            if (unEnriched.isNotEmpty()) {
+                unEnriched.forEach { attemptedEnrichmentIds.add(it.id) }
+                repositoryScope.launch {
+                    enrichSpotsPhotosInBackground(unEnriched)
+                }
+            }
             spotEntities.map { entity -> entity.toScoutGem(userLat, userLng) }
         }
     }
@@ -363,8 +378,8 @@ class ScoutGemRepository(
 
     /**
      * Automatically enriches spots having placeholder or generic image URLs
-     * by querying live Wikipedia & Wikimedia Commons APIs and caching the authentic
-     * image URLs directly in the Room database for permanent offline availability.
+     * by querying live Wikipedia & Wikimedia Commons APIs for 1200px HD resolution metadata
+     * and caching the authentic image URLs directly in the Room database for permanent offline availability.
      */
     suspend fun enrichSpotsPhotosInBackground(spots: List<ScoutSpotEntity> = emptyList()) = withContext(Dispatchers.IO) {
         val targets = if (spots.isNotEmpty()) {
@@ -388,11 +403,19 @@ class ScoutGemRepository(
                 )
                 if (resolved.url.isNotBlank() && !com.example.util.LocationPhotoResolver.isGenericOrStockPhoto(resolved.url)) {
                     scoutDao.updateImageUrl(spot.id, resolved.url)
-                    android.util.Log.i("ScoutGemRepository", "Successfully enriched real photo for '${spot.title}': ${resolved.url}")
+                    android.util.Log.i(
+                        "ScoutGemRepository",
+                        "Wikimedia Commons Resolution SUCCESS: Validated 1200px HD photo for '${spot.title}': ${resolved.url}"
+                    )
+                } else {
+                    android.util.Log.i(
+                        "ScoutGemRepository",
+                        "Wikimedia Commons Resolution FALLBACK: No match found for '${spot.title}'. Retaining existing image '${spot.imageUrl}'."
+                    )
                 }
-                delay(120L) // Polite delay between Wikipedia REST queries
+                delay(120L) // Polite delay between network queries
             } catch (e: Exception) {
-                android.util.Log.w("ScoutGemRepository", "Background photo enrichment failed for ${spot.id}: ${e.message}")
+                android.util.Log.w("ScoutGemRepository", "Background photo enrichment error for ${spot.id} ('${spot.title}'): ${e.message}")
             }
         }
     }

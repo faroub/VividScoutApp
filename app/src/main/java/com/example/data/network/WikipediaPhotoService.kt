@@ -34,7 +34,7 @@ class WikipediaPhotoService(
      * Resolves an authentic Wikimedia Commons image URL from an OpenStreetMap `wikimedia_commons` tag
      * (e.g., "File:Miradouro de Santa Luzia.jpg" or "Miradouro_de_Santa_Luzia.jpg").
      */
-    fun resolveWikimediaCommonsTag(commonsTag: String?, targetWidth: Int = 800): String? {
+    fun resolveWikimediaCommonsTag(commonsTag: String?, targetWidth: Int = 1200): String? {
         if (commonsTag.isNullOrBlank()) return null
         val cleaned = commonsTag.trim().removePrefix("File:").removePrefix("Image:").trim()
         if (cleaned.isBlank()) return null
@@ -50,23 +50,70 @@ class WikipediaPhotoService(
     }
 
     /**
+     * Queries Wikimedia Commons API for 1200px HD resolution image metadata directly using gem names.
+     */
+    suspend fun fetchWikimediaCommonsHighResUrl(query: String, targetWidth: Int = 1200): WikipediaPhotoResult? = withContext(Dispatchers.IO) {
+        val cleaned = cleanTitleForWiki(query)
+        if (cleaned.length < 3) return@withContext null
+        try {
+            val encoded = URLEncoder.encode(cleaned, StandardCharsets.UTF_8.toString()).replace("+", "%20")
+            val url = "https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=$encoded&gsrnamespace=6&gsrlimit=1&prop=imageinfo&iiprop=url&iiurlwidth=$targetWidth&format=json"
+            val request = Request.Builder()
+                .url(url)
+                .header("User-Agent", USER_AGENT)
+                .header("Accept", "application/json")
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@withContext null
+                val body = response.body?.string() ?: return@withContext null
+                val root = JSONObject(body)
+                val pagesObj = root.optJSONObject("query")?.optJSONObject("pages") ?: return@withContext null
+                val keys = pagesObj.keys()
+                if (keys.hasNext()) {
+                    val key = keys.next()
+                    val pageObj = pagesObj.optJSONObject(key) ?: return@withContext null
+                    val imageInfoArr = pageObj.optJSONArray("imageinfo") ?: return@withContext null
+                    if (imageInfoArr.length() > 0) {
+                        val infoObj = imageInfoArr.getJSONObject(0)
+                        val photoUrl = infoObj.optString("thumburl").ifEmpty { infoObj.optString("url") }
+                        val fileTitle = pageObj.optString("title", cleaned)
+                        if (photoUrl.isNotBlank()) {
+                            Log.i(TAG, "Wikimedia Commons API returned 1200px HD photo for '$query': $photoUrl")
+                            return@withContext WikipediaPhotoResult(
+                                photoUrl = photoUrl,
+                                attribution = "Wikimedia Commons / $fileTitle",
+                                pageTitle = fileTitle,
+                                description = "Wikimedia Commons HD image metadata"
+                            )
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.d(TAG, "Wikimedia Commons high-res lookup failed for '$query': ${e.message}")
+        }
+        null
+    }
+
+    /**
      * Resolves a photo by querying Wikipedia REST Summary API across languages (English, local, etc.).
      */
-    suspend fun fetchWikipediaPhotoByTitle(title: String): WikipediaPhotoResult? = withContext(Dispatchers.IO) {
+    suspend fun fetchWikipediaPhotoByTitle(title: String, targetWidth: Int = 1200): WikipediaPhotoResult? = withContext(Dispatchers.IO) {
         val cleaned = cleanTitleForWiki(title)
         if (cleaned.isBlank()) return@withContext null
 
         // 1. English Wikipedia first (broadest coverage globally)
-        fetchPageSummary("en", cleaned)?.let { return@withContext it }
+        fetchPageSummary("en", cleaned, targetWidth)?.let { return@withContext it }
 
         // 2. Portuguese Wikipedia
-        fetchPageSummary("pt", cleaned)?.let { return@withContext it }
+        fetchPageSummary("pt", cleaned, targetWidth)?.let { return@withContext it }
 
         // 3. Spanish / French / German / Japanese Wikipedia
-        fetchPageSummary("es", cleaned)?.let { return@withContext it }
-        fetchPageSummary("fr", cleaned)?.let { return@withContext it }
-        fetchPageSummary("de", cleaned)?.let { return@withContext it }
-        fetchPageSummary("ja", cleaned)?.let { return@withContext it }
+        fetchPageSummary("es", cleaned, targetWidth)?.let { return@withContext it }
+        fetchPageSummary("fr", cleaned, targetWidth)?.let { return@withContext it }
+        fetchPageSummary("de", cleaned, targetWidth)?.let { return@withContext it }
+        fetchPageSummary("ja", cleaned, targetWidth)?.let { return@withContext it }
 
         null
     }
@@ -74,7 +121,7 @@ class WikipediaPhotoService(
     /**
      * Resolves a photo from an OSM `wikipedia` tag (e.g., "en:Eiffel Tower", "pt:Miradouro de Santa Luzia").
      */
-    suspend fun fetchWikipediaPhotoFromTag(tagValue: String): WikipediaPhotoResult? = withContext(Dispatchers.IO) {
+    suspend fun fetchWikipediaPhotoFromTag(tagValue: String, targetWidth: Int = 1200): WikipediaPhotoResult? = withContext(Dispatchers.IO) {
         val trimmed = tagValue.trim()
         val parts = trimmed.split(":", limit = 2)
         val (lang, title) = if (parts.size == 2 && parts[0].length <= 5) {
@@ -82,7 +129,7 @@ class WikipediaPhotoService(
         } else {
             Pair("en", trimmed)
         }
-        fetchPageSummary(lang, title)
+        fetchPageSummary(lang, title, targetWidth)
     }
 
     /**
@@ -93,14 +140,15 @@ class WikipediaPhotoService(
         lat: Double,
         lon: Double,
         radiusMeters: Int = 2000,
-        primaryLang: String = "en"
+        primaryLang: String = "en",
+        targetWidth: Int = 1200
     ): List<WikipediaPhotoResult> = withContext(Dispatchers.IO) {
         val results = mutableListOf<WikipediaPhotoResult>()
         val languages = if (primaryLang == "pt") listOf("pt", "en") else listOf("en", "pt")
 
         for (lang in languages) {
             try {
-                val url = "https://$lang.wikipedia.org/w/api.php?action=query&generator=geosearch&ggscoord=$lat|$lon&ggsradius=$radiusMeters&ggslimit=8&prop=pageimages|description&piprop=thumbnail|original&pithumbsize=800&format=json"
+                val url = "https://$lang.wikipedia.org/w/api.php?action=query&generator=geosearch&ggscoord=$lat|$lon&ggsradius=$radiusMeters&ggslimit=8&prop=pageimages|description&piprop=thumbnail|original&pithumbsize=$targetWidth&format=json"
                 val request = Request.Builder()
                     .url(url)
                     .header("User-Agent", USER_AGENT)
@@ -126,7 +174,7 @@ class WikipediaPhotoService(
                         if (!photoUrl.isNullOrBlank()) {
                             if (photoUrl.contains("/thumb/")) {
                                 val regex = Regex("/\\d+px-")
-                                photoUrl = photoUrl.replace(regex, "/800px-")
+                                photoUrl = photoUrl.replace(regex, "/${targetWidth}px-")
                             }
                             results.add(
                                 WikipediaPhotoResult(
@@ -150,7 +198,7 @@ class WikipediaPhotoService(
     /**
      * Searches Wikipedia via OpenSearch / Search API and fetches the thumbnail of the top result.
      */
-    suspend fun searchWikipediaPhoto(query: String, lang: String = "en"): WikipediaPhotoResult? = withContext(Dispatchers.IO) {
+    suspend fun searchWikipediaPhoto(query: String, lang: String = "en", targetWidth: Int = 1200): WikipediaPhotoResult? = withContext(Dispatchers.IO) {
         val cleaned = cleanTitleForWiki(query)
         if (cleaned.length < 3) return@withContext null
         try {
@@ -171,7 +219,7 @@ class WikipediaPhotoService(
                     val firstResult = searchArr.getJSONObject(0)
                     val title = firstResult.optString("title")
                     if (title.isNotBlank()) {
-                        return@withContext fetchPageSummary(lang, title)
+                        return@withContext fetchPageSummary(lang, title, targetWidth)
                     }
                 }
             }
@@ -196,7 +244,7 @@ class WikipediaPhotoService(
             .trim()
     }
 
-    private fun fetchPageSummary(lang: String, title: String): WikipediaPhotoResult? {
+    private fun fetchPageSummary(lang: String, title: String, targetWidth: Int = 1200): WikipediaPhotoResult? {
         return try {
             val encodedTitle = URLEncoder.encode(title.replace(" ", "_"), StandardCharsets.UTF_8.toString())
                 .replace("+", "%20")
@@ -213,7 +261,7 @@ class WikipediaPhotoService(
                     return null
                 }
                 val body = response.body?.string() ?: return null
-                parseSummaryJson(body, title, lang)
+                parseSummaryJson(body, title, lang, targetWidth)
             }
         } catch (e: Exception) {
             Log.d(TAG, "Failed to fetch summary for $title ($lang): ${e.message}")
@@ -221,7 +269,7 @@ class WikipediaPhotoService(
         }
     }
 
-    private fun parseSummaryJson(jsonString: String, title: String, lang: String): WikipediaPhotoResult? {
+    private fun parseSummaryJson(jsonString: String, title: String, lang: String, targetWidth: Int = 1200): WikipediaPhotoResult? {
         return try {
             val root = JSONObject(jsonString)
             val thumbnailObj = root.optJSONObject("thumbnail")
@@ -234,10 +282,10 @@ class WikipediaPhotoService(
 
             if (photoUrl.isNullOrBlank()) return null
 
-            // Enhance thumbnail resolution to 800px if it's a standard Wikimedia thumb
+            // Enhance thumbnail resolution to 1200px HD if it's a standard Wikimedia thumb
             if (photoUrl.contains("/thumb/")) {
                 val regex = Regex("/\\d+px-")
-                photoUrl = photoUrl.replace(regex, "/800px-")
+                photoUrl = photoUrl.replace(regex, "/${targetWidth}px-")
             }
 
             val pageTitle = root.optString("title", title)
