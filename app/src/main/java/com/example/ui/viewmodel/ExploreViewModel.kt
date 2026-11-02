@@ -10,7 +10,6 @@ import com.example.data.location.DefaultLocationConfig
 import com.example.data.model.CityProfileRegistry
 import com.example.data.model.GlobalCityCatalog
 import com.example.data.model.ScoutCategory
-import com.example.data.network.OverpassRetrofitClient
 import com.example.data.repository.ScoutGemRepository
 import com.example.data.repository.ScoutRepository
 import com.example.engine.PreScoutBannerState
@@ -33,14 +32,16 @@ data class ExploreUiState(
     val selectedCategory: String = "all",
     val searchQuery: String = "",
     val recentSearches: List<RecentSearchEntity> = emptyList(),
-    val selectedGlobalCity: String = "Lisbon, Portugal",
-    val cityProfile: com.example.data.model.CityProfile = com.example.data.model.CityProfileRegistry.LISBON_PROFILE,
+    val selectedGlobalCity: String = "Detecting Location...",
+    val cityProfile: com.example.data.model.CityProfile = CityProfileRegistry.LISBON_PROFILE,
     val showGlobalCityDialog: Boolean = false,
     val preScoutBannerState: PreScoutBannerState = PreScoutBannerState(),
     val exploreHeaderStyle: Int = 0,
     val isScrapingOsm: Boolean = false,
     val osmScrapeMessage: String? = null,
-    val playingAudioId: String? = null
+    val playingAudioId: String? = null,
+    val isAwaitingLocation: Boolean = true,
+    val isDiscoveringGems: Boolean = false
 )
 
 class ExploreViewModel(
@@ -67,11 +68,11 @@ class ExploreViewModel(
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
-    private val _selectedGlobalCity = MutableStateFlow(DefaultLocationConfig.activeFallbackCityName)
+    private val _selectedGlobalCity = MutableStateFlow("Detecting Location...")
     val selectedGlobalCity: StateFlow<String> = _selectedGlobalCity.asStateFlow()
 
     private val _cityProfile = MutableStateFlow(
-        CityProfileRegistry.getProfileForCity(DefaultLocationConfig.activeFallbackCityName)
+        CityProfileRegistry.getProfileForCity("Detecting Location...")
     )
     val cityProfile: StateFlow<com.example.data.model.CityProfile> = _cityProfile.asStateFlow()
 
@@ -93,8 +94,14 @@ class ExploreViewModel(
     private val _playingAudioId = MutableStateFlow<String?>(null)
     val playingAudioId: StateFlow<String?> = _playingAudioId.asStateFlow()
 
-    private val _userCoordinates = MutableStateFlow(Pair(DefaultLocationConfig.DEFAULT_LAT, DefaultLocationConfig.DEFAULT_LNG))
-    val userCoordinates: StateFlow<Pair<Double, Double>> = _userCoordinates.asStateFlow()
+    private val _userCoordinates = MutableStateFlow<Pair<Double, Double>?>(null)
+    val userCoordinates: StateFlow<Pair<Double, Double>?> = _userCoordinates.asStateFlow()
+
+    private val _isAwaitingLocation = MutableStateFlow(true)
+    val isAwaitingLocation: StateFlow<Boolean> = _isAwaitingLocation.asStateFlow()
+
+    private val _isDiscoveringGems = MutableStateFlow(false)
+    val isDiscoveringGems: StateFlow<Boolean> = _isDiscoveringGems.asStateFlow()
 
     val filteredSpots: StateFlow<List<ScoutSpotEntity>> = combine(
         allSpots,
@@ -102,6 +109,9 @@ class ExploreViewModel(
         _searchQuery,
         _userCoordinates
     ) { spots, category, query, coords ->
+        if (coords == null) {
+            return@combine emptyList()
+        }
         val userLat = coords.first
         val userLng = coords.second
 
@@ -112,14 +122,14 @@ class ExploreViewModel(
                 spot.description.contains(query, ignoreCase = true) ||
                 spot.category.contains(query, ignoreCase = true)
 
-            // Vicinity Filter: Exclude distant spots from other cities/countries (>100km away)
+            // Vicinity Filter: Exclude distant spots from other regions (>60km away)
             val distMeters = spot.computedDistanceMeters(userLat, userLng)
-            val matchesVicinity = distMeters <= 100000f
+            val matchesVicinity = distMeters <= 60000f
 
             matchesCategory && matchesQuery && matchesVicinity
         }
 
-        // Proximity Sorting: Places closest to active GPS / city coordinates appear FIRST
+        // Proximity Sorting: Places closest to user GPS appear FIRST
         matching.sortedBy { spot ->
             spot.computedDistanceMeters(userLat, userLng)
         }
@@ -153,19 +163,16 @@ class ExploreViewModel(
             exploreHeaderStyle = _exploreHeaderStyle.value,
             isScrapingOsm = _isScrapingOsm.value,
             osmScrapeMessage = _osmScrapeMessage.value,
-            playingAudioId = _playingAudioId.value
+            playingAudioId = _playingAudioId.value,
+            isAwaitingLocation = _isAwaitingLocation.value,
+            isDiscoveringGems = _isDiscoveringGems.value
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ExploreUiState())
 
     init {
         viewModelScope.launch(Dispatchers.IO) {
             repository.initializeIfEmpty()
-            val banner = preScoutEngine.executePreScout(
-                com.example.data.location.DefaultLocationConfig.activeFallbackLat,
-                com.example.data.location.DefaultLocationConfig.activeFallbackLng,
-                _selectedGlobalCity.value
-            )
-            _preScoutBannerState.value = banner
+            // Strictly do NOT seed with Lisbon on startup. Wait for live GPS!
         }
     }
 
@@ -230,21 +237,26 @@ class ExploreViewModel(
 
     fun selectGlobalCity(cityName: String, context: Context? = null) {
         _selectedGlobalCity.value = cityName
-        val profile = com.example.data.model.CityProfileRegistry.getProfileForCity(cityName)
+        val profile = CityProfileRegistry.getProfileForCity(cityName)
         _cityProfile.value = profile
         _showGlobalCityDialog.value = false
-        val lat = if (profile.lat != 0.0) profile.lat else com.example.data.location.DefaultLocationConfig.activeFallbackLat
-        val lng = if (profile.lng != 0.0) profile.lng else com.example.data.location.DefaultLocationConfig.activeFallbackLng
-        DefaultLocationConfig.setActiveFallbackCity(lat, lng, cityName, context)
-        viewModelScope.launch(Dispatchers.IO) {
+        val lat = if (profile.lat != 0.0) profile.lat else DefaultLocationConfig.activeFallbackLat
+        val lng = if (profile.lng != 0.0) profile.lng else DefaultLocationConfig.activeFallbackLng
+        if (lat != 0.0 && lng != 0.0) {
+            DefaultLocationConfig.setActiveFallbackCity(lat, lng, cityName, context)
             _userCoordinates.value = Pair(lat, lng)
-            val banner = preScoutEngine.executePreScout(lat, lng, cityName)
-            _preScoutBannerState.value = banner
-            val nearbyCount = repository.getAllSpotsSync().count { spot ->
-                spot.computedDistanceMeters(lat, lng) <= 15000f
-            }
-            if (nearbyCount < 3) {
-                gemRepository.syncLiveOsmGems(lat, lng, 3000, "all")
+            _isAwaitingLocation.value = false
+            viewModelScope.launch(Dispatchers.IO) {
+                _isDiscoveringGems.value = true
+                val banner = preScoutEngine.executePreScout(lat, lng, cityName)
+                _preScoutBannerState.value = banner
+                try {
+                    gemRepository.syncLiveOsmGems(lat, lng, 1500, "all")
+                } catch (e: Exception) {
+                    android.util.Log.w("ExploreViewModel", "City selection discovery error: ${e.message}")
+                } finally {
+                    _isDiscoveringGems.value = false
+                }
             }
         }
     }
@@ -252,8 +264,10 @@ class ExploreViewModel(
     fun updateUserLocation(lat: Double, lng: Double, context: Context? = null) {
         if (lat == 0.0 && lng == 0.0) return
         val prev = _userCoordinates.value
-        if (Math.abs(prev.first - lat) > 0.0005 || Math.abs(prev.second - lng) > 0.0005) {
+        val isFirstFix = prev == null
+        if (isFirstFix || Math.abs(prev!!.first - lat) > 0.0005 || Math.abs(prev.second - lng) > 0.0005) {
             _userCoordinates.value = Pair(lat, lng)
+            _isAwaitingLocation.value = false
 
             val detectedCityName = GlobalCityCatalog.findNearestCityName(lat, lng)
             _selectedGlobalCity.value = detectedCityName
@@ -261,19 +275,43 @@ class ExploreViewModel(
             DefaultLocationConfig.setActiveFallbackCity(lat, lng, detectedCityName, context)
 
             viewModelScope.launch(Dispatchers.IO) {
+                _isDiscoveringGems.value = true
                 val banner = preScoutEngine.executePreScout(lat, lng, detectedCityName)
                 _preScoutBannerState.value = banner
 
-                val nearbyCount = repository.getAllSpotsSync().count { spot ->
-                    spot.computedDistanceMeters(lat, lng) <= 20000f
-                }
-                if (nearbyCount < 3) {
-                    gemRepository.syncLiveOsmGems(lat, lng, 3000, "all")
+                // Immediately query Gemini AI for authentic tourist attractions, historic landmarks, dining gems within 1.5km walking radius
+                try {
+                    gemRepository.syncLiveOsmGems(
+                        userLat = lat,
+                        userLng = lng,
+                        radiusMeters = 1500,
+                        category = "all"
+                    )
+                } catch (e: Exception) {
+                    android.util.Log.w("ExploreViewModel", "Gemini vicinity discovery error: ${e.message}")
+                } finally {
+                    _isDiscoveringGems.value = false
                 }
             }
         }
     }
 
+    fun triggerNearbyDiscovery() {
+        val coords = _userCoordinates.value ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            _isDiscoveringGems.value = true
+            try {
+                gemRepository.syncLiveOsmGems(
+                    userLat = coords.first,
+                    userLng = coords.second,
+                    radiusMeters = 1500,
+                    category = _selectedCategory.value
+                )
+            } finally {
+                _isDiscoveringGems.value = false
+            }
+        }
+    }
 
     fun dismissPreScoutBanner() {
         _preScoutBannerState.value = _preScoutBannerState.value.copy(isVisible = false)
@@ -299,17 +337,17 @@ class ExploreViewModel(
 
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val result = gemRepository.syncLiveOsmGems(lat, lng, 2000, category)
+                val result = gemRepository.syncLiveOsmGems(lat, lng, 1500, category)
                 result.fold(
                     onSuccess = { count ->
-                        _osmScrapeMessage.value = "$count gems discovered from OpenStreetMap"
+                        _osmScrapeMessage.value = "$count gems discovered around your location"
                     },
                     onFailure = { e ->
-                        _osmScrapeMessage.value = "OSM Scrape failed: ${e.message}"
+                        _osmScrapeMessage.value = "Discovery note: ${e.message}"
                     }
                 )
             } catch (e: Exception) {
-                _osmScrapeMessage.value = "OSM Scrape failed: ${e.message}"
+                _osmScrapeMessage.value = "Discovery error: ${e.message}"
             } finally {
                 _isScrapingOsm.value = false
                 delay(4000)

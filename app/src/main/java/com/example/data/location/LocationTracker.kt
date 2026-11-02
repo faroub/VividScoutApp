@@ -81,6 +81,16 @@ class LocationTracker(private val context: Context) {
         return granted
     }
 
+    fun isGpsProviderEnabled(): Boolean {
+        return try {
+            val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as? android.location.LocationManager
+            locationManager?.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER) == true ||
+            locationManager?.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER) == true
+        } catch (e: Exception) {
+            true
+        }
+    }
+
     fun refreshPermissionState(): Boolean {
         val granted = checkHasPermission()
         if (granted && !_isTracking.value) {

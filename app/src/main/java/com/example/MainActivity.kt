@@ -63,6 +63,8 @@ import com.example.ui.screens.ProfileScreen
 import com.example.ui.screens.RadarScreen
 import com.example.ui.screens.SavedScreen
 import com.example.ui.screens.SpotGemModal
+import com.example.ui.screens.StartupGpsRadarScreen
+import com.example.ui.viewmodel.GpsAcquisitionStatus
 import com.example.ui.theme.AppStrings
 import com.example.ui.theme.LocalAppLanguage
 import com.example.ui.theme.LocalAppStrings
@@ -152,7 +154,8 @@ fun VividScoutApp(
 
     // Automatically sync active location to ExploreViewModel for proximity sorting & auto-discovery
     LaunchedEffect(locationState.userCoordinates) {
-        val (lat, lng) = locationState.userCoordinates
+        val coords = locationState.userCoordinates ?: return@LaunchedEffect
+        val (lat, lng) = coords
         exploreViewModel.updateUserLocation(lat, lng, context)
     }
 
@@ -168,7 +171,19 @@ fun VividScoutApp(
         contract = ActivityResultContracts.RequestPermission()
     ) { _ -> }
 
-    val openAppSettings = {
+    // Automatically check and prompt for location permissions on startup
+    LaunchedEffect(Unit) {
+        if (!locationState.hasLocationPermission) {
+            locationPermissionLauncher.launch(
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION
+                )
+            )
+        }
+    }
+
+    val openAppSettings: () -> Unit = {
         try {
             val intent = Intent(
                 Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
@@ -198,8 +213,26 @@ fun VividScoutApp(
         LocalAppLanguage provides profileState.appLanguage,
         LocalAppStrings provides AppStrings.forLanguage(profileState.appLanguage)
     ) {
-        when (mainState.currentScreen) {
-            is AppScreen.Onboarding -> {
+        when {
+            !locationState.isLocked -> {
+                StartupGpsRadarScreen(
+                    status = locationState.gpsStatus,
+                    detectedCity = locationState.detectedCityName,
+                    onRequestPermission = {
+                        locationPermissionLauncher.launch(
+                            arrayOf(
+                                Manifest.permission.ACCESS_FINE_LOCATION,
+                                Manifest.permission.ACCESS_COARSE_LOCATION
+                            )
+                        )
+                    },
+                    onOpenSettings = openAppSettings,
+                    onRetry = { locationViewModel.retryLocationAcquisition() },
+                    onManualCityClick = { exploreViewModel.openGlobalCityDialog() }
+                )
+            }
+
+            mainState.currentScreen is AppScreen.Onboarding -> {
                 OnboardingScreen(
                     onExploreClick = {
                         mainViewModel.navigateToTab(MainTab.EXPLORE)
@@ -212,7 +245,7 @@ fun VividScoutApp(
                 )
             }
 
-            is AppScreen.Main -> {
+            else -> {
                 BackHandler(enabled = isArModeActive || mainState.currentTab != MainTab.EXPLORE) {
                     if (isArModeActive) {
                         isArModeActive = false
@@ -271,7 +304,7 @@ fun VividScoutApp(
                                         offlineDraftCount = offlineMapsState.offlineDrafts.size,
                                         playingAudioId = exploreState.playingAudioId,
                                         userLocation = locationState.userLocation,
-                                        userCoordinates = locationState.userCoordinates,
+                                        userCoordinates = locationState.safeCoordinates,
                                         hasLocationPermission = locationState.hasLocationPermission,
                                         isUsingGpsLocation = locationState.isUsingGpsLocation,
                                         selectedGlobalCity = exploreState.selectedGlobalCity,
@@ -295,8 +328,8 @@ fun VividScoutApp(
                                         discoveryMessage = exploreState.osmScrapeMessage,
                                         onTriggerDiscover = {
                                             exploreViewModel.scrapeOsmGems(
-                                                locationState.userCoordinates.first,
-                                                locationState.userCoordinates.second,
+                                                locationState.safeCoordinates.first,
+                                                locationState.safeCoordinates.second,
                                                 category = exploreState.selectedCategory
                                             )
                                         },
@@ -324,8 +357,8 @@ fun VividScoutApp(
                                         osmScrapeMessage = exploreState.osmScrapeMessage,
                                         onScrapeOsm = {
                                             exploreViewModel.scrapeOsmGems(
-                                                locationState.userCoordinates.first,
-                                                locationState.userCoordinates.second
+                                                locationState.safeCoordinates.first,
+                                                locationState.safeCoordinates.second
                                             )
                                         },
                                         onDismissOsmMessage = { exploreViewModel.dismissOsmMessage() },
@@ -365,7 +398,7 @@ fun VividScoutApp(
                                                 mainViewModel.selectSpotForDetail(it)
                                             }
                                         },
-                                        userCoordinates = locationState.userCoordinates,
+                                        userCoordinates = locationState.safeCoordinates,
                                         successMessage = communityState.postTipSuccessMessage
                                     )
                                 }
@@ -401,7 +434,7 @@ fun VividScoutApp(
                                         onOpenLanguageDialog = { profileViewModel.openLanguageDialog() },
                                         hasLocationPermission = locationState.hasLocationPermission,
                                         isPreciseLocation = locationState.isPreciseLocation,
-                                        userCoordinates = locationState.userCoordinates,
+                                        userCoordinates = locationState.safeCoordinates,
                                         isUsingGpsLocation = locationState.isUsingGpsLocation,
                                         selectedGlobalCity = exploreState.selectedGlobalCity,
                                         onRequestLocationPermission = { requestLocationPermission() },
@@ -444,8 +477,8 @@ fun VividScoutApp(
                                                 }
                                                 profileViewModel.startProximityPrefetch(
                                                     context,
-                                                    locationState.userCoordinates.first,
-                                                    locationState.userCoordinates.second
+                                                    locationState.safeCoordinates.first,
+                                                    locationState.safeCoordinates.second
                                                 )
                                             } else {
                                                 profileViewModel.stopProximityPrefetch(context)
@@ -457,8 +490,8 @@ fun VividScoutApp(
                                             }
                                             profileViewModel.triggerManualPrefetch(
                                                 context,
-                                                locationState.userCoordinates.first,
-                                                locationState.userCoordinates.second
+                                                locationState.safeCoordinates.first,
+                                                locationState.safeCoordinates.second
                                             )
                                         }
                                     )
@@ -472,7 +505,7 @@ fun VividScoutApp(
                 if (isArModeActive) {
                     ARNavigationOverlay(
                         spots = exploreState.filteredSpots.ifEmpty { exploreState.allSpots },
-                        userCoordinates = locationState.userCoordinates,
+                        userCoordinates = locationState.safeCoordinates,
                         onClose = { isArModeActive = false },
                         onSelectSpot = { spot ->
                             mainViewModel.selectSpotForDetail(spot)
@@ -542,14 +575,14 @@ fun VividScoutApp(
                                 title = name,
                                 description = notes,
                                 category = category,
-                                latitude = locationState.userCoordinates.first,
-                                longitude = locationState.userCoordinates.second,
+                                latitude = locationState.safeCoordinates.first,
+                                longitude = locationState.safeCoordinates.second,
                                 photoUri = photoUri
                             )
                         },
                         draftCount = offlineMapsState.offlineDrafts.size,
                         userLocation = locationState.userLocation,
-                        userCoordinates = locationState.userCoordinates,
+                        userCoordinates = locationState.safeCoordinates,
                         isUsingGpsLocation = locationState.isUsingGpsLocation,
                         selectedGlobalCity = exploreState.selectedGlobalCity
                     )
@@ -593,7 +626,11 @@ fun VividScoutApp(
                     GlobalCitySelectionDialog(
                         selectedCity = com.example.data.model.GlobalCityCatalog.POPULAR_WORLD_CITIES.find { exploreState.selectedGlobalCity.contains(it.name, ignoreCase = true) },
                         isUsingGps = locationState.isUsingGpsLocation,
-                        onSelectCity = { city -> exploreViewModel.selectGlobalCity("${city.name}, ${city.country}") },
+                        onSelectCity = { city ->
+                            val cityName = "${city.name}, ${city.country}"
+                            exploreViewModel.selectGlobalCity(cityName)
+                            locationViewModel.setManualCoordinates(city.latitude, city.longitude, cityName)
+                        },
                         onSelectGpsLocation = {
                             locationViewModel.enableGpsMode()
                             exploreViewModel.dismissGlobalCityDialog()
