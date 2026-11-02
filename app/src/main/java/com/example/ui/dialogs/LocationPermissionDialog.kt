@@ -73,7 +73,7 @@ fun LocationPermissionRationaleDialog(
 ) {
     val strings = LocalAppStrings.current
 
-    val infiniteTransition = rememberInfiniteTransition(label = "radarPulse")
+    val infiniteTransition = rememberInfiniteTransition(label = "locationPulse")
     val pulseScale by infiniteTransition.animateFloat(
         initialValue = 0.95f,
         targetValue = 1.18f,

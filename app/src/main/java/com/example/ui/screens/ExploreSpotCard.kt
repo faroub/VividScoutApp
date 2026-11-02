@@ -63,22 +63,31 @@ import com.example.ui.theme.Tertiary
 import com.example.ui.theme.TertiaryFixed
 import com.example.util.ImageResolver
 
+import androidx.compose.runtime.remember
+import com.example.data.model.ExploreMapLayer
+
 @Composable
 fun ScoutSpotCard(
     spot: ScoutSpotEntity,
     userCoordinates: Pair<Double, Double> = Pair(38.7112, -9.1423),
     isPlayingAudio: Boolean,
+    activeLayers: Set<ExploreMapLayer> = emptySet(),
     onToggleSave: () -> Unit,
     onUpvote: () -> Unit,
     onToggleAudio: () -> Unit,
     onDirectionsClick: () -> Unit
 ) {
     val strings = LocalAppStrings.current
+    val matchingLayer = remember(spot.category) { ExploreMapLayer.fromSpotCategory(spot.category) }
+    val isOverlayActive = matchingLayer != null && activeLayers.contains(matchingLayer)
 
     Surface(
         shape = RoundedCornerShape(20.dp),
         color = SurfaceContainerLowest,
-        shadowElevation = 6.dp,
+        shadowElevation = if (isOverlayActive) 10.dp else 6.dp,
+        border = if (isOverlayActive && matchingLayer != null) {
+            androidx.compose.foundation.BorderStroke(2.dp, matchingLayer.color.copy(alpha = 0.85f))
+        } else null,
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onDirectionsClick() }
@@ -106,7 +115,7 @@ fun ScoutSpotCard(
                     modifier = Modifier.fillMaxSize()
                 )
 
-                // Top Left: Category & Live Badge
+                // Top Left: Category & Live Badge & Active Layer Beacon
                 Row(
                     modifier = Modifier
                         .align(Alignment.TopStart)
@@ -136,6 +145,36 @@ fun ScoutSpotCard(
                                 else -> Color.White
                             }
                         )
+                    }
+
+                    if (isOverlayActive && matchingLayer != null) {
+                        Surface(
+                            shape = RoundedCornerShape(999.dp),
+                            color = matchingLayer.color,
+                            shadowElevation = 4.dp
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(6.dp)
+                                        .clip(CircleShape)
+                                        .background(Color.White)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "${matchingLayer.displayName.uppercase()} OVERLAY",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontWeight = FontWeight.Black,
+                                        fontSize = 9.sp,
+                                        letterSpacing = 0.5.sp
+                                    ),
+                                    color = Color.White
+                                )
+                            }
+                        }
                     }
 
                     Box(

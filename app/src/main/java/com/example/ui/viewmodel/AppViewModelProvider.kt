@@ -25,13 +25,6 @@ object AppViewModelProvider {
         }
         initializer {
             val container = vividScoutApplication().container
-            RadarViewModel(
-                repository = container.scoutRepository,
-                compassSensorManager = container.compassSensorManager
-            )
-        }
-        initializer {
-            val container = vividScoutApplication().container
             CommunityViewModel(
                 communityRepository = container.communityTipRepository
             )

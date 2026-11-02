@@ -27,7 +27,7 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.NearMe
-import androidx.compose.material.icons.filled.Sensors
+import androidx.compose.material.icons.filled.Route
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.SwapHoriz
 import androidx.compose.material3.Icon
@@ -62,7 +62,7 @@ import com.example.ui.theme.SurfaceContainerLowest
 @Composable
 fun VividScoutTopBar(
     onSearchClick: () -> Unit,
-    onRadarClick: () -> Unit,
+    onRouteClick: () -> Unit = {},
     onProfileClick: () -> Unit,
     onToggleHeaderStyle: () -> Unit,
     onLanguageClick: () -> Unit,
@@ -319,29 +319,19 @@ fun VividScoutTopBar(
                     )
                 }
 
-                // Radar sensor status
+                // Route Planner launcher
                 IconButton(
-                    onClick = onRadarClick,
+                    onClick = onRouteClick,
                     modifier = Modifier
                         .size(36.dp)
-                        .testTag("radar_status_button")
+                        .testTag("route_planner_topbar_button")
                 ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = Icons.Default.Sensors,
-                            contentDescription = "Radar Status",
-                            tint = Secondary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Box(
-                            modifier = Modifier
-                                .size(6.dp)
-                                .align(Alignment.TopEnd)
-                                .clip(CircleShape)
-                                .background(SecondaryFixed)
-                                .border(1.dp, SurfaceContainerLowest, CircleShape)
-                        )
-                    }
+                    Icon(
+                        imageVector = Icons.Default.Route,
+                        contentDescription = "Plan Walking Route",
+                        tint = Secondary,
+                        modifier = Modifier.size(20.dp)
+                    )
                 }
 
                 // Search button

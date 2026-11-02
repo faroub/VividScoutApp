@@ -24,6 +24,8 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+import com.example.data.model.ExploreMapLayer
+
 data class ExploreUiState(
     val filteredSpots: List<ScoutSpotEntity> = emptyList(),
     val allSpots: List<ScoutSpotEntity> = emptyList(),
@@ -41,7 +43,8 @@ data class ExploreUiState(
     val osmScrapeMessage: String? = null,
     val playingAudioId: String? = null,
     val isAwaitingLocation: Boolean = true,
-    val isDiscoveringGems: Boolean = false
+    val isDiscoveringGems: Boolean = false,
+    val activeMapLayers: Set<ExploreMapLayer> = ExploreMapLayer.ALL_LAYERS
 )
 
 class ExploreViewModel(
@@ -135,6 +138,9 @@ class ExploreViewModel(
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    private val _activeMapLayers = MutableStateFlow<Set<ExploreMapLayer>>(ExploreMapLayer.ALL_LAYERS)
+    val activeMapLayers: StateFlow<Set<ExploreMapLayer>> = _activeMapLayers.asStateFlow()
+
     val uiState: StateFlow<ExploreUiState> = combine(
         filteredSpots,
         allSpots,
@@ -145,7 +151,8 @@ class ExploreViewModel(
         recentSearches,
         _selectedGlobalCity,
         _showGlobalCityDialog,
-        _preScoutBannerState
+        _preScoutBannerState,
+        _activeMapLayers
     ) { vals: Array<Any?> ->
         @Suppress("UNCHECKED_CAST")
         ExploreUiState(
@@ -165,9 +172,27 @@ class ExploreViewModel(
             osmScrapeMessage = _osmScrapeMessage.value,
             playingAudioId = _playingAudioId.value,
             isAwaitingLocation = _isAwaitingLocation.value,
-            isDiscoveringGems = _isDiscoveringGems.value
+            isDiscoveringGems = _isDiscoveringGems.value,
+            activeMapLayers = vals[10] as Set<ExploreMapLayer>
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ExploreUiState())
+
+    fun toggleMapLayer(layer: ExploreMapLayer) {
+        val current = _activeMapLayers.value
+        _activeMapLayers.value = if (current.contains(layer)) {
+            current - layer
+        } else {
+            current + layer
+        }
+    }
+
+    fun setAllMapLayers(enabled: Boolean) {
+        _activeMapLayers.value = if (enabled) {
+            ExploreMapLayer.ALL_LAYERS
+        } else {
+            emptySet()
+        }
+    }
 
     init {
         viewModelScope.launch(Dispatchers.IO) {

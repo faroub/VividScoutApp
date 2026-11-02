@@ -63,8 +63,10 @@ import android.location.Location
 import com.example.data.local.computedDistanceMeters
 import com.example.data.local.computedDistanceString
 import com.example.data.local.computedWalkMinutes
+import androidx.compose.material.icons.filled.Route
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -115,6 +117,8 @@ import com.example.ui.theme.SurfaceContainer
 import com.example.ui.theme.SurfaceContainerHigh
 import com.example.ui.theme.SurfaceContainerLow
 import com.example.ui.theme.SurfaceContainerLowest
+import com.example.data.model.ExploreMapLayer
+import com.example.ui.components.ExploreLayerController
 import com.example.ui.theme.Tertiary
 import com.example.ui.theme.TertiaryFixed
 
@@ -127,6 +131,9 @@ fun ExploreScreen(
     isOfflineBannerVisible: Boolean,
     offlineDraftCount: Int,
     playingAudioId: String?,
+    activeMapLayers: Set<ExploreMapLayer> = ExploreMapLayer.ALL_LAYERS,
+    onToggleMapLayer: (ExploreMapLayer) -> Unit = {},
+    onSetAllMapLayers: (Boolean) -> Unit = {},
     onCategorySelected: (String) -> Unit,
     onSearchQueryChange: (String) -> Unit,
     onToggleSave: (ScoutSpotEntity) -> Unit,
@@ -134,7 +141,7 @@ fun ExploreScreen(
     onToggleAudioLore: (String) -> Unit,
     onSpotClick: (ScoutSpotEntity) -> Unit,
     onAddSpotClick: () -> Unit,
-    onRadarClick: () -> Unit,
+    onPlanRouteClick: () -> Unit = {},
     onDismissOfflineBanner: () -> Unit,
     onOpenQueueDialog: () -> Unit,
     userLocation: Location? = null,
@@ -303,17 +310,6 @@ fun ExploreScreen(
                         onCategorySelected = onCategorySelected
                     )
                 }
-
-                // Instant On-Foot Radar Compass Card
-                item {
-                    Box(modifier = Modifier.padding(horizontal = 16.dp)) {
-                        OnFootRadarCard(
-                            spots = spots,
-                            userCoordinates = userCoordinates,
-                            onRadarClick = onRadarClick
-                        )
-                    }
-                }
             } else {
                 // Style 1: Chiado District Radiant Teal Depth Hero Header
                 item {
@@ -389,7 +385,7 @@ fun ExploreScreen(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
                                 .clip(RoundedCornerShape(999.dp))
-                                .clickable { onRadarClick() }
+                                .clickable { onPlanRouteClick() }
                                 .padding(horizontal = 6.dp, vertical = 4.dp)
                                 .testTag("map_view_trigger")
                         ) {
@@ -437,6 +433,7 @@ fun ExploreScreen(
                             spot = spot,
                             userCoordinates = userCoordinates,
                             isPlayingAudio = playingAudioId == spot.id,
+                            activeLayers = activeMapLayers,
                             onToggleSave = { onToggleSave(spot) },
                             onUpvote = { onUpvote(spot) },
                             onToggleAudio = { onToggleAudioLore(spot.id) },
@@ -538,6 +535,45 @@ fun ExploreScreen(
                 }
             }
         }
+
+        // Floating Layer Controller for Historical, Culinary & Shortcut Overlays
+        ExploreLayerController(
+            activeLayers = activeMapLayers,
+            spots = spots,
+            onToggleLayer = onToggleMapLayer,
+            onSetAllLayers = onSetAllMapLayers,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(bottom = 208.dp, end = 16.dp)
+        )
+
+        // Floating Map & Route Planner Action Button directly on Explore feed
+        ExtendedFloatingActionButton(
+            onClick = onPlanRouteClick,
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.Route,
+                    contentDescription = "Plan Walking Route",
+                    modifier = Modifier.size(20.dp)
+                )
+            },
+            text = {
+                Text(
+                    text = "Map & Route",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp
+                )
+            },
+            containerColor = BrandNight,
+            contentColor = BrandTeal,
+            shape = RoundedCornerShape(999.dp),
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(bottom = 142.dp, end = 16.dp)
+                .shadow(12.dp, RoundedCornerShape(999.dp))
+                .border(1.dp, BrandTeal.copy(alpha = 0.5f), RoundedCornerShape(999.dp))
+                .testTag("floating_route_planner_button")
+        )
     }
 }
 

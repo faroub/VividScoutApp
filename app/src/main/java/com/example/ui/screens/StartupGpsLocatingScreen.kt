@@ -74,12 +74,12 @@ import com.example.ui.viewmodel.GpsAcquisitionStatus
 import java.util.Locale
 
 /**
- * Animated High-Tech Radar Scanning Screen.
+ * Animated Pulsing Location Beacon Screen.
  * Displays on app launch while acquiring live GPS fix, strictly without loading
  * or assuming any default location first.
  */
 @Composable
-fun StartupGpsRadarScreen(
+fun StartupGpsLocatingScreen(
     status: GpsAcquisitionStatus,
     detectedCity: String?,
     onRequestPermission: () -> Unit,
@@ -90,36 +90,47 @@ fun StartupGpsRadarScreen(
 ) {
     val context = LocalContext.current
 
-    // Infinite transitions for rotating radar beam and expanding sonar pulse
-    val infiniteTransition = rememberInfiniteTransition(label = "RadarTransition")
-    val sweepAngle by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 2800, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "RadarSweep"
-    )
+    // Infinite transitions for smooth pulsing location beacon ripples
+    val infiniteTransition = rememberInfiniteTransition(label = "BeaconTransition")
 
-    val pulseScale by infiniteTransition.animateFloat(
+    val pulseScale1 by infiniteTransition.animateFloat(
         initialValue = 0.2f,
         targetValue = 1.0f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 2200, easing = LinearEasing),
+            animation = tween(durationMillis = 2400, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
-        label = "SonarPulse"
+        label = "BeaconPulse1"
     )
 
-    val pulseAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.8f,
+    val pulseAlpha1 by infiniteTransition.animateFloat(
+        initialValue = 0.7f,
         targetValue = 0.0f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 2200, easing = LinearEasing),
+            animation = tween(durationMillis = 2400, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
-        label = "SonarAlpha"
+        label = "BeaconAlpha1"
+    )
+
+    val pulseScale2 by infiniteTransition.animateFloat(
+        initialValue = 0.1f,
+        targetValue = 0.75f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1800, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "BeaconPulse2"
+    )
+
+    val pulseAlpha2 by infiniteTransition.animateFloat(
+        initialValue = 0.5f,
+        targetValue = 0.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1800, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "BeaconAlpha2"
     )
 
     Box(
@@ -133,7 +144,7 @@ fun StartupGpsRadarScreen(
             )
             .statusBarsPadding()
             .navigationBarsPadding()
-            .testTag("startup_gps_radar_screen")
+            .testTag("startup_gps_locating_screen")
     ) {
         Column(
             modifier = Modifier
@@ -198,7 +209,7 @@ fun StartupGpsRadarScreen(
                 )
             }
 
-            // 2. High-Tech Animated Radar Canvas
+            // 2. Minimal Pulsing Location Beacon
             Box(
                 modifier = Modifier
                     .size(280.dp)
@@ -209,82 +220,73 @@ fun StartupGpsRadarScreen(
                     val center = Offset(size.width / 2f, size.height / 2f)
                     val maxRadius = size.minDimension / 2f
 
-                    // Range Rings at 500m, 1000m, 1500m
+                    // Subtle Range Guide Rings at 500m, 1000m, 1500m
                     val ringSteps = listOf(0.33f, 0.66f, 1.0f)
                     for (step in ringSteps) {
                         drawCircle(
-                            color = BrandTeal.copy(alpha = 0.22f),
+                            color = BrandTeal.copy(alpha = 0.18f),
                             radius = maxRadius * step,
                             center = center,
-                            style = Stroke(width = 1.2.dp.toPx())
+                            style = Stroke(width = 1.dp.toPx())
                         )
                     }
 
-                    // Sonar Pulse wave expanding from center
+                    // Soft pulsing ripples expanding from location beacon
                     if (status !is GpsAcquisitionStatus.PermissionRequired && status !is GpsAcquisitionStatus.GpsDisabled) {
+                        // Outer primary wave
                         drawCircle(
-                            color = BrandTeal.copy(alpha = pulseAlpha * 0.4f),
-                            radius = maxRadius * pulseScale,
+                            color = BrandTeal.copy(alpha = pulseAlpha1 * 0.45f),
+                            radius = maxRadius * pulseScale1,
                             center = center,
                             style = Stroke(width = 2.dp.toPx())
                         )
+                        // Inner secondary wave
+                        drawCircle(
+                            color = BrandTeal.copy(alpha = pulseAlpha2 * 0.35f),
+                            radius = maxRadius * pulseScale2,
+                            center = center,
+                            style = Stroke(width = 1.5.dp.toPx())
+                        )
                     }
 
-                    // Crosshair grid lines
+                    // Subtle crosshair indicators
                     drawLine(
-                        color = BrandTeal.copy(alpha = 0.18f),
+                        color = BrandTeal.copy(alpha = 0.12f),
                         start = Offset(center.x, center.y - maxRadius),
                         end = Offset(center.x, center.y + maxRadius),
                         strokeWidth = 1.dp.toPx()
                     )
                     drawLine(
-                        color = BrandTeal.copy(alpha = 0.18f),
+                        color = BrandTeal.copy(alpha = 0.12f),
                         start = Offset(center.x - maxRadius, center.y),
                         end = Offset(center.x + maxRadius, center.y),
                         strokeWidth = 1.dp.toPx()
                     )
 
-                    // Rotating Radar Sweep Beam
-                    if (status !is GpsAcquisitionStatus.PermissionRequired && status !is GpsAcquisitionStatus.GpsDisabled) {
-                        rotate(degrees = sweepAngle, pivot = center) {
-                            val sweepBrush = Brush.sweepGradient(
-                                colors = listOf(
-                                    Color.Transparent,
-                                    Color.Transparent,
-                                    BrandTeal.copy(alpha = 0.05f),
-                                    BrandTeal.copy(alpha = 0.35f)
-                                ),
-                                center = center
-                            )
-                            drawCircle(
-                                brush = sweepBrush,
-                                radius = maxRadius,
-                                center = center
-                            )
-                            drawLine(
-                                color = BrandTeal,
-                                start = center,
-                                end = Offset(center.x + maxRadius, center.y),
-                                strokeWidth = 2.dp.toPx()
-                            )
-                        }
-                    }
-
-                    // Satellite Beacon / Center Blip
+                    // Central Glowing Location Beacon
                     val beaconColor = when (status) {
                         is GpsAcquisitionStatus.Locked -> BrandTeal
                         is GpsAcquisitionStatus.PermissionRequired,
                         is GpsAcquisitionStatus.GpsDisabled -> BrandCoral
                         else -> SecondaryContainer
                     }
+
+                    // Outer soft halo
                     drawCircle(
-                        color = beaconColor,
-                        radius = 6.dp.toPx(),
+                        color = beaconColor.copy(alpha = 0.3f),
+                        radius = 16.dp.toPx(),
                         center = center
                     )
+                    // Inner colored marker
+                    drawCircle(
+                        color = beaconColor,
+                        radius = 7.dp.toPx(),
+                        center = center
+                    )
+                    // Core bright center
                     drawCircle(
                         color = Color.White,
-                        radius = 2.5.dp.toPx(),
+                        radius = 3.dp.toPx(),
                         center = center
                     )
                 }

@@ -14,7 +14,6 @@ import kotlinx.coroutines.launch
 
 enum class MainTab {
     EXPLORE,
-    RADAR,
     COMMUNITY,
     SAVED,
     PROFILE

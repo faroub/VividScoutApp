@@ -60,10 +60,9 @@ import com.example.ui.screens.CommunityFeedScreen
 import com.example.ui.screens.ExploreScreen
 import com.example.ui.screens.OnboardingScreen
 import com.example.ui.screens.ProfileScreen
-import com.example.ui.screens.RadarScreen
 import com.example.ui.screens.SavedScreen
 import com.example.ui.screens.SpotGemModal
-import com.example.ui.screens.StartupGpsRadarScreen
+import com.example.ui.screens.StartupGpsLocatingScreen
 import com.example.ui.viewmodel.GpsAcquisitionStatus
 import com.example.ui.theme.AppStrings
 import com.example.ui.theme.LocalAppLanguage
@@ -78,7 +77,6 @@ import com.example.ui.viewmodel.MainTab
 import com.example.ui.viewmodel.MainViewModel
 import com.example.ui.viewmodel.OfflineMapsViewModel
 import com.example.ui.viewmodel.ProfileViewModel
-import com.example.ui.viewmodel.RadarViewModel
 import com.example.util.configureAppCheck
 
 class MainActivity : ComponentActivity() {
@@ -86,7 +84,6 @@ class MainActivity : ComponentActivity() {
     private val mainViewModel: MainViewModel by viewModels { AppViewModelProvider.Factory }
     private val locationViewModel: LocationViewModel by viewModels { AppViewModelProvider.Factory }
     private val exploreViewModel: ExploreViewModel by viewModels { AppViewModelProvider.Factory }
-    private val radarViewModel: RadarViewModel by viewModels { AppViewModelProvider.Factory }
     private val communityViewModel: CommunityViewModel by viewModels { AppViewModelProvider.Factory }
     private val offlineMapsViewModel: OfflineMapsViewModel by viewModels { AppViewModelProvider.Factory }
     private val profileViewModel: ProfileViewModel by viewModels { AppViewModelProvider.Factory }
@@ -107,7 +104,6 @@ class MainActivity : ComponentActivity() {
                     mainViewModel = mainViewModel,
                     locationViewModel = locationViewModel,
                     exploreViewModel = exploreViewModel,
-                    radarViewModel = radarViewModel,
                     communityViewModel = communityViewModel,
                     offlineMapsViewModel = offlineMapsViewModel,
                     profileViewModel = profileViewModel
@@ -122,7 +118,6 @@ fun VividScoutApp(
     mainViewModel: MainViewModel,
     locationViewModel: LocationViewModel,
     exploreViewModel: ExploreViewModel,
-    radarViewModel: RadarViewModel,
     communityViewModel: CommunityViewModel,
     offlineMapsViewModel: OfflineMapsViewModel,
     profileViewModel: ProfileViewModel
@@ -134,7 +129,6 @@ fun VividScoutApp(
     val mainState by mainViewModel.uiState.collectAsState()
     val locationState by locationViewModel.uiState.collectAsState()
     val exploreState by exploreViewModel.uiState.collectAsState()
-    val radarState by radarViewModel.uiState.collectAsState()
     val communityState by communityViewModel.uiState.collectAsState()
     val offlineMapsState by offlineMapsViewModel.uiState.collectAsState()
     val profileState by profileViewModel.uiState.collectAsState()
@@ -215,7 +209,7 @@ fun VividScoutApp(
     ) {
         when {
             !locationState.isLocked -> {
-                StartupGpsRadarScreen(
+                StartupGpsLocatingScreen(
                     status = locationState.gpsStatus,
                     detectedCity = locationState.detectedCityName,
                     onRequestPermission = {
@@ -259,7 +253,7 @@ fun VividScoutApp(
                     topBar = {
                         VividScoutTopBar(
                             onSearchClick = { mainViewModel.navigateToTab(MainTab.EXPLORE) },
-                            onRadarClick = { mainViewModel.navigateToTab(MainTab.RADAR) },
+                            onRouteClick = { offlineMapsViewModel.openRoutePlanner() },
                             onProfileClick = { mainViewModel.navigateToTab(MainTab.PROFILE) },
                             onToggleHeaderStyle = { exploreViewModel.cycleHeaderStyle() },
                             onLanguageClick = { profileViewModel.openLanguageDialog() },
@@ -303,6 +297,9 @@ fun VividScoutApp(
                                         isOfflineBannerVisible = profileState.isOfflineBannerVisible,
                                         offlineDraftCount = offlineMapsState.offlineDrafts.size,
                                         playingAudioId = exploreState.playingAudioId,
+                                        activeMapLayers = exploreState.activeMapLayers,
+                                        onToggleMapLayer = { exploreViewModel.toggleMapLayer(it) },
+                                        onSetAllMapLayers = { exploreViewModel.setAllMapLayers(it) },
                                         userLocation = locationState.userLocation,
                                         userCoordinates = locationState.safeCoordinates,
                                         hasLocationPermission = locationState.hasLocationPermission,
@@ -317,7 +314,7 @@ fun VividScoutApp(
                                         onToggleAudioLore = { exploreViewModel.toggleAudioLore(it) },
                                         onSpotClick = { mainViewModel.selectSpotForDetail(it) },
                                         onAddSpotClick = { mainViewModel.openSubmitModal() },
-                                        onRadarClick = { mainViewModel.navigateToTab(MainTab.RADAR) },
+                                        onPlanRouteClick = { offlineMapsViewModel.openRoutePlanner() },
                                         onDismissOfflineBanner = { profileViewModel.toggleOfflineBanner() },
                                         onOpenQueueDialog = { offlineMapsViewModel.openQueueDialog() },
                                         syncStatus = OfflineSyncStatus(totalLocalGems = exploreState.allSpots.size, pendingDraftsCount = offlineMapsState.offlineDrafts.size, isSyncing = exploreState.isScrapingOsm),
@@ -336,49 +333,6 @@ fun VividScoutApp(
                                         preScoutState = exploreState.preScoutBannerState,
                                         onDismissPreScout = { exploreViewModel.dismissPreScoutBanner() },
                                         onViewPreScout = { exploreViewModel.filterPreScoutedSpots() }
-                                    )
-                                }
-
-                                MainTab.RADAR -> {
-                                    RadarScreen(
-                                        spots = exploreState.filteredSpots,
-                                        selectedCategory = exploreState.selectedCategory,
-                                        onCategorySelected = { exploreViewModel.setCategory(it) },
-                                        userLocation = locationState.userLocation,
-                                        hasLocationPermission = locationState.hasLocationPermission,
-                                        isPreciseLocation = locationState.isPreciseLocation,
-                                        isUsingGpsLocation = locationState.isUsingGpsLocation,
-                                        selectedGlobalCity = exploreState.selectedGlobalCity,
-                                        onGpsClick = { exploreViewModel.openGlobalCityDialog() },
-                                        onRequestLocationPermission = { requestLocationPermission() },
-                                        onSpotClick = { mainViewModel.selectSpotForDetail(it) },
-                                        onToggleSave = { exploreViewModel.toggleSave(it) },
-                                        isScrapingOsm = exploreState.isScrapingOsm,
-                                        osmScrapeMessage = exploreState.osmScrapeMessage,
-                                        onScrapeOsm = {
-                                            exploreViewModel.scrapeOsmGems(
-                                                locationState.safeCoordinates.first,
-                                                locationState.safeCoordinates.second
-                                            )
-                                        },
-                                        onDismissOsmMessage = { exploreViewModel.dismissOsmMessage() },
-                                        syncStatus = OfflineSyncStatus(totalLocalGems = exploreState.allSpots.size, pendingDraftsCount = offlineMapsState.offlineDrafts.size, isSyncing = exploreState.isScrapingOsm),
-                                        activeTrail = offlineMapsState.plannedRoute,
-                                        onPlanWalkingTrail = { offlineMapsViewModel.openRoutePlanner() },
-                                        onClearWalkingTrail = { offlineMapsViewModel.clearWalkingTrail() },
-                                        cacheHealth = offlineMapsState.vicinityCacheHealth,
-                                        onOpenCacheHealth = { offlineMapsViewModel.openCacheHealthDialog() },
-                                        isRegionDownloadMode = offlineMapsState.isRegionDownloadMode,
-                                        selectionBounds = offlineMapsState.activeSelectionBounds,
-                                        onUpdateSelectionBounds = { offlineMapsViewModel.updateSelectionBounds(it) },
-                                        onStartRegionDownload = { offlineMapsViewModel.enterRegionDownloadMode() },
-                                        onCancelRegionDownload = { offlineMapsViewModel.exitRegionDownloadMode() },
-                                        onConfirmRegionDownload = { offlineMapsViewModel.openRegionDownloadDialog() },
-                                        recentSearches = exploreState.recentSearches,
-                                        onSelectRecentSearch = { exploreViewModel.executeRecentSearch(it.queryText) },
-                                        onDeleteRecentSearch = { exploreViewModel.deleteRecentSearch(it) },
-                                        onClearAllRecentSearches = { exploreViewModel.clearAllRecentSearches() },
-                                        achievements = profileState.achievements
                                     )
                                 }
 
@@ -412,11 +366,9 @@ fun VividScoutApp(
                                         onSpotClick = { mainViewModel.selectSpotForDetail(it) },
                                         onPlanWalkingTrail = {
                                             offlineMapsViewModel.openRoutePlanner()
-                                            mainViewModel.navigateToTab(MainTab.RADAR)
                                         },
                                         onPlanRouteToSpot = { spot ->
                                             offlineMapsViewModel.openRoutePlanner(destination = spot)
-                                            mainViewModel.navigateToTab(MainTab.RADAR)
                                         }
                                     )
                                 }
@@ -513,7 +465,6 @@ fun VividScoutApp(
                         },
                         onPlanRoute = { spot ->
                             offlineMapsViewModel.openRoutePlanner(destination = spot)
-                            mainViewModel.navigateToTab(MainTab.RADAR)
                             isArModeActive = false
                         }
                     )
@@ -532,7 +483,6 @@ fun VividScoutApp(
                         onToggleAudio = { exploreViewModel.toggleAudioLore(spot.id) },
                         onPlanRoute = {
                             offlineMapsViewModel.openRoutePlanner(destination = spot)
-                            mainViewModel.navigateToTab(MainTab.RADAR)
                         },
                         onPostTip = { spotId, spotTitle, content, isStatus, category ->
                             communityViewModel.postTip(spotId, spotTitle, content, isStatus, category)

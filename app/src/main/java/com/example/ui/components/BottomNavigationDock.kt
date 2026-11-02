@@ -22,12 +22,10 @@ import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Radar
 import androidx.compose.material.icons.outlined.Explore
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Forum
 import androidx.compose.material.icons.outlined.PersonOutline
-import androidx.compose.material.icons.outlined.Radar
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -96,17 +94,6 @@ fun BottomNavigationDock(
                     modifier = Modifier.weight(1f)
                 )
 
-                // Tab 2: Radar
-                NavTabItem(
-                    title = strings.radar,
-                    selected = currentTab == MainTab.RADAR,
-                    selectedIcon = Icons.Filled.Radar,
-                    unselectedIcon = Icons.Outlined.Radar,
-                    showDot = true,
-                    testTag = "nav_tab_radar",
-                    onClick = { onTabSelected(MainTab.RADAR) },
-                    modifier = Modifier.weight(1f)
-                )
 
                 // Tab 3: Community
                 NavTabItem(
