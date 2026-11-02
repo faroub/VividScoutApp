@@ -380,6 +380,7 @@ class ScoutGemRepository(
      * Automatically enriches spots having placeholder or generic image URLs
      * by querying live Wikipedia & Wikimedia Commons APIs for 1200px HD resolution metadata
      * and caching the authentic image URLs directly in the Room database for permanent offline availability.
+     * Prioritizes saved/bookmarked spots first, followed by active feed spots.
      */
     suspend fun enrichSpotsPhotosInBackground(spots: List<ScoutSpotEntity> = emptyList()) = withContext(Dispatchers.IO) {
         val targets = if (spots.isNotEmpty()) {
@@ -390,8 +391,11 @@ class ScoutGemRepository(
 
         if (targets.isEmpty()) return@withContext
 
-        // Enrich up to 20 spots per pass with graceful pacing
-        for (spot in targets.take(20)) {
+        // Tier 1: Saved and bookmarked spots (isSaved == true) first, Tier 2: Active feed spots
+        val sortedTargets = targets.sortedByDescending { it.isSaved }
+
+        // Enrich up to 30 spots per pass with graceful pacing
+        for (spot in sortedTargets.take(30)) {
             try {
                 val resolved = com.example.util.LocationPhotoResolver.resolveEnrichedPhoto(
                     title = spot.title,
@@ -405,18 +409,37 @@ class ScoutGemRepository(
                     scoutDao.updateImageUrl(spot.id, resolved.url)
                     android.util.Log.i(
                         "ScoutGemRepository",
-                        "Wikimedia Commons Resolution SUCCESS: Validated 1200px HD photo for '${spot.title}': ${resolved.url}"
+                        "Wikimedia Commons Resolution SUCCESS: Validated 1200px HD photo for '${spot.title}' (isSaved=${spot.isSaved}): ${resolved.url}"
                     )
                 } else {
                     android.util.Log.i(
                         "ScoutGemRepository",
-                        "Wikimedia Commons Resolution FALLBACK: No match found for '${spot.title}'. Retaining existing image '${spot.imageUrl}'."
+                        "Wikimedia Commons Resolution FALLBACK: Retaining existing image '${spot.imageUrl}' for '${spot.title}'."
                     )
                 }
                 delay(120L) // Polite delay between network queries
             } catch (e: Exception) {
                 android.util.Log.w("ScoutGemRepository", "Background photo enrichment error for ${spot.id} ('${spot.title}'): ${e.message}")
             }
+        }
+    }
+
+    /**
+     * Triggered automatically when device transitions from offline to online state.
+     * Resets attempted enrichment cache and re-queries Room for spots lacking high-res photos.
+     * Prioritizes saved/bookmarked spots first, then active feed spots.
+     */
+    suspend fun triggerPhotoMetadataReSync() = withContext(Dispatchers.IO) {
+        attemptedEnrichmentIds.clear()
+        val allSpots = scoutDao.getAllSpotsList()
+        val unEnriched = allSpots.filter { com.example.util.LocationPhotoResolver.isGenericOrStockPhoto(it.imageUrl) }
+        if (unEnriched.isNotEmpty()) {
+            val (savedSpots, feedSpots) = unEnriched.partition { it.isSaved }
+            android.util.Log.i(
+                "ScoutGemRepository",
+                "Automatic Network Reconnection Re-Sync: Found ${unEnriched.size} spots needing photos (${savedSpots.size} saved/bookmarked, ${feedSpots.size} feed)."
+            )
+            enrichSpotsPhotosInBackground(savedSpots + feedSpots)
         }
     }
 

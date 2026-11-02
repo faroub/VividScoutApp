@@ -21,6 +21,7 @@ interface AppContainer {
     val communityTipRepository: CommunityTipRepository
     val preScoutEngine: PreScoutEngine
     val compassSensorManager: CompassSensorManager
+    val networkMonitor: com.example.util.NetworkMonitor
 }
 
 class DefaultAppContainer(private val context: Context) : AppContainer {
@@ -75,5 +76,9 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
 
     override val compassSensorManager: CompassSensorManager by lazy {
         CompassSensorManager(context)
+    }
+
+    override val networkMonitor: com.example.util.NetworkMonitor by lazy {
+        com.example.util.NetworkMonitor(context)
     }
 }

@@ -26,29 +26,14 @@ object LocationPhotoResolver {
     )
 
     /**
-     * Checks if a URL is empty, an icon placeholder, or one of the generic stock/fallback photos.
+     * Checks if a URL is empty, an icon placeholder, or a generic stock vector asset.
      */
     fun isGenericOrStockPhoto(url: String?): Boolean {
         if (url.isNullOrBlank()) return true
         val trimmed = url.trim()
         if (trimmed.startsWith("ic_cat_") || trimmed.startsWith("img_lisbon_")) return true
-
-        // Known repeated generic stock photos and old hardcoded Eiffel Tower fallback
-        val genericUnsplashIds = listOf(
-            "1502602898657", // Old Eiffel Tower fallback
-            "1509440159596", // bakery
-            "1548707309",    // tram/convent
-            "1513635269",    // alley/stairs
-            "1513688275",    // generic viewpoint
-            "1588668214",    // castle stock
-            "1555881400",    // arch
-            "1517248135"     // dining table
-        )
-        for (stockId in genericUnsplashIds) {
-            if (trimmed.contains(stockId)) return true
-        }
-
-        return false
+        if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) return false
+        return true
     }
 
     /**

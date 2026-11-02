@@ -169,27 +169,27 @@ object GlobalLandmarkCatalog {
 
     // Neutral pools for dynamic category fallbacks (varied per spot ID so cards look distinct)
     private val SIGHTS_POOL = listOf(
-        "https://images.unsplash.com/photo-1477959858617-67f30ac4ce71?auto=format&fit=crop&w=800&q=80", // Modern skyline
-        "https://images.unsplash.com/photo-1513688275127-1be5a8359473?auto=format&fit=crop&w=800&q=80", // Panoramic overlook
-        "https://images.unsplash.com/photo-1519331379826-f10be5486c6f?auto=format&fit=crop&w=800&q=80", // Urban park plaza
-        "https://images.unsplash.com/photo-1449824913935-59a10b8d2000?auto=format&fit=crop&w=800&q=80"  // City streetscape
+        "https://images.unsplash.com/photo-1477959858617-67f30ac4ce71?auto=format&fit=crop&w=1200&q=85", // Modern skyline
+        "https://images.unsplash.com/photo-1513688275127-1be5a8359473?auto=format&fit=crop&w=1200&q=85", // Panoramic overlook
+        "https://images.unsplash.com/photo-1519331379826-f10be5486c6f?auto=format&fit=crop&w=1200&q=85", // Urban park plaza
+        "https://images.unsplash.com/photo-1449824913935-59a10b8d2000?auto=format&fit=crop&w=1200&q=85"  // City streetscape
     )
 
     private val EATS_POOL = listOf(
-        "https://images.unsplash.com/photo-1509440159596-0249088772ff?auto=format&fit=crop&w=800&q=80", // Artisan bakery
-        "https://images.unsplash.com/photo-1554118811-1e0d58224f24?auto=format&fit=crop&w=800&q=80", // Warm cafe interior
-        "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=800&q=80"  // Dining bistro
+        "https://images.unsplash.com/photo-1509440159596-0249088772ff?auto=format&fit=crop&w=1200&q=85", // Artisan bakery
+        "https://images.unsplash.com/photo-1554118811-1e0d58224f24?auto=format&fit=crop&w=1200&q=85", // Warm cafe interior
+        "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=1200&q=85"  // Dining bistro
     )
 
     private val HISTORY_POOL = listOf(
-        "https://images.unsplash.com/photo-1555881400-74d7acaacd81?auto=format&fit=crop&w=800&q=80", // Historic arch
-        "https://images.unsplash.com/photo-1579893901844-3158c5f59051?auto=format&fit=crop&w=800&q=80", // Ancient fortress
-        "https://images.unsplash.com/photo-1585208798174-6cedd86e019a?auto=format&fit=crop&w=800&q=80"  // Heritage monument
+        "https://images.unsplash.com/photo-1555881400-74d7acaacd81?auto=format&fit=crop&w=1200&q=85", // Historic arch
+        "https://images.unsplash.com/photo-1579893901844-3158c5f59051?auto=format&fit=crop&w=1200&q=85", // Ancient fortress
+        "https://images.unsplash.com/photo-1585208798174-6cedd86e019a?auto=format&fit=crop&w=1200&q=85"  // Heritage monument
     )
 
     private val SHORTCUT_POOL = listOf(
-        "https://images.unsplash.com/photo-1558151091-a74247990204?auto=format&fit=crop&w=800&q=80", // Pedestrian stairs
-        "https://images.unsplash.com/photo-1580837119756-563d608dd119?auto=format&fit=crop&w=800&q=80"  // Cobblestone alleyway
+        "https://images.unsplash.com/photo-1558151091-a74247990204?auto=format&fit=crop&w=1200&q=85", // Pedestrian stairs
+        "https://images.unsplash.com/photo-1580837119756-563d608dd119?auto=format&fit=crop&w=1200&q=85"  // Cobblestone alleyway
     )
 
     /**
