@@ -197,8 +197,13 @@ class ExploreViewModel(
     init {
         viewModelScope.launch(Dispatchers.IO) {
             repository.initializeIfEmpty()
-            // Strictly do NOT seed with Lisbon on startup. Wait for live GPS!
+            // Automatically enrich any spots with placeholder images using live Wikipedia/Wikimedia
+            gemRepository.enrichSpotsPhotosInBackground()
         }
+    }
+
+    suspend fun refreshSpotPhoto(spotId: String): Boolean {
+        return gemRepository.refreshSpotPhoto(spotId)
     }
 
     fun setCategory(category: String) {

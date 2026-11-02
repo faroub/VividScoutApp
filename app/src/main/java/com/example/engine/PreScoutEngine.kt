@@ -162,6 +162,8 @@ class PreScoutEngine(
                 title = spot.title,
                 category = spot.category,
                 districtOrLocation = cityName,
+                latitude = spot.latitude,
+                longitude = spot.longitude,
                 spotId = spot.id
             )
             if (resolved.url.isNotBlank() && resolved.url != spot.imageUrl) {

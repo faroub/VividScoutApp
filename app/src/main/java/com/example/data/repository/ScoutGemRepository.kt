@@ -10,13 +10,16 @@ import com.example.data.model.ScoutGem
 import com.example.data.model.toScoutGem
 import com.example.data.network.GeminiSpotService
 import com.example.data.network.OverpassRetrofitClient
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
@@ -264,11 +267,17 @@ class ScoutGemRepository(
                         rawSpots
                     }
                     deduplicateAndInsert(spotsWithinRadius)
+                    CoroutineScope(Dispatchers.IO).launch {
+                        enrichSpotsPhotosInBackground(spotsWithinRadius)
+                    }
                     Result.success(spotsWithinRadius.size)
                 },
                 onFailure = { _ ->
                     val fallbackSpots = overpassClient.generateNearbyFallbackSpots(userLat, userLng, 6, category)
                     deduplicateAndInsert(fallbackSpots)
+                    CoroutineScope(Dispatchers.IO).launch {
+                        enrichSpotsPhotosInBackground(fallbackSpots)
+                    }
                     Result.success(fallbackSpots.size)
                 }
             )
@@ -350,5 +359,65 @@ class ScoutGemRepository(
             }
         }
         log
+    }
+
+    /**
+     * Automatically enriches spots having placeholder or generic image URLs
+     * by querying live Wikipedia & Wikimedia Commons APIs and caching the authentic
+     * image URLs directly in the Room database for permanent offline availability.
+     */
+    suspend fun enrichSpotsPhotosInBackground(spots: List<ScoutSpotEntity> = emptyList()) = withContext(Dispatchers.IO) {
+        val targets = if (spots.isNotEmpty()) {
+            spots.filter { com.example.util.LocationPhotoResolver.isGenericOrStockPhoto(it.imageUrl) }
+        } else {
+            scoutDao.getAllSpotsList().filter { com.example.util.LocationPhotoResolver.isGenericOrStockPhoto(it.imageUrl) }
+        }
+
+        if (targets.isEmpty()) return@withContext
+
+        // Enrich up to 20 spots per pass with graceful pacing
+        for (spot in targets.take(20)) {
+            try {
+                val resolved = com.example.util.LocationPhotoResolver.resolveEnrichedPhoto(
+                    title = spot.title,
+                    category = spot.category,
+                    districtOrLocation = spot.locationName,
+                    latitude = spot.latitude,
+                    longitude = spot.longitude,
+                    spotId = spot.id
+                )
+                if (resolved.url.isNotBlank() && !com.example.util.LocationPhotoResolver.isGenericOrStockPhoto(resolved.url)) {
+                    scoutDao.updateImageUrl(spot.id, resolved.url)
+                    android.util.Log.i("ScoutGemRepository", "Successfully enriched real photo for '${spot.title}': ${resolved.url}")
+                }
+                delay(120L) // Polite delay between Wikipedia REST queries
+            } catch (e: Exception) {
+                android.util.Log.w("ScoutGemRepository", "Background photo enrichment failed for ${spot.id}: ${e.message}")
+            }
+        }
+    }
+
+    /**
+     * On-demand photo refresh for a single spot (e.g. from the SpotDetailBottomSheet).
+     */
+    suspend fun refreshSpotPhoto(spotId: String): Boolean = withContext(Dispatchers.IO) {
+        val spot = scoutDao.getSpotById(spotId) ?: return@withContext false
+        try {
+            val resolved = com.example.util.LocationPhotoResolver.resolveEnrichedPhoto(
+                title = spot.title,
+                category = spot.category,
+                districtOrLocation = spot.locationName,
+                latitude = spot.latitude,
+                longitude = spot.longitude,
+                spotId = spot.id
+            )
+            if (resolved.url.isNotBlank() && !com.example.util.LocationPhotoResolver.isGenericOrStockPhoto(resolved.url)) {
+                scoutDao.updateImageUrl(spot.id, resolved.url)
+                return@withContext true
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("ScoutGemRepository", "Failed on-demand photo refresh for $spotId: ${e.message}")
+        }
+        false
     }
 }

@@ -109,19 +109,21 @@ object LocationPhotoResolver {
 
     /**
      * Full asynchronous photo enrichment.
-     * Queries Wikipedia REST API if no direct verified photo exists yet.
+     * Queries Wikipedia REST API, search API, and Geosearch if no direct verified photo exists yet.
      */
     suspend fun resolveEnrichedPhoto(
         title: String,
         category: String?,
         districtOrLocation: String? = null,
         osmTags: Map<String, String>? = null,
+        latitude: Double? = null,
+        longitude: Double? = null,
         spotId: String? = null
     ): EnrichedPhoto = withContext(Dispatchers.IO) {
         // 1. Direct OSM image tag
         val osmImage = osmTags?.get("image")
         if (!osmImage.isNullOrBlank() && (osmImage.startsWith("http://") || osmImage.startsWith("https://"))) {
-            return@withContext EnrichedPhoto(osmImage, "OpenStreetMap Image", true)
+            return@withContext EnrichedPhoto(osmImage, "OpenStreetMap Image", true, isOsmVerified = true)
         }
 
         // 2. Direct OSM wikimedia_commons tag
@@ -129,19 +131,19 @@ object LocationPhotoResolver {
         if (!commonsTag.isNullOrBlank()) {
             val commonsUrl = wikiService.resolveWikimediaCommonsTag(commonsTag)
             if (commonsUrl != null) {
-                return@withContext EnrichedPhoto(commonsUrl, "Wikimedia Commons ($commonsTag)", true)
+                return@withContext EnrichedPhoto(commonsUrl, "Wikimedia Commons ($commonsTag)", true, isOsmVerified = true)
             }
         }
 
         // 3. Global & Lisbon Landmark Catalogs
         val globalLandmark = GlobalLandmarkCatalog.findLandmark(title)
         if (globalLandmark != null) {
-            return@withContext EnrichedPhoto(globalLandmark.imageUrl, globalLandmark.attribution, true)
+            return@withContext EnrichedPhoto(globalLandmark.imageUrl, globalLandmark.attribution, true, isCuratedLandmark = true)
         }
 
         val lisbonLandmark = LisbonLandmarkCatalog.findLandmark(title)
         if (lisbonLandmark != null) {
-            return@withContext EnrichedPhoto(lisbonLandmark.imageUrl, lisbonLandmark.attribution, true)
+            return@withContext EnrichedPhoto(lisbonLandmark.imageUrl, lisbonLandmark.attribution, true, isCuratedLandmark = true)
         }
 
         // 4. OSM wikipedia tag (e.g. "en:Eiffel Tower" or "pt:Miradouro de Santa Luzia")
@@ -159,6 +161,24 @@ object LocationPhotoResolver {
         if (titleWikiResult != null && titleWikiResult.photoUrl.isNotBlank()) {
             Log.d(TAG, "Resolved photo via Wikipedia title lookup for '$title': ${titleWikiResult.photoUrl}")
             return@withContext EnrichedPhoto(titleWikiResult.photoUrl, titleWikiResult.attribution, true)
+        }
+
+        // 5b. Query Wikipedia Search API if direct title didn't resolve
+        val searchResult = wikiService.searchWikipediaPhoto(title, "pt")
+            ?: wikiService.searchWikipediaPhoto(title, "en")
+        if (searchResult != null && searchResult.photoUrl.isNotBlank()) {
+            Log.d(TAG, "Resolved photo via Wikipedia search API for '$title': ${searchResult.photoUrl}")
+            return@withContext EnrichedPhoto(searchResult.photoUrl, searchResult.attribution, true)
+        }
+
+        // 5c. Query Wikipedia Geosearch around coordinates
+        if (latitude != null && longitude != null && (latitude != 0.0 || longitude != 0.0)) {
+            val geoResults = wikiService.fetchWikipediaPhotosByLocation(latitude, longitude, radiusMeters = 1500, primaryLang = "pt")
+            if (geoResults.isNotEmpty()) {
+                val bestGeo = geoResults.first()
+                Log.d(TAG, "Resolved photo via Wikipedia Geosearch at ($latitude, $longitude): ${bestGeo.photoUrl}")
+                return@withContext EnrichedPhoto(bestGeo.photoUrl, bestGeo.attribution, true)
+            }
         }
 
         // 6. Contextual keyword & district matching from Lisbon catalog

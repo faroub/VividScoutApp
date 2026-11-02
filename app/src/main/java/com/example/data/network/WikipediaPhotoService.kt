@@ -86,52 +86,113 @@ class WikipediaPhotoService(
     }
 
     /**
-     * Worldwide Geosearch: queries Wikipedia REST API for articles near latitude & longitude anywhere on Earth,
-     * returning authentic photos and summaries of real nearby landmarks.
+     * Worldwide Geosearch: queries Wikipedia API using generator=geosearch to retrieve
+     * real landmark articles with photos within radiusMeters in a single fast network call.
      */
     suspend fun fetchWikipediaPhotosByLocation(
         lat: Double,
         lon: Double,
-        radiusMeters: Int = 5000
+        radiusMeters: Int = 2000,
+        primaryLang: String = "en"
     ): List<WikipediaPhotoResult> = withContext(Dispatchers.IO) {
         val results = mutableListOf<WikipediaPhotoResult>()
-        try {
-            val url = "https://en.wikipedia.org/w/api.php?action=query&list=geosearch&gscoord=$lat|$lon&gsradius=$radiusMeters&gslimit=12&format=json"
-            val request = Request.Builder()
-                .url(url)
-                .header("User-Agent", USER_AGENT)
-                .build()
+        val languages = if (primaryLang == "pt") listOf("pt", "en") else listOf("en", "pt")
 
-            client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) return@withContext emptyList()
-                val body = response.body?.string() ?: return@withContext emptyList()
-                val root = JSONObject(body)
-                val queryObj = root.optJSONObject("query") ?: return@withContext emptyList()
-                val geoArray = queryObj.optJSONArray("geosearch") ?: return@withContext emptyList()
+        for (lang in languages) {
+            try {
+                val url = "https://$lang.wikipedia.org/w/api.php?action=query&generator=geosearch&ggscoord=$lat|$lon&ggsradius=$radiusMeters&ggslimit=8&prop=pageimages|description&piprop=thumbnail|original&pithumbsize=800&format=json"
+                val request = Request.Builder()
+                    .url(url)
+                    .header("User-Agent", USER_AGENT)
+                    .header("Accept", "application/json")
+                    .build()
 
-                for (i in 0 until geoArray.length()) {
-                    val geoItem = geoArray.optJSONObject(i) ?: continue
-                    val title = geoItem.optString("title")
-                    if (title.isNotBlank()) {
-                        fetchPageSummary("en", title)?.let { summary ->
-                            if (summary.photoUrl.isNotBlank()) {
-                                results.add(summary)
+                client.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) return@use
+                    val body = response.body?.string() ?: return@use
+                    val root = JSONObject(body)
+                    val queryObj = root.optJSONObject("query") ?: return@use
+                    val pagesObj = queryObj.optJSONObject("pages") ?: return@use
+
+                    val keys = pagesObj.keys()
+                    while (keys.hasNext()) {
+                        val key = keys.next()
+                        val pageObj = pagesObj.optJSONObject(key) ?: continue
+                        val title = pageObj.optString("title")
+                        val thumbObj = pageObj.optJSONObject("thumbnail")
+                        val origObj = pageObj.optJSONObject("original")
+
+                        var photoUrl = thumbObj?.optString("source") ?: origObj?.optString("source")
+                        if (!photoUrl.isNullOrBlank()) {
+                            if (photoUrl.contains("/thumb/")) {
+                                val regex = Regex("/\\d+px-")
+                                photoUrl = photoUrl.replace(regex, "/800px-")
                             }
+                            results.add(
+                                WikipediaPhotoResult(
+                                    photoUrl = photoUrl,
+                                    attribution = "Wikimedia Commons / $title ($lang)",
+                                    pageTitle = title,
+                                    description = pageObj.optString("description", "")
+                                )
+                            )
                         }
                     }
                 }
+                if (results.isNotEmpty()) break
+            } catch (e: Exception) {
+                Log.d(TAG, "Failed Wikipedia geosearch for coordinates ($lat, $lon) on $lang: ${e.message}")
             }
-        } catch (e: Exception) {
-            Log.d(TAG, "Failed Wikipedia geosearch for coordinates ($lat, $lon): ${e.message}")
         }
         results
     }
 
-    private fun cleanTitleForWiki(rawTitle: String): String {
+    /**
+     * Searches Wikipedia via OpenSearch / Search API and fetches the thumbnail of the top result.
+     */
+    suspend fun searchWikipediaPhoto(query: String, lang: String = "en"): WikipediaPhotoResult? = withContext(Dispatchers.IO) {
+        val cleaned = cleanTitleForWiki(query)
+        if (cleaned.length < 3) return@withContext null
+        try {
+            val encoded = URLEncoder.encode(cleaned, StandardCharsets.UTF_8.toString()).replace("+", "%20")
+            val url = "https://$lang.wikipedia.org/w/api.php?action=query&list=search&srsearch=$encoded&srlimit=1&format=json"
+            val request = Request.Builder()
+                .url(url)
+                .header("User-Agent", USER_AGENT)
+                .header("Accept", "application/json")
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@withContext null
+                val body = response.body?.string() ?: return@withContext null
+                val root = JSONObject(body)
+                val searchArr = root.optJSONObject("query")?.optJSONArray("search") ?: return@withContext null
+                if (searchArr.length() > 0) {
+                    val firstResult = searchArr.getJSONObject(0)
+                    val title = firstResult.optString("title")
+                    if (title.isNotBlank()) {
+                        return@withContext fetchPageSummary(lang, title)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.d(TAG, "Wikipedia search query failed for '$query': ${e.message}")
+        }
+        null
+    }
+
+    fun cleanTitleForWiki(rawTitle: String): String {
         return rawTitle
+            .replace(Regex("#\\d+"), "") // Remove numbered suffixes like #1, #2
             .replace(Regex("—.*"), "") // Remove subtitle after em-dash
             .replace(Regex("-.*"), "")  // Remove subtitle after hyphen
             .replace(Regex("\\(.*\\)"), "") // Remove parenthetical notes
+            .replace("Secret Spot", "", ignoreCase = true)
+            .replace("Hidden Passage", "", ignoreCase = true)
+            .replace("Scenic Viewpoint", "", ignoreCase = true)
+            .replace("Historic Tavern", "", ignoreCase = true)
+            .replace("Artisan Bakery", "", ignoreCase = true)
+            .replace("Local Gem", "", ignoreCase = true)
             .trim()
     }
 

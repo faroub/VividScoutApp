@@ -31,7 +31,9 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -201,6 +203,7 @@ fun VividScoutApp(
     }
 
     var isArModeActive by remember { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
 
     CompositionLocalProvider(
         LocalLayoutDirection provides (if (profileState.appLanguage.isRtl) LayoutDirection.Rtl else LayoutDirection.Ltr),
@@ -488,7 +491,12 @@ fun VividScoutApp(
                         onPostTip = { spotId, spotTitle, content, isStatus, category ->
                             communityViewModel.postTip(spotId, spotTitle, content, isStatus, category)
                         },
-                        onReFetchImage = { _, callback -> callback(false, "") }
+                        onReFetchImage = { spotId, callback ->
+                            coroutineScope.launch {
+                                val success = exploreViewModel.refreshSpotPhoto(spotId)
+                                callback(success, if (success) "Real photo extracted from Wikipedia & cached in database!" else "No online Wikipedia photo available")
+                            }
+                        }
                     )
                 }
 
