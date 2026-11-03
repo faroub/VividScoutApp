@@ -41,6 +41,24 @@ data class ScoutSpotEntity(
 
     val neighborhood: String
         get() = locationName
+
+    val openingHours: String?
+        get() = tagsRaw.split("|||").find { it.startsWith("opening_hours=") }?.removePrefix("opening_hours=")
+
+    val bestSeason: String?
+        get() {
+            val seasonTag = tagsRaw.split("|||").find { it.startsWith("season=") || it.startsWith("best_season=") }
+            if (seasonTag != null) return seasonTag.substringAfter("=").trim()
+
+            val textToSearch = "$description ${proTip ?: ""}".lowercase()
+            return when {
+                textToSearch.contains("spring") -> "Spring"
+                textToSearch.contains("summer") -> "Summer"
+                textToSearch.contains("autumn") || textToSearch.contains("fall") -> "Autumn"
+                textToSearch.contains("winter") -> "Winter"
+                else -> null
+            }
+        }
 }
 
 class Converters {

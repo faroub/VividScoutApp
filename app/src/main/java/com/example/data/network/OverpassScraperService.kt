@@ -246,6 +246,9 @@ class OverpassScraperService : PlaceSource {
                         }
                     }
 
+                val rawHours = tags.optString("opening_hours")
+                val hoursTag = if (rawHours.isNotBlank()) "|||opening_hours=$rawHours" else ""
+
                 val spot = ScoutSpotEntity(
                     id = "osm_${type}_$id",
                     title = title,
@@ -258,7 +261,7 @@ class OverpassScraperService : PlaceSource {
                     imageUrl = imageUrl,
                     badgeLabel = badgeLabel,
                     statusBadge = "Live OSM Scout",
-                    tagsRaw = "OpenStreetMap|||LiveScout|||OSM Verified",
+                    tagsRaw = "OpenStreetMap|||LiveScout|||OSM Verified$hoursTag",
                     proTip = "Discovered via OpenStreetMap real-time Overpass API. Tap bookmark to store offline.",
                     contributor = "@osm_community",
                     upvotes = null,

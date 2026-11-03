@@ -88,6 +88,8 @@ import com.example.ui.theme.SecondaryContainer
 import com.example.ui.theme.SurfaceContainerLow
 import com.example.ui.theme.SurfaceContainerLowest
 import com.example.ui.theme.Tertiary
+import com.example.util.OpeningHoursParser
+import com.example.util.OpeningStatus
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -309,6 +311,68 @@ fun SpotDetailBottomSheet(
                                     text = ratingReviewText,
                                     style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
                                     color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Opening Hours & Best Season Tags Row
+                val openingStatus = remember(spot.openingHours) {
+                    OpeningHoursParser.parseOpeningStatus(spot.openingHours)
+                }
+                val bestSeason = spot.bestSeason
+
+                if (openingStatus != null || !bestSeason.isNullOrBlank()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (openingStatus != null) {
+                            val (statusText, statusBg, statusFg) = when (openingStatus) {
+                                OpeningStatus.OPEN_NOW -> Triple("Open now", Color(0xFF10B981).copy(alpha = 0.15f), Color(0xFF059669))
+                                OpeningStatus.CLOSED_NOW -> Triple("Closed now", Color(0xFFEF4444).copy(alpha = 0.15f), Color(0xFFDC2626))
+                            }
+
+                            Surface(
+                                shape = RoundedCornerShape(999.dp),
+                                color = statusBg,
+                                modifier = Modifier.testTag("spot_detail_opening_status_badge")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(6.dp)
+                                            .clip(CircleShape)
+                                            .background(statusFg)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = statusText,
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                        color = statusFg,
+                                        fontSize = 11.sp
+                                    )
+                                }
+                            }
+                        }
+
+                        if (!bestSeason.isNullOrBlank()) {
+                            Surface(
+                                shape = RoundedCornerShape(999.dp),
+                                color = BrandTeal.copy(alpha = 0.15f),
+                                modifier = Modifier.testTag("spot_detail_best_season_badge")
+                            ) {
+                                Text(
+                                    text = "✨ Best: $bestSeason",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                    color = BrandTeal,
+                                    fontSize = 11.sp,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                                 )
                             }
                         }
