@@ -4,6 +4,7 @@ import android.util.Log
 import com.example.data.local.ScoutSpotEntity
 import com.example.data.location.LocationTracker
 import com.example.data.model.ScoutCategory
+import com.example.util.SafeLog
 import com.google.firebase.Firebase
 import com.google.firebase.ai.ai
 import com.google.firebase.ai.type.Schema
@@ -106,7 +107,7 @@ class GeminiSpotService {
                 5. Return the result strictly matching the JSON schema.
             """.trimIndent()
 
-            Log.d(TAG, "Discovering gems with ${GeminiModelConstants.PRIMARY_DISPLAY_NAME} (${GeminiModelConstants.PRIMARY_MODEL_ID}) near ($userLat, $userLng), query: '$customQuery', category: $category")
+            Log.d(TAG, "Discovering gems with ${GeminiModelConstants.PRIMARY_DISPLAY_NAME} (${GeminiModelConstants.PRIMARY_MODEL_ID}) near (${SafeLog.sanitizeCoordinate(userLat)}, ${SafeLog.sanitizeCoordinate(userLng)}), query: '$customQuery', category: $category")
 
             val jsonText = try {
                 val response = withTimeout(15_000L) {

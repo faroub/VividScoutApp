@@ -1,6 +1,7 @@
 package com.example.data.network
 
 import android.util.Log
+import com.example.util.SafeLog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -189,7 +190,7 @@ class WikipediaPhotoService(
                 }
                 if (results.isNotEmpty()) break
             } catch (e: Exception) {
-                Log.d(TAG, "Failed Wikipedia geosearch for coordinates ($lat, $lon) on $lang: ${e.message}")
+                Log.d(TAG, "Failed Wikipedia geosearch for coordinates (${SafeLog.sanitizeCoordinate(lat)}, ${SafeLog.sanitizeCoordinate(lon)}) on $lang: ${e.message}")
             }
         }
         results

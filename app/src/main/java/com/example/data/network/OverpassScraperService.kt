@@ -2,6 +2,7 @@ package com.example.data.network
 
 import android.util.Log
 import com.example.data.local.ScoutSpotEntity
+import com.example.util.SafeLog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -110,7 +111,7 @@ class OverpassScraperService {
 
         val retrofitClient = com.example.data.network.OverpassRetrofitClient()
         val fallback = retrofitClient.generateNearbyFallbackSpots(lat, lng, 6)
-        Log.i("OverpassScraper", "Scraper generated ${fallback.size} fallback spots around GPS ($lat, $lng)")
+        Log.i("OverpassScraper", "Scraper generated ${fallback.size} fallback spots around GPS (${SafeLog.sanitizeCoordinate(lat)}, ${SafeLog.sanitizeCoordinate(lng)})")
         Result.success(fallback)
     }
 

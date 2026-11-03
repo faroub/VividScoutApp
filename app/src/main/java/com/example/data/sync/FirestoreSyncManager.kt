@@ -8,6 +8,7 @@ import com.example.data.local.DiscoveredGemDao
 import com.example.data.local.ScoutDao
 import com.example.data.local.ScoutSpotEntity
 import com.example.data.model.ScoutCategory
+import com.example.util.SafeLog
 import com.example.util.configureAppCheck
 import com.google.firebase.Firebase
 import com.google.firebase.FirebaseApp
@@ -57,7 +58,7 @@ object FirestoreSyncManager {
             val auth = com.google.firebase.auth.FirebaseAuth.getInstance()
             if (auth.currentUser == null) {
                 auth.signInAnonymously().await()
-                Log.d(TAG, "Successfully authenticated Firebase user anonymously (${auth.currentUser?.uid})")
+                SafeLog.d(TAG, "Successfully authenticated Firebase user anonymously (${SafeLog.sanitizeUid(auth.currentUser?.uid)})")
             }
             auth.currentUser != null
         } catch (e: Exception) {
@@ -207,7 +208,7 @@ object FirestoreSyncManager {
 
                 val voteSnap = transaction.get(voteRef)
                 if (voteSnap.exists()) {
-                    Log.w(TAG, "User '$currentUid' has already voted on tip '$tipId'. Rejecting second vote.")
+                    Log.w(TAG, "User '${SafeLog.sanitizeUid(currentUid)}' has already voted on tip '$tipId'. Rejecting second vote.")
                     return@runTransaction false
                 }
 
@@ -225,7 +226,7 @@ object FirestoreSyncManager {
             }.await()
 
             if (voteSuccess) {
-                Log.i(TAG, "Successfully recorded vote from user '$currentUid' for tip '$tipId'")
+                Log.i(TAG, "Successfully recorded vote from user '${SafeLog.sanitizeUid(currentUid)}' for tip '$tipId'")
             }
             voteSuccess
         } catch (e: Exception) {

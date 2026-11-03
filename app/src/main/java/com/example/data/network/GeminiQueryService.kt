@@ -4,6 +4,7 @@ import android.util.Log
 import com.example.data.local.ScoutSpotEntity
 import com.example.util.LocationPhotoResolver
 import com.example.util.MovementVector
+import com.example.util.SafeLog
 import com.google.firebase.Firebase
 import com.google.firebase.ai.ai
 import com.google.firebase.ai.type.Schema
@@ -142,7 +143,7 @@ class GeminiQueryService {
 
             // Actual route corridor validation: candidate must fall within the defined movement vector corridor
             if (!com.example.util.MovementVectorUtils.isPointInCorridor(spotLat, spotLng, vector)) {
-                Log.d(TAG, "Rejecting AI spot '${item.optString("title")}' at ($spotLat, $spotLng): outside 5km route corridor")
+                Log.d(TAG, "Rejecting AI spot '${item.optString("title")}' at (${SafeLog.sanitizeCoordinate(spotLat)}, ${SafeLog.sanitizeCoordinate(spotLng)}): outside 5km route corridor")
                 continue
             }
 
