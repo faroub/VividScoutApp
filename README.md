@@ -36,10 +36,15 @@ The database ID is dynamically retrieved from string resource `R.string.firestor
 ## Build & Test Commands
 
 ### Debug Build
-Build the debug APK using the local debug keystore:
+Build the debug APK:
 ```bash
 ./gradlew :app:assembleDebug
 ```
+
+### Debug Build Setup
+- **Project-Local Keystore**: The debug build configuration (`debugConfig`) references `${rootDir}/debug.keystore` with default credentials (`storePassword = "android"`, `keyAlias = "androiddebugkey"`, `keyPassword = "android"`).
+- **Fresh Clone Behavior**: On a fresh clone where `${rootDir}/debug.keystore` is absent, the Android Gradle Plugin (AGP) automatically falls back to generating or using the default user-level Android debug keystore at `~/.android/debug.keystore`.
+- **Zero Configuration**: Developers can run `./gradlew :app:assembleDebug` or deploy directly from Android Studio immediately on a fresh clone without setting any environment variables.
 
 ### Unit Tests
 Run the local unit test suite (Robolectric & Room tests):
@@ -73,7 +78,7 @@ export KEY_PASSWORD="your_key_password"
 ./gradlew :app:assembleRelease
 ```
 
-> **Fail-Closed Protection:** Executing release build tasks without configuring these environment variables or if the keystore file does not exist causes the Gradle build to fail closed immediately with a clear error message. Debug builds continue using the default debug keystore automatically.
+> **Fail-Closed Protection:** Executing release packaging tasks (`assembleRelease`, `bundleRelease`, `packageRelease`) without configuring all four required environment variables (`KEYSTORE_PATH`, `STORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`) or if the keystore file at `KEYSTORE_PATH` does not exist causes the build to fail closed immediately with an explicit `GradleException` error message pointing to this README section. Release builds never fall back to debug keys.
 
 ---
 
