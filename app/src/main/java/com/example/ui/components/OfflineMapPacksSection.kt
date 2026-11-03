@@ -28,6 +28,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.runtime.remember
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -40,6 +41,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.offline.OfflineMapPack
+import com.example.data.offline.OfflineMapTileEstimator
 import com.example.ui.theme.BrandCoral
 import com.example.ui.theme.Secondary
 import com.example.ui.theme.SecondaryContainer
@@ -237,6 +239,18 @@ fun OfflineMapPackCard(
     onDownload: () -> Unit,
     onDelete: () -> Unit
 ) {
+    val estimate = remember(pack) {
+        OfflineMapTileEstimator.estimateTilePack()
+    }
+    val isStale = remember(pack.downloadedAt) {
+        OfflineMapTileEstimator.isPackStale(pack.downloadedAt)
+    }
+    val downloadDateText = remember(pack.downloadedAt) {
+        if (pack.downloadedAt > 0) {
+            OfflineMapTileEstimator.formatDownloadDate(pack.downloadedAt)
+        } else null
+    }
+
     Surface(
         shape = RoundedCornerShape(14.dp),
         color = SurfaceContainerLow,
@@ -257,7 +271,11 @@ fun OfflineMapPackCard(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = "${pack.country} • ${pack.displaySize}",
+                        text = if (pack.isDownloaded) {
+                            "${pack.country} • ${pack.displaySize}${if (downloadDateText != null) " • $downloadDateText" else ""}"
+                        } else {
+                            "${pack.country} • ${estimate.formattedSize} (${estimate.formattedTime})"
+                        },
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -266,26 +284,62 @@ fun OfflineMapPackCard(
                 // Action Button / Status
                 if (pack.isDownloaded) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(999.dp))
-                                .background(Secondary.copy(alpha = 0.15f))
-                                .padding(horizontal = 8.dp, vertical = 3.dp)
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Default.CheckCircle,
-                                    contentDescription = null,
-                                    tint = Secondary,
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
+                        if (isStale) {
+                            // Stale Badge & One-Tap Update Action Button
+                            // Note: One-tap update action re-downloads the complete map pack to ensure all vector tiles are refreshed.
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(999.dp))
+                                    .background(Color(0xFFF59E0B).copy(alpha = 0.2f))
+                                    .padding(horizontal = 8.dp, vertical = 3.dp)
+                            ) {
                                 Text(
-                                    text = "Ready",
+                                    text = "Stale",
                                     style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                    color = Secondary,
+                                    color = Color(0xFFD97706),
                                     fontSize = 11.sp
                                 )
+                            }
+
+                            Spacer(modifier = Modifier.width(6.dp))
+
+                            Button(
+                                onClick = onDownload,
+                                shape = RoundedCornerShape(999.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFFD97706),
+                                    contentColor = Color.White
+                                ),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 3.dp),
+                                modifier = Modifier.testTag("update_stale_pack_${pack.id}")
+                            ) {
+                                Text(
+                                    text = "Update",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold)
+                                )
+                            }
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(999.dp))
+                                    .background(Secondary.copy(alpha = 0.15f))
+                                    .padding(horizontal = 8.dp, vertical = 3.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.CheckCircle,
+                                        contentDescription = null,
+                                        tint = Secondary,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "Ready",
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                        color = Secondary,
+                                        fontSize = 11.sp
+                                    )
+                                }
                             }
                         }
 
