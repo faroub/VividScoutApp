@@ -94,6 +94,7 @@ VividScout enforces privacy-first logging using `com.example.util.SafeLog`:
 - **Debug-Only Emission**: Log output is emitted strictly in debug builds (`BuildConfig.DEBUG == true`) and suppressed in production release builds.
 - **Anonymized User Identifiers**: Firebase Authentication UIDs are truncated to the first 4 characters (e.g. `a1b2***`), preventing user tracking across Logcat output.
 - **Sanitized GPS Coordinates**: Precise user coordinates and AI spot location coordinates are rounded to 2 decimal places (approx. 1.1 km accuracy) in log outputs, protecting precise location history.
+- **Shared Trips Privacy Policy**: Read-only shared trip links store ONLY public spot titles, coordinates, and route waypoints under random 128-bit IDs. They contain zero user UIDs, zero device IDs, and zero location tracking history, and automatically expire after 30 days (`expireAt` TTL timestamp).
 - **Non-Sensitive Operational Telemetry**: General operational metadata (spot titles, category labels, count totals, and status codes) is preserved for debugging.
 
 ---

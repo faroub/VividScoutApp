@@ -128,5 +128,23 @@ service cloud.firestore {
         allow update, delete: if false;
       }
     }
+
+    match /shared_trips/{tripId} {
+      // Public read ONLY by exact document ID (get rule only; list/query prohibited)
+      allow get: if true;
+      allow list: if false;
+
+      // Create allowed for authenticated users without user tracking fields
+      allow create: if isAuthenticated()
+                    && request.resource.data.keys().hasOnly(['id', 'title', 'spots', 'createdAt', 'expireAt'])
+                    && request.resource.data.id == tripId
+                    && request.resource.data.title is string
+                    && request.resource.data.title.size() <= 120
+                    && request.resource.data.createdAt is number
+                    && request.resource.data.expireAt is number;
+
+      // Shared trip links are immutable and read-only once created
+      allow update, delete: if false;
+    }
   }
 }
