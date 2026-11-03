@@ -2,6 +2,8 @@ package com.example.data.network
 
 import android.util.Log
 import com.example.data.local.ScoutSpotEntity
+import com.example.data.places.PlaceCandidate
+import com.example.data.places.PlaceSource
 import com.example.util.SafeLog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -19,7 +21,32 @@ import kotlin.random.Random
  * Service to scrape real sightseeing viewpoints, historic monuments, bakeries,
  * and pedestrian shortcuts from OpenStreetMap using the free Overpass API.
  */
-class OverpassScraperService {
+class OverpassScraperService : PlaceSource {
+
+    override suspend fun fetchNear(
+        lat: Double,
+        lon: Double,
+        radiusMeters: Int
+    ): Result<List<PlaceCandidate>> {
+        return scrapeNearbyGems(lat, lon, radiusMeters).map { spots ->
+            spots.map { spot ->
+                val osmPath = spot.id.removePrefix("osm_").replace("_", "/")
+                PlaceCandidate(
+                    sourceName = "OpenStreetMap Overpass API",
+                    sourceId = spot.id,
+                    name = spot.title,
+                    latitude = spot.latitude,
+                    longitude = spot.longitude,
+                    category = spot.category,
+                    description = spot.description,
+                    imageUrl = spot.imageUrl,
+                    sourceUrl = "https://www.openstreetmap.org/$osmPath",
+                    license = "ODbL (Open Database License)",
+                    languageCode = "en"
+                )
+            }
+        }
+    }
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)

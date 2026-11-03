@@ -2,6 +2,8 @@ package com.example.data.network
 
 import android.util.Log
 import com.example.data.local.ScoutSpotEntity
+import com.example.data.places.PlaceCandidate
+import com.example.data.places.PlaceSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -18,7 +20,37 @@ import java.nio.charset.StandardCharsets
 class WikidataSearchService(
     private val sparqlApi: WikidataSparqlApi = WikidataRetrofitClient.api,
     private val wikipediaApi: WikipediaApi = WikipediaRetrofitClient.api
-) {
+) : PlaceSource {
+
+    override suspend fun fetchNear(
+        lat: Double,
+        lon: Double,
+        radiusMeters: Int
+    ): Result<List<PlaceCandidate>> {
+        return try {
+            val radiusKm = radiusMeters / 1000.0
+            val spots = fetchNearbyWikidataSpots(lat, lon, "all", radiusKm)
+            val candidates = spots.map { spot ->
+                val qid = spot.id.removePrefix("wikidata_")
+                PlaceCandidate(
+                    sourceName = "Wikidata Knowledge Graph",
+                    sourceId = spot.id,
+                    name = spot.title,
+                    latitude = spot.latitude,
+                    longitude = spot.longitude,
+                    category = spot.category,
+                    description = spot.description,
+                    imageUrl = spot.imageUrl,
+                    sourceUrl = "https://www.wikidata.org/wiki/$qid",
+                    license = "CC0 1.0 Universal",
+                    languageCode = "en"
+                )
+            }
+            Result.success(candidates)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
 
     companion object {
         private const val TAG = "WikidataSearchService"
