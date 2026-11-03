@@ -69,6 +69,7 @@ import java.util.Date
 import java.util.Locale
 
 import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
+import com.example.ui.components.EmptyStateView
 
 @Composable
 fun SavedScreen(
@@ -263,39 +264,14 @@ fun SavedScreen(
         // Empty state
         if (activeList.isEmpty()) {
             item {
-                Surface(
-                    shape = RoundedCornerShape(20.dp),
-                    color = SurfaceContainerLowest,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 24.dp)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(32.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        Icon(
-                            imageVector = if (selectedTab == 0) Icons.Default.Favorite else Icons.Default.Explore,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.outlineVariant,
-                            modifier = Modifier.size(48.dp)
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            text = if (selectedTab == 0) strings.noSavedSpots else strings.noDiscoveredSpots,
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = if (selectedTab == 0) strings.noSavedDesc else strings.noDiscoveredDesc,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                        )
-                    }
-                }
+                EmptyStateView(
+                    title = if (selectedTab == 0) strings.noSavedSpots else strings.noDiscoveredSpots,
+                    description = if (selectedTab == 0) strings.noSavedDesc else strings.noDiscoveredDesc,
+                    actionText = "Explore Sights & Spots",
+                    onActionClick = { },
+                    icon = if (selectedTab == 0) Icons.Default.Favorite else Icons.Default.Explore,
+                    modifier = Modifier.padding(vertical = 12.dp)
+                )
             }
         }
 

@@ -69,6 +69,8 @@ import com.example.data.p2p.DemoModeProvider
 import com.example.data.p2p.MeshSyncPhase
 import com.example.data.p2p.PeerMeshSyncResult
 import com.example.ui.components.CommunityTipCard
+import com.example.ui.components.EmptyStateView
+import com.example.ui.components.LoadingStateView
 import com.example.ui.components.PostTipDialog
 import com.example.ui.theme.BrandCoral
 import com.example.ui.theme.BrandTeal
@@ -297,38 +299,25 @@ fun CommunityFeedScreen(
                 }
             }
 
-            // Feed Items List
-            if (filteredTips.isEmpty()) {
+            // Feed Items List OR Syncing Loading State OR Empty State
+            if (syncPhase != MeshSyncPhase.IDLE) {
                 item {
-                    Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        color = SurfaceContainerLowest,
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp)
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(24.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Radar,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(36.dp)
-                            )
-                            Text(
-                                text = "No Community Notes Yet",
-                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                text = strings.communityEmptyNotesDesc,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                            )
-                        }
-                    }
+                    LoadingStateView(
+                        title = "Syncing Community Notes...",
+                        description = "Exchanging peer scout reports and cloud status updates.",
+                        actionText = null,
+                        onActionClick = null
+                    )
+                }
+            } else if (filteredTips.isEmpty()) {
+                item {
+                    EmptyStateView(
+                        title = "No Community Notes Found",
+                        description = "No notes match active filter. Share your first local scout tip with the community!",
+                        actionText = "Post Scout Note ✨",
+                        onActionClick = { isPostModalOpen = true },
+                        icon = Icons.Default.Radar
+                    )
                 }
             } else {
                 items(filteredTips, key = { it.id }) { tip ->

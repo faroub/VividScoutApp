@@ -120,6 +120,8 @@ import com.example.ui.theme.SurfaceContainerLowest
 import androidx.compose.material.icons.filled.Layers
 import com.example.data.local.RecentSearchEntity
 import com.example.data.model.ExploreMapLayer
+import com.example.ui.components.EmptyStateView
+import com.example.ui.components.OfflineNoCacheStateView
 import com.example.ui.theme.Tertiary
 import com.example.ui.theme.TertiaryFixed
 
@@ -455,7 +457,7 @@ fun ExploreScreen(
                 }
             }
 
-            // 3. Feed Cards or Discover Gems Loading State
+            // 3. Feed Cards OR Loading State OR Empty State OR Offline No Cache Error State
             if (isDiscovering) {
                 item {
                     Box(modifier = Modifier.padding(horizontal = 16.dp)) {
@@ -470,10 +472,21 @@ fun ExploreScreen(
             } else if (spots.isEmpty()) {
                 item {
                     Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 20.dp)) {
-                        EmptyGemsDiscoverCard(
-                            selectedCategory = selectedCategory,
-                            onTriggerDiscover = onTriggerDiscover
-                        )
+                        if (!hasLocationPermission || !isUsingGpsLocation) {
+                            OfflineNoCacheStateView(
+                                title = "Offline & No Local Cache",
+                                description = "Connect to network or select a pre-cached city to explore offline.",
+                                actionText = "Select City / Enable GPS",
+                                onActionClick = onGpsClick
+                            )
+                        } else {
+                            EmptyStateView(
+                                title = "No Spots Found in Vicinity",
+                                description = "No spots match category '$selectedCategory'. Tap discover to scan nearby viewpoints and historic gems.",
+                                actionText = "Discover Gems Now ✨",
+                                onActionClick = onTriggerDiscover
+                            )
+                        }
                     }
                 }
             } else {
