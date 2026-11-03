@@ -53,10 +53,10 @@ open class ScoutGemRepository(
     val wikidataSearchService: com.example.data.network.WikidataSearchService = com.example.data.network.WikidataSearchService()
 ) {
 
-    val recentSearches: Flow<List<RecentSearchEntity>> =
+    open val recentSearches: Flow<List<RecentSearchEntity>> =
         recentSearchDao?.getRecentSearches() ?: flowOf(emptyList())
 
-    suspend fun recordRecentSearch(queryText: String, category: String = "all"): Unit = withContext(Dispatchers.IO) {
+    open suspend fun recordRecentSearch(queryText: String, category: String = "all"): Unit = withContext(Dispatchers.IO) {
         val trimmed = queryText.trim()
         if (trimmed.isBlank() || recentSearchDao == null) return@withContext
 
@@ -80,11 +80,11 @@ open class ScoutGemRepository(
         recentSearchDao.trimExcessSearches()
     }
 
-    suspend fun removeRecentSearch(id: String): Int = withContext(Dispatchers.IO) {
+    open suspend fun removeRecentSearch(id: String): Int = withContext(Dispatchers.IO) {
         recentSearchDao?.deleteSearchById(id) ?: 0
     }
 
-    suspend fun clearAllRecentSearches(): Int = withContext(Dispatchers.IO) {
+    open suspend fun clearAllRecentSearches(): Int = withContext(Dispatchers.IO) {
         recentSearchDao?.clearAllSearches() ?: 0
     }
 
@@ -530,7 +530,7 @@ open class ScoutGemRepository(
      * and caching the authentic image URLs directly in the Room database for permanent offline availability.
      * Prioritizes saved/bookmarked spots first, followed by active feed spots.
      */
-    suspend fun enrichSpotsPhotosInBackground(spots: List<ScoutSpotEntity> = emptyList()) = withContext(Dispatchers.IO) {
+    open suspend fun enrichSpotsPhotosInBackground(spots: List<ScoutSpotEntity> = emptyList()) = withContext(Dispatchers.IO) {
         val targets = if (spots.isNotEmpty()) {
             spots.filter { com.example.util.LocationPhotoResolver.isGenericOrStockPhoto(it.imageUrl) }
         } else {

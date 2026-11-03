@@ -9,6 +9,7 @@ import com.example.data.local.DiscoveredGemDao
 import com.example.data.local.RecentSearchDao
 import com.example.data.local.RecentSearchEntity
 import com.example.data.local.ScoutDao
+import com.example.data.local.ScoutSpotEntity
 import com.example.data.repository.ScoutGemRepository
 import com.example.data.repository.ScoutRepository
 import com.example.engine.PreScoutEngine
@@ -126,7 +127,7 @@ class ExploreSearchViewModelTest {
         achievementDao: AchievementDao,
         context: Context?
     ) : ScoutRepository(scoutDao, gemDao, achievementDao, context) {
-        override suspend fun initializeIfEmpty() {}
+        override suspend fun initializeIfEmpty(): Int = 0
     }
 
     class FakeScoutGemRepository(
@@ -139,18 +140,20 @@ class ExploreSearchViewModelTest {
         var lastRecordedQuery: String? = null
         var lastDeletedId: String? = null
 
-        override suspend fun enrichSpotsPhotosInBackground() {}
+        override suspend fun enrichSpotsPhotosInBackground(spots: List<ScoutSpotEntity>) {}
 
-        override suspend fun recordRecentSearch(query: String) {
-            lastRecordedQuery = query
+        override suspend fun recordRecentSearch(queryText: String, category: String) {
+            lastRecordedQuery = queryText
         }
 
-        override suspend fun removeRecentSearch(id: String) {
+        override suspend fun removeRecentSearch(id: String): Int {
             lastDeletedId = id
+            return 1
         }
 
-        override suspend fun clearAllRecentSearches() {
+        override suspend fun clearAllRecentSearches(): Int {
             recentSearchesFlow.value = emptyList()
+            return 1
         }
     }
 }
