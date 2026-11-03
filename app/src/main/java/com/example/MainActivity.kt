@@ -337,7 +337,10 @@ fun VividScoutApp(
                                         preScoutState = exploreState.preScoutBannerState,
                                         onDismissPreScout = { exploreViewModel.dismissPreScoutBanner() },
                                         onViewPreScout = { exploreViewModel.filterPreScoutedSpots() },
-                                        onOpenTouristicSources = { exploreViewModel.openTouristicSourcesModal() }
+                                        onOpenTouristicSources = { exploreViewModel.openTouristicSourcesModal() },
+                                        recentSearches = exploreState.recentSearches,
+                                        onDeleteRecentSearch = { exploreViewModel.deleteRecentSearch(it) },
+                                        onClearAllRecentSearches = { exploreViewModel.clearAllRecentSearches() }
                                     )
                                 }
 

@@ -118,6 +118,7 @@ import com.example.ui.theme.SurfaceContainerHigh
 import com.example.ui.theme.SurfaceContainerLow
 import com.example.ui.theme.SurfaceContainerLowest
 import androidx.compose.material.icons.filled.Layers
+import com.example.data.local.RecentSearchEntity
 import com.example.data.model.ExploreMapLayer
 import com.example.ui.theme.Tertiary
 import com.example.ui.theme.TertiaryFixed
@@ -162,6 +163,9 @@ fun ExploreScreen(
     onDismissPreScout: () -> Unit = {},
     onViewPreScout: () -> Unit = {},
     onOpenTouristicSources: () -> Unit = {},
+    recentSearches: List<RecentSearchEntity> = emptyList(),
+    onDeleteRecentSearch: (String) -> Unit = {},
+    onClearAllRecentSearches: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val strings = LocalAppStrings.current
@@ -270,7 +274,10 @@ fun ExploreScreen(
                         // Floating Pill Search Bar
                         FloatingPillSearchBar(
                             searchQuery = searchQuery,
-                            onSearchQueryChange = onSearchQueryChange
+                            onSearchQueryChange = onSearchQueryChange,
+                            recentSearches = recentSearches,
+                            onDeleteRecentSearch = onDeleteRecentSearch,
+                            onClearAllRecentSearches = onClearAllRecentSearches
                         )
 
                         // Offline Database Sync Status Badge & Cache Health Score Badge
