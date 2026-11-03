@@ -106,7 +106,7 @@ class GeminiSpotService {
                 5. Return the result strictly matching the JSON schema.
             """.trimIndent()
 
-            Log.d(TAG, "Discovering gems with Gemini 3.5 Flash-Lite near ($userLat, $userLng), query: '$customQuery', category: $category")
+            Log.d(TAG, "Discovering gems with ${GeminiModelConstants.PRIMARY_DISPLAY_NAME} (${GeminiModelConstants.PRIMARY_MODEL_ID}) near ($userLat, $userLng), query: '$customQuery', category: $category")
 
             val jsonText = try {
                 val response = withTimeout(15_000L) {
@@ -115,7 +115,7 @@ class GeminiSpotService {
                 response.text ?: throw IllegalStateException("Gemini returned empty response text.")
             } catch (t: Exception) {
                 if (t is CancellationException && t !is TimeoutCancellationException) throw t
-                Log.w(TAG, "Gemini 3.5 Flash-Lite attempt delayed (${t.message}), trying secondary model...")
+                Log.w(TAG, "${GeminiModelConstants.PRIMARY_DISPLAY_NAME} attempt delayed (${t.message}), trying secondary model (${GeminiModelConstants.SECONDARY_DISPLAY_NAME})...")
                 val fallbackResponse = withTimeout(10_000L) {
                     secondaryModel.generateContent(prompt)
                 }

@@ -1,5 +1,7 @@
 package com.example.data.sources
 
+import com.example.data.network.GeminiModelConstants
+
 /**
  * Metadata representation of a Touristic Place Data Source available in Vivid Scout.
  */
@@ -149,7 +151,7 @@ object TouristicSourceRegistry {
         ),
         TouristicSourceInfo(
             id = "firebase_gemini_ai",
-            name = "Firebase AI Logic (Gemini 3.8 Flash)",
+            name = "Firebase AI Logic (${GeminiModelConstants.PRIMARY_DISPLAY_NAME})",
             providerBadge = "Gemini AI",
             categoryTag = "Insiders & Hidden Gems",
             description = "Real-time AI spot generator identifying hidden alleyway cafes, secret panoramic miradouros, and obscure local culinary spots.",

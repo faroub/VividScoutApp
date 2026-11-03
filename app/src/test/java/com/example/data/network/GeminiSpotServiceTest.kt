@@ -1,6 +1,8 @@
 package com.example.data.network
 
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -10,6 +12,35 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [33])
 class GeminiSpotServiceTest {
+
+    @Test
+    fun geminiModelConstants_providesDefaultModelIdsAndDisplayNames() {
+        assertEquals("gemini-3.8-flash", GeminiModelConstants.DEFAULT_PRIMARY_MODEL_ID)
+        assertEquals("gemini-3.5-flash", GeminiModelConstants.DEFAULT_SECONDARY_MODEL_ID)
+        assertEquals("Gemini 3.8 Flash", GeminiModelConstants.PRIMARY_DISPLAY_NAME)
+        assertEquals("Gemini 3.5 Flash", GeminiModelConstants.SECONDARY_DISPLAY_NAME)
+
+        // When RemoteConfig is uninitialized in test, getPrimaryModelId & getSecondaryModelId return defaults
+        assertEquals("gemini-3.8-flash", GeminiModelConstants.getPrimaryModelId())
+        assertEquals("gemini-3.5-flash", GeminiModelConstants.getSecondaryModelId())
+    }
+
+    @Test
+    fun geminiSpotService_fallbackToCuratedVicinitySpotsOnException() = runBlocking {
+        val service = GeminiSpotService()
+        // Calling discoverGems in offline unit test environment triggers fallback safely without crashing
+        val result = service.discoverGems(
+            userLat = 38.7112,
+            userLng = -9.1423,
+            category = "all",
+            radiusMeters = 2000
+        )
+
+        assertTrue("discoverGems must succeed using fallback curated spots when network unavailable", result.isSuccess)
+        val spots = result.getOrNull()
+        assertNotNull(spots)
+        assertTrue("Fallback spots must be returned", spots!!.isNotEmpty())
+    }
 
     @Test
     fun parseSpotsJson_rejectsCoordinatesExceedingRequestedRadius() {

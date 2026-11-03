@@ -61,6 +61,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.network.GeminiModelConstants
 import com.example.ui.theme.BrandNight
 import com.example.ui.theme.BrandTeal
 import com.example.ui.theme.Primary
@@ -262,7 +263,7 @@ fun PulsingRadarGeminiHeader(
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "Gemini 3.8 Flash AI Discovery",
+                        text = "${GeminiModelConstants.PRIMARY_DISPLAY_NAME} AI Discovery",
                         style = MaterialTheme.typography.labelMedium.copy(
                             fontWeight = FontWeight.Bold,
                             letterSpacing = 0.5.sp
@@ -420,7 +421,7 @@ fun ScoutingTelemetryTicker(
 ) {
     val tips = remember(category) {
         listOf(
-            "Querying Gemini 3.8 Flash for verified architectural and historic landmarks...",
+            "Querying ${GeminiModelConstants.PRIMARY_DISPLAY_NAME} for verified architectural and historic landmarks...",
             "Scouting authentic local pastelarias & artisan eateries nearby...",
             "Cross-referencing panoramic viewpoints & sunset miradouros...",
             "Filtering pedestrian-accessible hidden alleys and cobblestone lanes...",

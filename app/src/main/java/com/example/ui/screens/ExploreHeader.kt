@@ -41,6 +41,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.network.GeminiModelConstants
 import com.example.ui.theme.BrandNight
 import com.example.ui.theme.BrandTeal
 import com.example.ui.theme.LocalAppStrings
@@ -89,7 +90,7 @@ fun LiveScrapePulseTicker(
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = if (isDiscovering) {
-                        discoveryMessage ?: "✨ Gemini 3.8 Flash discovering gems..."
+                        discoveryMessage ?: "✨ ${GeminiModelConstants.PRIMARY_DISPLAY_NAME} discovering gems..."
                     } else {
                         "✨ Tap to discover tourist gems with Gemini AI"
                     },
@@ -159,7 +160,7 @@ fun EmptyGemsDiscoverCard(
             )
 
             Text(
-                text = "Let Gemini 3.8 Flash discover verified landmarks, historic viewpoints, and local culinary gems for your GPS location.",
+                text = "Let ${GeminiModelConstants.PRIMARY_DISPLAY_NAME} discover verified landmarks, historic viewpoints, and local culinary gems for your GPS location.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center
