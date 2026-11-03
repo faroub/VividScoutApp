@@ -57,25 +57,46 @@ import com.example.ui.theme.BrandCoral
 import com.example.ui.theme.BrandTeal
 import kotlin.math.hypot
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.CenterFocusStrong
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Route
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.ZoomIn
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import com.example.ui.dialogs.SpotDetailBottomSheet
+import com.example.ui.theme.EatsAmber
+import com.example.ui.theme.EatsAmberBg
+import com.example.ui.theme.HistoryPurple
+import com.example.ui.theme.HistoryPurpleBg
+import com.example.ui.theme.SightsGreen
+import com.example.ui.theme.SightsGreenBg
 import com.example.ui.viewmodel.ZoomPreset
+import com.example.util.ImageResolver
 
 /**
  * Interactive Offline Vector Map Canvas for ScoutGem locations.
@@ -112,8 +133,11 @@ fun MapCanvasView(
     onCancelRegionDownload: (() -> Unit)? = null,
     onConfirmRegionDownload: (() -> Unit)? = null,
     achievements: List<com.example.data.local.AchievementEntity> = emptyList(),
+    onSpotDetailClick: ((ScoutSpotEntity) -> Unit)? = null,
+    onDismissSpotSelect: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
+    var internalDetailSpot by remember { mutableStateOf<ScoutSpotEntity?>(null) }
     val context = androidx.compose.ui.platform.LocalContext.current
     val compassSensorManager = remember { com.example.sensor.CompassSensorManager(context) }
     val compassState by compassSensorManager.compassState.collectAsState()
@@ -178,6 +202,7 @@ fun MapCanvasView(
                     )
                     var closestGem: ScoutGem? = null
                     var minDistance = Float.MAX_VALUE
+                    val pinScale = activeZoomScale.coerceIn(0.85f, 1.4f)
 
                     gems.forEach { gem ->
                         val pinPos = ScoutVectorEngine.projectGpsToCanvasOffset(
@@ -190,14 +215,21 @@ fun MapCanvasView(
                             baseScale = baseScale
                         )
 
-                        val dist = hypot(tapPos.x - pinPos.x, tapPos.y - pinPos.y)
-                        if (dist < 48f && dist < minDistance) {
+                        // Pin head center is elevated above the ground anchor tip
+                        val pinHeadY = pinPos.y - 20f * pinScale
+                        val dist = hypot(tapPos.x - pinPos.x, tapPos.y - pinHeadY)
+                        val touchRadius = 52f * pinScale.coerceAtLeast(1f)
+                        if (dist < touchRadius && dist < minDistance) {
                             minDistance = dist
                             closestGem = gem
                         }
                     }
 
-                    closestGem?.let { onGemSelect(it) }
+                    if (closestGem != null) {
+                        onGemSelect(closestGem)
+                    } else {
+                        onDismissSpotSelect?.invoke()
+                    }
                 }
             }
     ) {
@@ -429,7 +461,7 @@ fun MapCanvasView(
             }
             drawPath(path = headingPath, color = BrandTeal)
 
-            // 6. Draw Hidden Gem Pins
+            // 6. Draw Hidden Gem Pins (Distinct teardrop pins with category colors, white rim, and selection halo)
             gems.forEach { gem ->
                 val pinPos = ScoutVectorEngine.projectGpsToCanvasOffset(
                     spotLat = gem.latitude,
@@ -446,74 +478,130 @@ fun MapCanvasView(
                 val isSelected = selectedGem?.id == gem.id
                 val tierStyle = com.example.util.MarkerTierResolver.resolveTierForCategory(gem.category, achievements)
 
+                val pinScale = activeZoomScale.coerceIn(0.85f, 1.35f)
+                val pinHeadRadius = 12f * pinScale
+                val pinHeadY = pinY - 22f * pinScale
+
                 // Achievement Tier Pulsing Aura Ring (Bronze / Silver / Gold)
                 if (tierStyle.isPulsing) {
-                    val auraRadius = (20f + (beaconPulse * 8f)) * activeZoomScale.coerceIn(0.8f, 1.3f)
+                    val auraRadius = (22f + (beaconPulse * 8f)) * pinScale
                     drawCircle(
                         color = tierStyle.auraColor.copy(alpha = 0.35f),
                         radius = auraRadius,
-                        center = Offset(pinX, pinY)
+                        center = Offset(pinX, pinHeadY)
                     )
                     drawCircle(
                         color = tierStyle.auraColor,
                         radius = auraRadius,
-                        center = Offset(pinX, pinY),
+                        center = Offset(pinX, pinHeadY),
                         style = Stroke(width = 1.5f)
                     )
                 }
 
                 val pinColor = when {
                     gem.isSaved -> BrandCoral
-                    gem.isDiscovered -> Color(0xFFEAB308) // Discovered gold
-                    gem.category == "eats" -> Color(0xFFFB7185)
-                    gem.category == "history" -> Color(0xFFA855F7)
-                    gem.category == "sights" -> Color(0xFF2DD4BF)
-                    else -> Color(0xFF38BDF8)
+                    gem.isDiscovered -> Color(0xFFF59E0B) // Discovered gold
+                    gem.category.equals("sights", ignoreCase = true) -> Color(0xFF0D9488) // Vivid Teal
+                    gem.category.equals("eats", ignoreCase = true) -> Color(0xFFF43F5E) // Vibrant Coral/Rose
+                    gem.category.equals("history", ignoreCase = true) -> Color(0xFF8B5CF6) // Rich Purple
+                    gem.category.equals("shortcut", ignoreCase = true) -> Color(0xFFF59E0B) // Amber
+                    else -> Color(0xFF0284C7) // Sky Blue
                 }
 
-                // Selection Halo
+                // 1. Ground Contact Shadow Ellipse
+                drawOval(
+                    color = Color.Black.copy(alpha = 0.40f),
+                    topLeft = Offset(pinX - 7f * pinScale, pinY - 2.5f * pinScale),
+                    size = Size(14f * pinScale, 5f * pinScale)
+                )
+
+                // 2. Pulsing Selection Halo
                 if (isSelected) {
+                    val haloRadius = (pinHeadRadius + 14f) * (0.9f + beaconPulse * 0.25f)
                     drawCircle(
-                        color = pinColor.copy(alpha = 0.35f),
-                        radius = 26f * activeZoomScale.coerceIn(0.8f, 1.3f),
-                        center = Offset(pinX, pinY)
+                        color = pinColor.copy(alpha = 0.30f),
+                        radius = haloRadius,
+                        center = Offset(pinX, pinHeadY)
                     )
                     drawCircle(
                         color = Color.White,
-                        radius = 26f * activeZoomScale.coerceIn(0.8f, 1.3f),
-                        center = Offset(pinX, pinY),
-                        style = Stroke(width = 2f)
+                        radius = (pinHeadRadius + 7f) * pinScale,
+                        center = Offset(pinX, pinHeadY),
+                        style = Stroke(width = 2.5f)
+                    )
+                    drawCircle(
+                        color = pinColor,
+                        radius = (pinHeadRadius + 4f) * pinScale,
+                        center = Offset(pinX, pinHeadY),
+                        style = Stroke(width = 1.5f)
                     )
                 }
 
-                // Pin Stem
-                drawLine(
-                    color = pinColor,
-                    start = Offset(pinX, pinY),
-                    end = Offset(pinX, pinY + 12f * activeZoomScale.coerceIn(0.8f, 1.2f)),
-                    strokeWidth = 2.5f
-                )
+                // 3. Outer Teardrop Pin Path (Crisp White Rim)
+                val outerR = pinHeadRadius + 2.5f * pinScale
+                val outerPath = Path().apply {
+                    moveTo(pinX, pinY)
+                    cubicTo(
+                        pinX - outerR * 0.9f, pinY - 8f * pinScale,
+                        pinX - outerR, pinHeadY + 5f * pinScale,
+                        pinX - outerR, pinHeadY
+                    )
+                    arcTo(
+                        rect = androidx.compose.ui.geometry.Rect(
+                            pinX - outerR, pinHeadY - outerR,
+                            pinX + outerR, pinHeadY + outerR
+                        ),
+                        startAngleDegrees = 180f,
+                        sweepAngleDegrees = 180f,
+                        forceMoveTo = false
+                    )
+                    cubicTo(
+                        pinX + outerR, pinHeadY + 5f * pinScale,
+                        pinX + outerR * 0.9f, pinY - 8f * pinScale,
+                        pinX, pinY
+                    )
+                    close()
+                }
+                drawPath(path = outerPath, color = Color.White)
 
-                // Outer Pin White Rim
+                // 4. Inner Teardrop Pin Path (Category-Specific Color Fill)
+                val innerR = pinHeadRadius
+                val innerPath = Path().apply {
+                    moveTo(pinX, pinY - 2.5f * pinScale)
+                    cubicTo(
+                        pinX - innerR * 0.85f, pinY - 8f * pinScale,
+                        pinX - innerR, pinHeadY + 4f * pinScale,
+                        pinX - innerR, pinHeadY
+                    )
+                    arcTo(
+                        rect = androidx.compose.ui.geometry.Rect(
+                            pinX - innerR, pinHeadY - innerR,
+                            pinX + innerR, pinHeadY + innerR
+                        ),
+                        startAngleDegrees = 180f,
+                        sweepAngleDegrees = 180f,
+                        forceMoveTo = false
+                    )
+                    cubicTo(
+                        pinX + innerR, pinHeadY + 4f * pinScale,
+                        pinX + innerR * 0.85f, pinY - 8f * pinScale,
+                        pinX, pinY - 2.5f * pinScale
+                    )
+                    close()
+                }
+                drawPath(path = innerPath, color = pinColor)
+
+                // 5. Center Head Indicator Dot
                 drawCircle(
                     color = Color.White,
-                    radius = 12f * activeZoomScale.coerceIn(0.8f, 1.2f),
-                    center = Offset(pinX, pinY)
+                    radius = 4.5f * pinScale,
+                    center = Offset(pinX, pinHeadY)
                 )
-
-                // Inner Pin Category Color
-                drawCircle(
-                    color = pinColor,
-                    radius = 9f * activeZoomScale.coerceIn(0.8f, 1.2f),
-                    center = Offset(pinX, pinY)
-                )
-
-                // Center Dot (White for saved/discovered)
                 if (gem.isSaved || gem.isDiscovered) {
                     drawCircle(
-                        color = Color.White,
-                        radius = 3.5f * activeZoomScale.coerceIn(0.8f, 1.2f),
-                        center = Offset(pinX, pinY)
+                        color = pinColor,
+                        radius = 2.2f * pinScale,
+                        center = Offset(pinX, pinHeadY)
                     )
                 }
             }
@@ -737,6 +825,49 @@ fun MapCanvasView(
                 .align(Alignment.CenterEnd)
                 .padding(end = 12.dp)
         )
+
+        // Floating Spot Preview Card (Bottom Floating upon Marker Tap)
+        AnimatedVisibility(
+            visible = selectedGem != null,
+            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(
+                    start = 12.dp,
+                    end = 12.dp,
+                    bottom = if (activeTrail != null) 92.dp else 16.dp
+                )
+        ) {
+            if (selectedGem != null) {
+                val spot = selectedGem.toEntity()
+                SpotPreviewPopupCard(
+                    spot = spot,
+                    onCardClick = {
+                        if (onSpotDetailClick != null) {
+                            onSpotDetailClick(spot)
+                        } else {
+                            internalDetailSpot = spot
+                        }
+                    },
+                    onDismiss = {
+                        onDismissSpotSelect?.invoke()
+                    }
+                )
+            }
+        }
+
+        // Internal Spot Detail Bottom Sheet Fallback
+        internalDetailSpot?.let { spot ->
+            SpotDetailBottomSheet(
+                spot = spot,
+                onDismiss = { internalDetailSpot = null },
+                onToggleSave = { },
+                onUpvote = { },
+                onToggleAudio = { },
+                isPlayingAudio = false
+            )
+        }
     }
 }
 
@@ -769,6 +900,8 @@ fun MapCanvasView(
     onStartRegionDownload: (() -> Unit)? = null,
     onCancelRegionDownload: (() -> Unit)? = null,
     onConfirmRegionDownload: (() -> Unit)? = null,
+    onSpotDetailClick: ((ScoutSpotEntity) -> Unit)? = null,
+    onDismissSpotSelect: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val gems = remember(spots, userLat, userLng) {
@@ -804,6 +937,243 @@ fun MapCanvasView(
         onStartRegionDownload = onStartRegionDownload,
         onCancelRegionDownload = onCancelRegionDownload,
         onConfirmRegionDownload = onConfirmRegionDownload,
+        onSpotDetailClick = onSpotDetailClick,
+        onDismissSpotSelect = onDismissSpotSelect,
         modifier = modifier
     )
+}
+
+/**
+ * Interactive Floating Spot Preview Card rendered at the bottom of the map when a pin marker is tapped.
+ */
+@Composable
+fun SpotPreviewPopupCard(
+    spot: ScoutSpotEntity,
+    onCardClick: () -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val categoryColor = when (spot.category.lowercase()) {
+        "sights" -> SightsGreen
+        "eats" -> EatsAmber
+        "history" -> HistoryPurple
+        "shortcut" -> EatsAmber
+        else -> BrandTeal
+    }
+    val categoryBg = when (spot.category.lowercase()) {
+        "sights" -> SightsGreenBg
+        "eats" -> EatsAmberBg
+        "history" -> HistoryPurpleBg
+        else -> BrandTeal.copy(alpha = 0.15f)
+    }
+
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        color = Color(0xF20F172A),
+        border = BorderStroke(1.5.dp, categoryColor.copy(alpha = 0.65f)),
+        shadowElevation = 12.dp,
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable(onClick = onCardClick)
+            .testTag("spot_preview_popup_card")
+    ) {
+        Row(
+            modifier = Modifier
+                .padding(12.dp)
+                .fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Spot Thumbnail Image
+            Box(
+                modifier = Modifier
+                    .size(68.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Color(0xFF1E293B)),
+                contentAlignment = Alignment.Center
+            ) {
+                val imageModel = ImageResolver.resolveImageModel(spot.imageUrl, spot.category, spot.title, spot.id)
+                AsyncImage(
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data(imageModel)
+                        .crossfade(true)
+                        .build(),
+                    contentDescription = spot.name,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+
+                if (spot.isSaved) {
+                    Surface(
+                        shape = CircleShape,
+                        color = BrandCoral,
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(4.dp)
+                            .size(18.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Favorite,
+                            contentDescription = "Saved",
+                            tint = Color.White,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(3.dp)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            // Spot Information Column
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(vertical = 2.dp),
+                verticalArrangement = Arrangement.Center
+            ) {
+                // Category Tag & Walking Distance / Minutes
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(999.dp),
+                        color = categoryBg,
+                        modifier = Modifier.testTag("preview_category_badge")
+                    ) {
+                        Text(
+                            text = spot.category.uppercase(),
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 9.5.sp,
+                                letterSpacing = 0.5.sp
+                            ),
+                            color = categoryColor,
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.5.dp)
+                        )
+                    }
+
+                    val dist = spot.distance
+                    val walk = spot.walkMinutes
+                    if (dist.isNotBlank() || walk > 0) {
+                        val walkText = buildString {
+                            if (dist.isNotBlank()) append(dist)
+                            if (walk > 0) {
+                                if (isNotEmpty()) append(" • ")
+                                append("$walk min walk")
+                            }
+                        }
+                        Text(
+                            text = walkText,
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium
+                            ),
+                            color = Color(0xFF94A3B8),
+                            maxLines = 1
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                // Spot Name
+                Text(
+                    text = spot.name,
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp
+                    ),
+                    color = Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.testTag("preview_spot_title")
+                )
+
+                Spacer(modifier = Modifier.height(3.dp))
+
+                // Rating & Snippet
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    val spotRating = spot.rating ?: 0.0
+                    if (spotRating > 0.0) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Star,
+                                contentDescription = null,
+                                tint = Color(0xFFFBBF24),
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text(
+                                text = String.format(java.util.Locale.US, "%.1f", spotRating),
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.sp
+                                ),
+                                color = Color(0xFFFBBF24)
+                            )
+                        }
+                    }
+
+                    Text(
+                        text = spot.description.ifBlank { "Tap to explore history & tips" },
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontSize = 11.sp
+                        ),
+                        color = Color(0xFFCBD5E1),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            // Action / Dismiss Buttons
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.height(68.dp)
+            ) {
+                // Dismiss Icon Button
+                IconButton(
+                    onClick = onDismiss,
+                    modifier = Modifier
+                        .size(28.dp)
+                        .testTag("dismiss_preview_popup_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Dismiss",
+                        tint = Color(0xFF94A3B8),
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+
+                // Forward "View Details" Pill Button
+                Surface(
+                    shape = CircleShape,
+                    color = categoryColor.copy(alpha = 0.2f),
+                    border = BorderStroke(1.dp, categoryColor.copy(alpha = 0.5f)),
+                    onClick = onCardClick,
+                    modifier = Modifier
+                        .size(30.dp)
+                        .testTag("preview_open_details_button")
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                            contentDescription = "Open Details",
+                            tint = Color.White,
+                            modifier = Modifier.size(15.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
 }

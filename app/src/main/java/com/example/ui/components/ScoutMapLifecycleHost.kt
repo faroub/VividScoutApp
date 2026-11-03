@@ -18,6 +18,11 @@ import com.example.data.model.toScoutGem
 import com.example.engine.ScoutVectorEngine
 import com.example.ui.viewmodel.ScoutMapViewModel
 
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import com.example.ui.dialogs.SpotDetailBottomSheet
+
 /**
  * Dedicated Lifecycle-Aware Host for the Scout Vector Map Canvas.
  * Binds lifecycle events (ON_START, ON_STOP, ON_DESTROY) to ScoutVectorEngine
@@ -44,11 +49,14 @@ fun ScoutMapLifecycleHost(
     onCancelRegionDownload: (() -> Unit)? = null,
     onConfirmRegionDownload: (() -> Unit)? = null,
     achievements: List<com.example.data.local.AchievementEntity> = emptyList(),
+    onSpotDetailClick: ((ScoutSpotEntity) -> Unit)? = null,
+    onDismissSpotSelect: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val mapUiState by mapViewModel.uiState.collectAsState()
+    var internalSpotDetail by remember { mutableStateOf<ScoutSpotEntity?>(null) }
 
     // Ensure engine is initialized and state is updated
     LaunchedEffect(Unit) {
@@ -108,7 +116,29 @@ fun ScoutMapLifecycleHost(
             onCancelRegionDownload = onCancelRegionDownload,
             onConfirmRegionDownload = onConfirmRegionDownload,
             achievements = achievements,
+            onSpotDetailClick = { spot ->
+                if (onSpotDetailClick != null) {
+                    onSpotDetailClick(spot)
+                } else {
+                    internalSpotDetail = spot
+                }
+            },
+            onDismissSpotSelect = {
+                mapViewModel.selectSpot(null)
+                onDismissSpotSelect?.invoke()
+            },
             modifier = Modifier.fillMaxSize()
         )
+
+        internalSpotDetail?.let { spot ->
+            SpotDetailBottomSheet(
+                spot = spot,
+                onDismiss = { internalSpotDetail = null },
+                onToggleSave = { },
+                onUpvote = { },
+                onToggleAudio = { },
+                isPlayingAudio = false
+            )
+        }
     }
 }

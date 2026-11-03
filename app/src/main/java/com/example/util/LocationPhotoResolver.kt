@@ -25,6 +25,11 @@ object LocationPhotoResolver {
         val isCuratedLandmark: Boolean = false
     )
 
+    private val KNOWN_GENERIC_STOCK_IDS = listOf(
+        "1509440159596",
+        "1513688275127"
+    )
+
     /**
      * Checks if a URL is empty, an icon placeholder, or a generic stock vector asset.
      */
@@ -32,6 +37,7 @@ object LocationPhotoResolver {
         if (url.isNullOrBlank()) return true
         val trimmed = url.trim()
         if (trimmed.startsWith("ic_cat_") || trimmed.startsWith("img_lisbon_")) return true
+        if (KNOWN_GENERIC_STOCK_IDS.any { trimmed.contains(it) }) return true
         if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) return false
         return true
     }
