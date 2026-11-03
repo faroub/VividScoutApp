@@ -106,5 +106,27 @@ service cloud.firestore {
         allow update, delete: if false;
       }
     }
+
+    match /spot_photos/{photoId} {
+      allow read: if true;
+      allow create: if isAuthenticated()
+                    && request.resource.data.keys().hasOnly(['id', 'spotId', 'photoUrl', 'reportsCount', 'timestamp'])
+                    && request.resource.data.reportsCount == 0;
+
+      allow update: if isAuthenticated()
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reportsCount'])
+                    && request.resource.data.reportsCount == resource.data.reportsCount + 1;
+
+      allow delete: if false;
+
+      // Subcollection for reports: Do not expose reporter UIDs to anyone
+      match /reports/{reportId} {
+        allow read: if false; // Reporter UIDs are never exposed to anyone
+        allow create: if isAuthenticated()
+                      && request.resource.data.keys().hasOnly(['reporterUid', 'timestamp'])
+                      && request.resource.data.reporterUid == request.auth.uid;
+        allow update, delete: if false;
+      }
+    }
   }
 }
