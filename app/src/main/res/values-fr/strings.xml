@@ -129,4 +129,9 @@
     <string name="voting_available_after_sync">Vote disponible après synchronisation cloud</string>
     <string name="community_voting_opens_after_update">Le vote sera disponible après la mise à jour communautaire</string>
     <string name="post_tip_error_container_unavailable">Impossible de publier la note : Service d\'application indisponible.</string>
+    <string name="suggested_searches">Recherches suggérées</string>
+    <string name="search_suggestion_viewpoints">points de vue à proximité</string>
+    <string name="search_suggestion_historic">sites historiques</string>
+    <string name="search_suggestion_trails">sentiers de randonnée</string>
+    <string name="clear_search_history">Effacer l\'historique</string>
 </resources>

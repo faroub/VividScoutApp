@@ -163,7 +163,12 @@ data class AppStringsData(
     val prototypeBadge: String,
     val votingAvailableAfterSync: String,
     val communityVotingOpensAfterUpdate: String,
-    val postTipErrorContainerUnavailable: String
+    val postTipErrorContainerUnavailable: String,
+    val suggestedSearches: String,
+    val searchSuggestionViewpoints: String,
+    val searchSuggestionHistoric: String,
+    val searchSuggestionTrails: String,
+    val clearSearchHistory: String
 )
 
 val EnglishStrings = AppStringsData(
@@ -313,7 +318,12 @@ val EnglishStrings = AppStringsData(
     prototypeBadge = "PROTOTYPE",
     votingAvailableAfterSync = "Voting available after cloud sync",
     communityVotingOpensAfterUpdate = "Voting opens after the community update",
-    postTipErrorContainerUnavailable = "Unable to post note: Application service container unavailable."
+    postTipErrorContainerUnavailable = "Unable to post note: Application service container unavailable.",
+    suggestedSearches = "Suggested Searches",
+    searchSuggestionViewpoints = "viewpoints near me",
+    searchSuggestionHistoric = "historic sites",
+    searchSuggestionTrails = "hiking trails",
+    clearSearchHistory = "Clear history"
 )
 
 val FrenchStrings = AppStringsData(
@@ -463,7 +473,12 @@ val FrenchStrings = AppStringsData(
     prototypeBadge = "PROTOTYPE",
     votingAvailableAfterSync = "Vote disponible après synchronisation cloud",
     communityVotingOpensAfterUpdate = "Le vote sera disponible après la mise à jour communautaire",
-    postTipErrorContainerUnavailable = "Impossible de publier la note : Service d'application indisponible."
+    postTipErrorContainerUnavailable = "Impossible de publier la note : Service d'application indisponible.",
+    suggestedSearches = "Recherches suggérées",
+    searchSuggestionViewpoints = "points de vue à proximité",
+    searchSuggestionHistoric = "sites historiques",
+    searchSuggestionTrails = "sentiers de randonnée",
+    clearSearchHistory = "Effacer l'historique"
 )
 
 val ArabicStrings = AppStringsData(
@@ -613,7 +628,12 @@ val ArabicStrings = AppStringsData(
     prototypeBadge = "نموذج أولي",
     votingAvailableAfterSync = "التصويت متاح بعد المزامنة السحابية",
     communityVotingOpensAfterUpdate = "التصويت متاح بعد التحديث المجتمعي",
-    postTipErrorContainerUnavailable = "تعذر نشر الملاحظة: خدمة التطبيق غير متاحة."
+    postTipErrorContainerUnavailable = "تعذر نشر الملاحظة: خدمة التطبيق غير متاحة.",
+    suggestedSearches = "عمليات البحث المقترحة",
+    searchSuggestionViewpoints = "إطلالات بالقرب مني",
+    searchSuggestionHistoric = "مواقع تاريخية",
+    searchSuggestionTrails = "مسارات مشي",
+    clearSearchHistory = "مسح السجل"
 )
 
 val LocalAppLanguage = staticCompositionLocalOf { AppLanguage.ENGLISH }
