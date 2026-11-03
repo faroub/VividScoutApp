@@ -27,8 +27,8 @@
     <string name="low_queue">File courte</string>
     <string name="trending_around_you">Tendance autour de vous</string>
     <string name="map_view">Vue Carte</string>
-    <string name="search_placeholder">Cherchez monuments, délices, lieux secrets...</string>
-    <string name="search_city_placeholder">Recherchez une ville, un monument ou un restaurant...</string>
+    <string name="search_placeholder">Cherchez monuments, délices, lieux secrets…</string>
+    <string name="search_city_placeholder">Recherchez une ville, un monument ou un restaurant…</string>
     <string name="live_gps_status">Lisbonne • GPS en direct</string>
     <string name="live_scout_ticker">Mis à jour il y a 2 min • 48 alertes d\'affluence à 800m</string>
     <string name="syncing">Synchronisation</string>
@@ -95,7 +95,7 @@
     <string name="mark_discovered_done">Découvert ✓</string>
     <string name="discovered_on">Découvert</string>
     <string name="offline_notes">Notes hors-ligne</string>
-    <string name="add_offline_notes">Ajouter une note d\'éclaireur...</string>
+    <string name="add_offline_notes">Ajouter une note d\'éclaireur…</string>
     <string name="save_note">Enregistrer la note</string>
     <string name="no_discovered_spots">Aucune pépite découverte pour l\'instant</string>
     <string name="no_discovered_desc">Explorez Lisbonne et marquez les lieux découverts pour enrichir votre carnet hors-ligne.</string>
@@ -119,6 +119,12 @@
     <string name="gps_inactive_tap">GPS Inactif • Toucher pour activer</string>
     <string name="location_settings_card_title">Télémétrie GPS &amp; Autorisations</string>
     <string name="location_settings_card_desc">Suivi FusedLocationProvider haute précision</string>
+    <string name="cache_health_title">Santé du cache de proximité</string>
+    <string name="cache_health_optimal">Cache optimal</string>
+    <string name="cache_health_good">Bonne couverture</string>
+    <string name="cache_health_fair">Couverture moyenne</string>
+    <string name="cache_health_critical">Mise à jour requise</string>
+    <string name="pre_cache_vicinity">Pré-cacher les environs maintenant</string>
     <string name="prototype_badge">PROTOTYPE</string>
     <string name="voting_available_after_sync">Vote disponible après synchronisation cloud</string>
     <string name="community_voting_opens_after_update">Le vote sera disponible après la mise à jour communautaire</string>

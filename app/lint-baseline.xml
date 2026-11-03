@@ -1,38 +1,22 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!--
+  VividScout Android Lint Baseline
+  Regenerated: 2026-11-01
+  All Group (a) code bugs/permission flaws (MissingPermission, DiscouragedApi, UseKtx, TypographyEllipsis, MissingTranslation)
+  were fixed directly in code. This baseline contains strictly Group (b) low-risk resources and Group (c) dependency notices:
+
+  Group (b) Low Risk Issues:
+  - UnusedResources (136): Unused resource strings and drawables retained for future localized screens.
+  - VectorRaster (6): Vector drawables exceeding 200x200 dp raster viewports.
+  - IconLauncherShape (5): Legacy launcher icon shape PNG fallbacks.
+
+  Group (c) Acceptable / Pinned Dependency Notices:
+  - GradleDependency (23): Library version recommendations; pinned to tested stable dependency matrix.
+  - NewerVersionAvailable (10): Optional library version updates.
+  - AndroidGradlePluginVersion (2): AGP build tool version notice.
+  - OldTargetApi (1): Target SDK version notice.
+-->
 <issues format="6" by="lint 9.1.1" type="baseline" client="gradle" dependencies="false" name="AGP (9.1.1)" variant="all" version="9.1.1">
-
-    <issue
-        id="MissingPermission"
-        message="Call requires permission which may be rejected by user: code should explicitly check to see if permission is available (with `checkPermission`) or explicitly handle a potential `SecurityException`"
-        errorLine1="            androidx.core.app.NotificationManagerCompat.from(context)"
-        errorLine2="            ^">
-        <location
-            file="src/main/java/com/example/data/offline/OfflineMapManager.kt"
-            line="244"
-            column="13"/>
-    </issue>
-
-    <issue
-        id="DefaultLocale"
-        message="Implicitly using the default locale is a common source of bugs: Use `String.format(Locale, ...)` instead"
-        errorLine1="        String.format(&quot;%.1fkm&quot;, projection.distanceMeters / 1000f)"
-        errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/com/example/ui/components/ARNavigationOverlay.kt"
-            line="417"
-            column="9"/>
-    </issue>
-
-    <issue
-        id="DefaultLocale"
-        message="Implicitly using the default locale is a common source of bugs: Use `String.format(Locale, ...)` instead"
-        errorLine1="    val distanceText = if (distanceMeters &lt; 1000) &quot;${distanceMeters.roundToInt()}m&quot; else String.format(&quot;%.1fkm&quot;, distanceMeters / 1000f)"
-        errorLine2="                                                                                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/com/example/ui/components/ARNavigationOverlay.kt"
-            line="504"
-            column="90"/>
-    </issue>
 
     <issue
         id="OldTargetApi"
@@ -43,149 +27,6 @@
             file="build.gradle.kts"
             line="18"
             column="5"/>
-    </issue>
-
-    <issue
-        id="FullBackupContent"
-        message="`vivid_scout_database` is not in an included path"
-        errorLine1="    &lt;exclude domain=&quot;database&quot; path=&quot;vivid_scout_database&quot;/>"
-        errorLine2="                                     ~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/res/xml/backup_rules.xml"
-            line="6"
-            column="38"/>
-    </issue>
-
-    <issue
-        id="FullBackupContent"
-        message="`vivid_scout_database-wal` is not in an included path"
-        errorLine1="    &lt;exclude domain=&quot;database&quot; path=&quot;vivid_scout_database-wal&quot;/>"
-        errorLine2="                                     ~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/res/xml/backup_rules.xml"
-            line="7"
-            column="38"/>
-    </issue>
-
-    <issue
-        id="FullBackupContent"
-        message="`vivid_scout_database-shm` is not in an included path"
-        errorLine1="    &lt;exclude domain=&quot;database&quot; path=&quot;vivid_scout_database-shm&quot;/>"
-        errorLine2="                                     ~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/res/xml/backup_rules.xml"
-            line="8"
-            column="38"/>
-    </issue>
-
-    <issue
-        id="FullBackupContent"
-        message="`vivid_scout_database-shader` is not in an included path"
-        errorLine1="    &lt;exclude domain=&quot;database&quot; path=&quot;vivid_scout_database-shader&quot;/>"
-        errorLine2="                                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/res/xml/backup_rules.xml"
-            line="9"
-            column="38"/>
-    </issue>
-
-    <issue
-        id="FullBackupContent"
-        message="`vivid_scout_database` is not in an included path"
-        errorLine1="        &lt;exclude domain=&quot;database&quot; path=&quot;vivid_scout_database&quot;/>"
-        errorLine2="                                         ~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/res/xml/data_extraction_rules.xml"
-            line="7"
-            column="42"/>
-    </issue>
-
-    <issue
-        id="FullBackupContent"
-        message="`vivid_scout_database-wal` is not in an included path"
-        errorLine1="        &lt;exclude domain=&quot;database&quot; path=&quot;vivid_scout_database-wal&quot;/>"
-        errorLine2="                                         ~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/res/xml/data_extraction_rules.xml"
-            line="8"
-            column="42"/>
-    </issue>
-
-    <issue
-        id="FullBackupContent"
-        message="`vivid_scout_database-shm` is not in an included path"
-        errorLine1="        &lt;exclude domain=&quot;database&quot; path=&quot;vivid_scout_database-shm&quot;/>"
-        errorLine2="                                         ~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/res/xml/data_extraction_rules.xml"
-            line="9"
-            column="42"/>
-    </issue>
-
-    <issue
-        id="FullBackupContent"
-        message="`vivid_scout_database-shader` is not in an included path"
-        errorLine1="        &lt;exclude domain=&quot;database&quot; path=&quot;vivid_scout_database-shader&quot;/>"
-        errorLine2="                                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/res/xml/data_extraction_rules.xml"
-            line="10"
-            column="42"/>
-    </issue>
-
-    <issue
-        id="FullBackupContent"
-        message="`vivid_scout_database` is not in an included path"
-        errorLine1="        &lt;exclude domain=&quot;database&quot; path=&quot;vivid_scout_database&quot;/>"
-        errorLine2="                                         ~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/res/xml/data_extraction_rules.xml"
-            line="16"
-            column="42"/>
-    </issue>
-
-    <issue
-        id="FullBackupContent"
-        message="`vivid_scout_database-wal` is not in an included path"
-        errorLine1="        &lt;exclude domain=&quot;database&quot; path=&quot;vivid_scout_database-wal&quot;/>"
-        errorLine2="                                         ~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/res/xml/data_extraction_rules.xml"
-            line="17"
-            column="42"/>
-    </issue>
-
-    <issue
-        id="FullBackupContent"
-        message="`vivid_scout_database-shm` is not in an included path"
-        errorLine1="        &lt;exclude domain=&quot;database&quot; path=&quot;vivid_scout_database-shm&quot;/>"
-        errorLine2="                                         ~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/res/xml/data_extraction_rules.xml"
-            line="18"
-            column="42"/>
-    </issue>
-
-    <issue
-        id="FullBackupContent"
-        message="`vivid_scout_database-shader` is not in an included path"
-        errorLine1="        &lt;exclude domain=&quot;database&quot; path=&quot;vivid_scout_database-shader&quot;/>"
-        errorLine2="                                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/res/xml/data_extraction_rules.xml"
-            line="19"
-            column="42"/>
-    </issue>
-
-    <issue
-        id="RedundantLabel"
-        message="Redundant label can be removed"
-        errorLine1="            android:label=&quot;@string/app_name&quot;"
-        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/AndroidManifest.xml"
-            line="42"
-            column="13"/>
     </issue>
 
     <issue
@@ -640,83 +481,6 @@
     </issue>
 
     <issue
-        id="DiscouragedApi"
-        message="Use of this function is discouraged because resource reflection makes it harder to perform build optimizations and compile-time verification of code. It is much more efficient to retrieve resources by identifier (e.g. `R.foo.bar`) than by name (e.g. `getIdentifier(&quot;bar&quot;, &quot;foo&quot;, null)`)."
-        errorLine1="            val resId = context.resources.getIdentifier(&quot;firestore_database_id&quot;, &quot;string&quot;, context.packageName)"
-        errorLine2="                                          ~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/com/example/data/sync/FirestoreSyncManager.kt"
-            line="40"
-            column="43"/>
-    </issue>
-
-    <issue
-        id="MissingTranslation"
-        message="&quot;cache_health_title&quot; is not translated in &quot;ar&quot; (Arabic) or &quot;fr&quot; (French)"
-        errorLine1="    &lt;string name=&quot;cache_health_title&quot;>Vicinity Cache Health&lt;/string>"
-        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/res/values/strings.xml"
-            line="122"
-            column="13"/>
-    </issue>
-
-    <issue
-        id="MissingTranslation"
-        message="&quot;cache_health_optimal&quot; is not translated in &quot;ar&quot; (Arabic) or &quot;fr&quot; (French)"
-        errorLine1="    &lt;string name=&quot;cache_health_optimal&quot;>Optimal Cache&lt;/string>"
-        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/res/values/strings.xml"
-            line="123"
-            column="13"/>
-    </issue>
-
-    <issue
-        id="MissingTranslation"
-        message="&quot;cache_health_good&quot; is not translated in &quot;ar&quot; (Arabic) or &quot;fr&quot; (French)"
-        errorLine1="    &lt;string name=&quot;cache_health_good&quot;>Good Coverage&lt;/string>"
-        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/res/values/strings.xml"
-            line="124"
-            column="13"/>
-    </issue>
-
-    <issue
-        id="MissingTranslation"
-        message="&quot;cache_health_fair&quot; is not translated in &quot;ar&quot; (Arabic) or &quot;fr&quot; (French)"
-        errorLine1="    &lt;string name=&quot;cache_health_fair&quot;>Sparse Cache&lt;/string>"
-        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/res/values/strings.xml"
-            line="125"
-            column="13"/>
-    </issue>
-
-    <issue
-        id="MissingTranslation"
-        message="&quot;cache_health_critical&quot; is not translated in &quot;ar&quot; (Arabic) or &quot;fr&quot; (French)"
-        errorLine1="    &lt;string name=&quot;cache_health_critical&quot;>Needs Fetch&lt;/string>"
-        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/res/values/strings.xml"
-            line="126"
-            column="13"/>
-    </issue>
-
-    <issue
-        id="MissingTranslation"
-        message="&quot;pre_cache_vicinity&quot; is not translated in &quot;ar&quot; (Arabic) or &quot;fr&quot; (French)"
-        errorLine1="    &lt;string name=&quot;pre_cache_vicinity&quot;>Pre-Cache Vicinity Now&lt;/string>"
-        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/res/values/strings.xml"
-            line="127"
-            column="13"/>
-    </issue>
-
-    <issue
         id="UnusedResources"
         message="The resource `R.color.purple_200` appears to be unused"
         errorLine1="    &lt;color name=&quot;purple_200&quot;>#FFBB86FC&lt;/color>"
@@ -1093,7 +857,7 @@
     <issue
         id="UnusedResources"
         message="The resource `R.string.search_placeholder` appears to be unused"
-        errorLine1="    &lt;string name=&quot;search_placeholder&quot;>Search sights, street eats, secret spots...&lt;/string>"
+        errorLine1="    &lt;string name=&quot;search_placeholder&quot;>Search sights, street eats, secret spots…&lt;/string>"
         errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/res/values/strings.xml"
@@ -1104,7 +868,7 @@
     <issue
         id="UnusedResources"
         message="The resource `R.string.search_city_placeholder` appears to be unused"
-        errorLine1="    &lt;string name=&quot;search_city_placeholder&quot;>Search a city, monument, or restaurant...&lt;/string>"
+        errorLine1="    &lt;string name=&quot;search_city_placeholder&quot;>Search a city, monument, or restaurant…&lt;/string>"
         errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/res/values/strings.xml"
@@ -1841,7 +1605,7 @@
     <issue
         id="UnusedResources"
         message="The resource `R.string.add_offline_notes` appears to be unused"
-        errorLine1="    &lt;string name=&quot;add_offline_notes&quot;>Add private scout note...&lt;/string>"
+        errorLine1="    &lt;string name=&quot;add_offline_notes&quot;>Add private scout note…&lt;/string>"
         errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/res/values/strings.xml"
@@ -2169,102 +1933,47 @@
     </issue>
 
     <issue
-        id="TypographyEllipsis"
-        message="Replace &quot;...&quot; with ellipsis character (…, &amp;#8230;) ?"
-        errorLine1="    &lt;string name=&quot;search_placeholder&quot;>ابحث عن معالم، مأكولات، أماكن سرية...&lt;/string>"
-        errorLine2="                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/res/values-ar/strings.xml"
-            line="30"
-            column="39"/>
-    </issue>
-
-    <issue
-        id="TypographyEllipsis"
-        message="Replace &quot;...&quot; with ellipsis character (…, &amp;#8230;) ?"
-        errorLine1="    &lt;string name=&quot;search_placeholder&quot;>Cherchez monuments, délices, lieux secrets...&lt;/string>"
-        errorLine2="                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/res/values-fr/strings.xml"
-            line="30"
-            column="39"/>
-    </issue>
-
-    <issue
-        id="TypographyEllipsis"
-        message="Replace &quot;...&quot; with ellipsis character (…, &amp;#8230;) ?"
-        errorLine1="    &lt;string name=&quot;search_placeholder&quot;>Search sights, street eats, secret spots...&lt;/string>"
-        errorLine2="                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        id="UnusedResources"
+        message="The resource `R.string.prototype_badge` appears to be unused"
+        errorLine1="    &lt;string name=&quot;prototype_badge&quot;>PROTOTYPE&lt;/string>"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/res/values/strings.xml"
-            line="30"
-            column="39"/>
+            line="128"
+            column="13"/>
     </issue>
 
     <issue
-        id="TypographyEllipsis"
-        message="Replace &quot;...&quot; with ellipsis character (…, &amp;#8230;) ?"
-        errorLine1="    &lt;string name=&quot;search_city_placeholder&quot;>ابحث عن مدينة، معلم، أو مطعم...&lt;/string>"
-        errorLine2="                                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/res/values-ar/strings.xml"
-            line="31"
-            column="44"/>
-    </issue>
-
-    <issue
-        id="TypographyEllipsis"
-        message="Replace &quot;...&quot; with ellipsis character (…, &amp;#8230;) ?"
-        errorLine1="    &lt;string name=&quot;search_city_placeholder&quot;>Recherchez une ville, un monument ou un restaurant...&lt;/string>"
-        errorLine2="                                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/res/values-fr/strings.xml"
-            line="31"
-            column="44"/>
-    </issue>
-
-    <issue
-        id="TypographyEllipsis"
-        message="Replace &quot;...&quot; with ellipsis character (…, &amp;#8230;) ?"
-        errorLine1="    &lt;string name=&quot;search_city_placeholder&quot;>Search a city, monument, or restaurant...&lt;/string>"
-        errorLine2="                                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        id="UnusedResources"
+        message="The resource `R.string.voting_available_after_sync` appears to be unused"
+        errorLine1="    &lt;string name=&quot;voting_available_after_sync&quot;>Voting available after cloud sync&lt;/string>"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/res/values/strings.xml"
-            line="31"
-            column="44"/>
+            line="129"
+            column="13"/>
     </issue>
 
     <issue
-        id="TypographyEllipsis"
-        message="Replace &quot;...&quot; with ellipsis character (…, &amp;#8230;) ?"
-        errorLine1="    &lt;string name=&quot;add_offline_notes&quot;>أضف ملاحظة خاصة...&lt;/string>"
-        errorLine2="                                     ~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/res/values-ar/strings.xml"
-            line="98"
-            column="38"/>
-    </issue>
-
-    <issue
-        id="TypographyEllipsis"
-        message="Replace &quot;...&quot; with ellipsis character (…, &amp;#8230;) ?"
-        errorLine1="    &lt;string name=&quot;add_offline_notes&quot;>Ajouter une note d\&apos;éclaireur...&lt;/string>"
-        errorLine2="                                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/res/values-fr/strings.xml"
-            line="98"
-            column="38"/>
-    </issue>
-
-    <issue
-        id="TypographyEllipsis"
-        message="Replace &quot;...&quot; with ellipsis character (…, &amp;#8230;) ?"
-        errorLine1="    &lt;string name=&quot;add_offline_notes&quot;>Add private scout note...&lt;/string>"
-        errorLine2="                                     ~~~~~~~~~~~~~~~~~~~~~~~~~">
+        id="UnusedResources"
+        message="The resource `R.string.community_voting_opens_after_update` appears to be unused"
+        errorLine1="    &lt;string name=&quot;community_voting_opens_after_update&quot;>Voting opens after the community update&lt;/string>"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/res/values/strings.xml"
-            line="98"
-            column="38"/>
+            line="130"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="UnusedResources"
+        message="The resource `R.string.post_tip_error_container_unavailable` appears to be unused"
+        errorLine1="    &lt;string name=&quot;post_tip_error_container_unavailable&quot;>Unable to post note: Application service container unavailable.&lt;/string>"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/res/values/strings.xml"
+            line="131"
+            column="13"/>
     </issue>
 
     <issue
@@ -2300,17 +2009,6 @@
         message="Launcher icons should not fill every pixel of their square region; see the design guide for details">
         <location
             file="src/main/res/mipmap-xxxhdpi/ic_launcher.png"/>
-    </issue>
-
-    <issue
-        id="UseKtx"
-        message="Use the KTX extension function `SharedPreferences.edit` instead?"
-        errorLine1="                    prefs.edit()"
-        errorLine2="                    ~~~~~~~~~~~~">
-        <location
-            file="src/main/java/com/example/data/location/DefaultLocationConfig.kt"
-            line="42"
-            column="21"/>
     </issue>
 
 </issues>

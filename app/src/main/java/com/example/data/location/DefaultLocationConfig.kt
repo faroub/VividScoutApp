@@ -3,6 +3,7 @@ package com.example.data.location
 import android.content.Context
 import android.location.Location
 import android.util.Log
+import androidx.core.content.edit
 
 /**
  * Single source of truth for global default fallback location coordinates and metadata.
@@ -39,11 +40,11 @@ object DefaultLocationConfig {
             context?.let { ctx ->
                 try {
                     val prefs = ctx.getSharedPreferences("vivid_scout_location_prefs", Context.MODE_PRIVATE)
-                    prefs.edit()
-                        .putString("key_active_city_name", cityName)
-                        .putFloat("key_active_city_lat", lat.toFloat())
-                        .putFloat("key_active_city_lng", lng.toFloat())
-                        .apply()
+                    prefs.edit {
+                        putString("key_active_city_name", cityName)
+                        putFloat("key_active_city_lat", lat.toFloat())
+                        putFloat("key_active_city_lng", lng.toFloat())
+                    }
                 } catch (e: Exception) {
                     Log.w("DefaultLocationConfig", "Failed to persist fallback city preference: ${e.message}")
                 }

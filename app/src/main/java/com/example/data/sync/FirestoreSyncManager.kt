@@ -2,6 +2,7 @@ package com.example.data.sync
 
 import android.content.Context
 import android.util.Log
+import com.example.R
 import com.example.data.local.CommunityTipDao
 import com.example.data.local.CommunityTipEntity
 import com.example.data.local.DiscoveredGemDao
@@ -38,8 +39,11 @@ object FirestoreSyncManager {
             if (FirebaseApp.getApps(context).isEmpty()) {
                 FirebaseApp.initializeApp(context)
             }
-            val resId = context.resources.getIdentifier("firestore_database_id", "string", context.packageName)
-            val databaseId = if (resId != 0) context.getString(resId) else ""
+            val databaseId = try {
+                context.getString(R.string.firestore_database_id)
+            } catch (_: Exception) {
+                ""
+            }
 
             if (databaseId.isNotBlank()) {
                 FirebaseFirestore.getInstance(FirebaseApp.getInstance(), databaseId)

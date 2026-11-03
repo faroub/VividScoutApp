@@ -27,8 +27,8 @@
     <string name="low_queue">Low Queue</string>
     <string name="trending_around_you">Trending Around You</string>
     <string name="map_view">Map View</string>
-    <string name="search_placeholder">Search sights, street eats, secret spots...</string>
-    <string name="search_city_placeholder">Search a city, monument, or restaurant...</string>
+    <string name="search_placeholder">Search sights, street eats, secret spots…</string>
+    <string name="search_city_placeholder">Search a city, monument, or restaurant…</string>
     <string name="live_gps_status">Lisbon • Live GPS</string>
     <string name="live_scout_ticker">Live Scout updated 2m ago • 48 crowd alerts in 800m</string>
     <string name="syncing">Syncing</string>
@@ -95,7 +95,7 @@
     <string name="mark_discovered_done">Discovered ✓</string>
     <string name="discovered_on">Discovered</string>
     <string name="offline_notes">Offline Notes</string>
-    <string name="add_offline_notes">Add private scout note...</string>
+    <string name="add_offline_notes">Add private scout note…</string>
     <string name="save_note">Save Note</string>
     <string name="no_discovered_spots">No discovered gems yet</string>
     <string name="no_discovered_desc">Explore Lisbon and mark spots as discovered to build your offline traveler log.</string>

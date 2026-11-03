@@ -27,8 +27,8 @@
     <string name="low_queue">طابور قصير</string>
     <string name="trending_around_you">رائج من حولك</string>
     <string name="map_view">عرض الخريطة</string>
-    <string name="search_placeholder">ابحث عن معالم، مأكولات، أماكن سرية...</string>
-    <string name="search_city_placeholder">ابحث عن مدينة، معلم، أو مطعم...</string>
+    <string name="search_placeholder">ابحث عن معالم، مأكولات، أماكن سرية…</string>
+    <string name="search_city_placeholder">ابحث عن مدينة، معلم، أو مطعم…</string>
     <string name="live_gps_status">لشبونة • نظام تحديد المواقع مباشر</string>
     <string name="live_scout_ticker">تم التحديث منذ دقيقتين • 48 تنبيهاً على بعد 800م</string>
     <string name="syncing">مزامنة</string>
@@ -95,7 +95,7 @@
     <string name="mark_discovered_done">تم الاكتشاف ✓</string>
     <string name="discovered_on">تم الاكتشاف</string>
     <string name="offline_notes">ملاحظات بلا اتصال</string>
-    <string name="add_offline_notes">أضف ملاحظة خاصة...</string>
+    <string name="add_offline_notes">أضف ملاحظة خاصة…</string>
     <string name="save_note">حفظ الملاحظة</string>
     <string name="no_discovered_spots">لا توجد جواهر مكتشفة بعد</string>
     <string name="no_discovered_desc">استكشف لشبونة وحدد الأماكن كمكتشفة لإنشاء سجل رحلتك بلا إنترنت.</string>
@@ -119,6 +119,12 @@
     <string name="gps_inactive_tap">GPS غير نشط • انقر للتفعيل</string>
     <string name="location_settings_card_title">بيانات GPS والأذونات</string>
     <string name="location_settings_card_desc">تتبع FusedLocationProvider عالي الدقة</string>
+    <string name="cache_health_title">حالة التخزين المؤقت للمحيط</string>
+    <string name="cache_health_optimal">تخزين مؤقت مثالي</string>
+    <string name="cache_health_good">تغطية جيدة</string>
+    <string name="cache_health_fair">تغطية محدودة</string>
+    <string name="cache_health_critical">يتطلب التحديث</string>
+    <string name="pre_cache_vicinity">تخزين المحيط مؤقتاً الآن</string>
     <string name="prototype_badge">نموذج أولي</string>
     <string name="voting_available_after_sync">التصويت متاح بعد المزامنة السحابية</string>
     <string name="community_voting_opens_after_update">التصويت متاح بعد التحديث المجتمعي</string>

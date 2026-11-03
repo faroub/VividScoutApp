@@ -1,8 +1,13 @@
 package com.example.data.offline
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.util.Log
+import androidx.core.app.ActivityCompat
+import androidx.core.app.NotificationManagerCompat
 import com.example.data.repository.ScoutGemRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -241,8 +246,14 @@ class OfflineMapManager(
                 .setContentIntent(pendingIntent)
                 .build()
 
-            androidx.core.app.NotificationManagerCompat.from(context)
-                .notify(OfflineMapDownloadService.NOTIFICATION_ID, notification)
+            if (ActivityCompat.checkSelfPermission(
+                    context, Manifest.permission.POST_NOTIFICATIONS
+                ) == PackageManager.PERMISSION_GRANTED ||
+                Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU
+            ) {
+                NotificationManagerCompat.from(context)
+                    .notify(OfflineMapDownloadService.NOTIFICATION_ID, notification)
+            }
         } catch (e: Exception) {
             // Safe recovery: Notification posting failed (e.g. permission missing), log telemetry without breaking background download
             android.util.Log.w("OfflineMapManager", "Failed to post download status notification", e)
