@@ -19,7 +19,7 @@ import org.robolectric.annotation.Config
 import java.io.IOException
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [36])
+@Config(sdk = [33])
 class RoomDatabaseTest {
 
     private lateinit var db: AppDatabase
