@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BatterySaver
 import androidx.compose.material.icons.filled.GpsFixed
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material3.Button
@@ -24,6 +25,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -37,6 +39,7 @@ import com.example.ui.theme.Secondary
 import com.example.ui.theme.SecondaryContainer
 import com.example.ui.theme.SurfaceContainerLow
 import com.example.ui.theme.SurfaceContainerLowest
+import com.example.util.LowPowerTrackingPolicy
 import java.util.Locale
 
 @Composable
@@ -46,9 +49,19 @@ fun ProfileGpsTelemetryCard(
     userCoordinates: Pair<Double, Double>,
     onRequestLocationPermission: () -> Unit,
     isUsingGpsLocation: Boolean = true,
-    selectedGlobalCity: String? = null
+    selectedGlobalCity: String? = null,
+    batteryLevelPercent: Int = 100,
+    isCharging: Boolean = false,
+    isLowPowerManualToggle: Boolean = false
 ) {
     val strings = LocalAppStrings.current
+    val trackingState = remember(batteryLevelPercent, isCharging, isLowPowerManualToggle) {
+        LowPowerTrackingPolicy.evaluateTrackingState(
+            batteryLevelPercent = batteryLevelPercent,
+            isCharging = isCharging,
+            isManualToggleEnabled = isLowPowerManualToggle
+        )
+    }
 
     Surface(
         shape = RoundedCornerShape(20.dp),
@@ -167,6 +180,34 @@ fun ProfileGpsTelemetryCard(
                     Text(
                         text = if (hasLocationPermission) "Settings" else "Enable",
                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold)
+                    )
+                }
+            }
+
+            // Active Low-Power Tracking Mode Label
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = if (trackingState.isLowPowerActive) Color(0xFFF59E0B).copy(alpha = 0.15f) else SecondaryContainer.copy(alpha = 0.25f),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp)
+                    .testTag("gps_tracking_mode_badge")
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = if (trackingState.isLowPowerActive) Icons.Default.BatterySaver else Icons.Default.GpsFixed,
+                        contentDescription = "Active Location Tracking Mode",
+                        tint = if (trackingState.isLowPowerActive) Color(0xFFD97706) else Secondary,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = trackingState.modeLabel,
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        color = if (trackingState.isLowPowerActive) Color(0xFFD97706) else MaterialTheme.colorScheme.onSurface
                     )
                 }
             }
