@@ -41,6 +41,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableIntStateOf
+import com.example.ui.theme.LocalAppLanguage
+import java.util.Locale
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -440,13 +443,132 @@ fun SpotDetailBottomSheet(
                     }
                 }
 
-                // Description
-                Text(
-                    text = spot.description,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    lineHeight = 22.sp
-                )
+                var selectedDetailTab by remember { mutableIntStateOf(0) } // 0: Overview, 1: History
+
+                // Tab Switcher: Overview vs History
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(SurfaceContainerLow)
+                        .padding(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(if (selectedDetailTab == 0) SurfaceContainerLowest else Color.Transparent)
+                            .clickable { selectedDetailTab = 0 }
+                            .padding(vertical = 8.dp)
+                            .testTag("spot_detail_tab_overview"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Overview",
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontWeight = if (selectedDetailTab == 0) FontWeight.Bold else FontWeight.Medium
+                            ),
+                            color = if (selectedDetailTab == 0) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(if (selectedDetailTab == 1) SurfaceContainerLowest else Color.Transparent)
+                            .clickable { selectedDetailTab = 1 }
+                            .padding(vertical = 8.dp)
+                            .testTag("spot_detail_tab_history"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "History & Knowledge",
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontWeight = if (selectedDetailTab == 1) FontWeight.Bold else FontWeight.Medium
+                            ),
+                            color = if (selectedDetailTab == 1) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                if (selectedDetailTab == 0) {
+                    // Description Overview
+                    Text(
+                        text = spot.description,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        lineHeight = 22.sp
+                    )
+                } else {
+                    // History & Knowledge Tab Content
+                    val currentLangCode = LocalAppLanguage.current.code
+                    val hasWikipediaExtract = spot.description.length > 80 && !spot.description.contains("cataloged on Wikidata", ignoreCase = true)
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        if (hasWikipediaExtract) {
+                            Text(
+                                text = "WIKIPEDIA HISTORICAL EXTRACT",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Black,
+                                    letterSpacing = 0.8.sp
+                                ),
+                                color = BrandTeal
+                            )
+                            Text(
+                                text = spot.description,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                lineHeight = 22.sp
+                            )
+                            SourceAttributionRow(
+                                sourceNameOrTag = "Wikipedia (${currentLangCode.uppercase()})",
+                                license = "CC BY-SA 4.0",
+                                sourceUrl = "https://en.wikipedia.org/wiki/${spot.title.replace(" ", "_")}"
+                            )
+                        } else {
+                            // Fallback when no Wikipedia article exists: short message + Wikidata description
+                            Text(
+                                text = "WIKIDATA KNOWLEDGE GRAPH",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Black,
+                                    letterSpacing = 0.8.sp
+                                ),
+                                color = Secondary
+                            )
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = SurfaceContainerLow,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(12.dp)) {
+                                    Text(
+                                        text = "Detailed Wikipedia article unavailable for this landmark.",
+                                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = spot.description.ifBlank { "Historic & cultural landmark cataloged on Wikidata Knowledge Graph." },
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            SourceAttributionRow(
+                                sourceNameOrTag = "Wikidata Knowledge Graph",
+                                license = "CC0 1.0 Universal",
+                                sourceUrl = "https://www.wikidata.org"
+                            )
+                        }
+                    }
+                }
 
                 // Wikidata Historical Context Card (if spot has Wikidata tags/status)
                 val isWikidataSpot = spot.tagsRaw.contains("wikidata", ignoreCase = true) ||
