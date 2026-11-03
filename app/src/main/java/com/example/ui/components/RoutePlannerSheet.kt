@@ -5,6 +5,7 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -62,11 +63,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.data.local.ScoutSpotEntity
+import com.example.data.offline.GuidedWalkMood
+import com.example.data.offline.GuidedWalkPlannerEngine
 import com.example.engine.OfflineWalkingTrail
 import com.example.engine.RouteStep
 import com.example.ui.theme.BrandCoral
@@ -282,6 +286,139 @@ fun RoutePlannerSheet(
                             contentDescription = "Swap Origin and Destination",
                             tint = Color.White,
                             modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            var selectedDurationMinutes by remember { mutableStateOf(60) } // 30, 60, 120
+            var selectedMood by remember { mutableStateOf(GuidedWalkMood.SCENIC) } // SCENIC, HISTORIC, QUIET
+
+            // Step 2: Duration & Mood Selection Card
+            Surface(
+                color = Color(0xFF1E293B),
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.dp, Color(0xFF334155)),
+                modifier = Modifier.fillMaxWidth().testTag("guided_walk_options_card")
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    // Duration Selector
+                    Text(
+                        text = "Walk Duration",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        color = Color(0xFF94A3B8)
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf(30, 60, 120).forEach { mins ->
+                            val isSelected = selectedDurationMinutes == mins
+                            Surface(
+                                shape = RoundedCornerShape(999.dp),
+                                color = if (isSelected) BrandTeal else Color(0xFF0F172A),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, if (isSelected) BrandTeal else Color(0xFF334155)),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable { selectedDurationMinutes = mins }
+                                    .testTag("duration_chip_$mins")
+                            ) {
+                                Box(
+                                    modifier = Modifier.padding(vertical = 6.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "$mins min",
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                        color = if (isSelected) Color.White else Color(0xFFCBD5E1)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Mood Selector
+                    Text(
+                        text = "Walk Mood",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        color = Color(0xFF94A3B8)
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        GuidedWalkMood.entries.forEach { mood ->
+                            val isSelected = selectedMood == mood
+                            Surface(
+                                shape = RoundedCornerShape(999.dp),
+                                color = if (isSelected) BrandCoral else Color(0xFF0F172A),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, if (isSelected) BrandCoral else Color(0xFF334155)),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable { selectedMood = mood }
+                                    .testTag("mood_chip_${mood.name.lowercase()}")
+                            ) {
+                                Box(
+                                    modifier = Modifier.padding(vertical = 6.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = mood.title,
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                        color = if (isSelected) Color.White else Color(0xFFCBD5E1)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            val startLat = origin?.latitude ?: 38.7112
+            val startLng = origin?.longitude ?: -9.1423
+            val startTitle = origin?.name ?: "Current Location"
+
+            val guidedWalkPlan = remember(startLat, startLng, startTitle, selectedDurationMinutes, selectedMood, allSpots) {
+                GuidedWalkPlannerEngine.planGuidedWalk(
+                    originLat = startLat,
+                    originLng = startLng,
+                    startTitle = startTitle,
+                    targetDurationMinutes = selectedDurationMinutes,
+                    mood = selectedMood,
+                    availableSpots = allSpots
+                )
+            }
+
+            // Step 3: Show Empty State if guidedWalkPlan is empty and no custom destination selected
+            if (guidedWalkPlan.waypoints.isEmpty() && destination == null && plannedRoute == null) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = Color(0xFF1E293B),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF334155)),
+                    modifier = Modifier.fillMaxWidth().testTag("empty_guided_walk_plan_card")
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "No Matching Spots Found",
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                            color = Color.White
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "No spots match the selected '${selectedMood.title}' mood within $selectedDurationMinutes minutes. Try selecting a different mood or duration.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color(0xFF94A3B8),
+                            textAlign = TextAlign.Center
                         )
                     }
                 }
