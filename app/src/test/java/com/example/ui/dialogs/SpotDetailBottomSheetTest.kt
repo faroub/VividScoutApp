@@ -62,5 +62,6 @@ class SpotDetailBottomSheetTest {
         override val communityTipRepository: CommunityTipRepository get() = TODO()
         override val preScoutEngine: PreScoutEngine get() = TODO()
         override val compassSensorManager: CompassSensorManager get() = TODO()
+        override val networkMonitor: com.example.util.NetworkMonitor get() = TODO()
     }
 }
