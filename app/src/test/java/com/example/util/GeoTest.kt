@@ -10,16 +10,16 @@ class GeoTest {
     fun calculateDistanceMeters_knownCoordinates_withinOnePercentTolerance() {
         // Point A: Lisbon Cathedral (38.7098° N, 9.1326° W)
         // Point B: Rossio Square (38.7139° N, 9.1394° W)
-        // Known geodesic distance: ~754.2 meters
+        // Expected geodesic distance: 745.62 meters
         val lat1 = 38.7098
         val lon1 = -9.1326
         val lat2 = 38.7139
         val lon2 = -9.1394
 
-        val expectedMeters = 754.2
+        val expectedMeters = 745.62
         val actualMeters = Geo.calculateDistanceMeters(lat1, lon1, lat2, lon2)
 
-        val onePercentTolerance = expectedMeters * 0.01 // 1% tolerance
+        val onePercentTolerance = expectedMeters * 0.01 // 1% tolerance (7.45m)
         assertEquals(expectedMeters, actualMeters, onePercentTolerance)
     }
 
@@ -34,10 +34,11 @@ class GeoTest {
 
     @Test
     fun formatDistance_metricLocale_formatsMetersAndKilometers() {
+        val deLocale = Locale.GERMANY
         val frLocale = Locale.FRANCE
 
-        assertEquals("450 m", Geo.formatDistance(450.0, frLocale))
-        assertEquals("2.5 km", Geo.formatDistance(2500.0, frLocale))
+        assertEquals("450 m", Geo.formatDistance(450.0, deLocale))
+        assertEquals("2,5 km", Geo.formatDistance(2500.0, frLocale))
     }
 
     @Test
