@@ -35,8 +35,8 @@ class MunicipalOpenDataService {
                     category = "history",
                     distance = "5 min walk",
                     walkMinutes = 5,
-                    rating = 4.9,
-                    reviewCount = 310,
+                    rating = null,
+                    reviewCount = null,
                     imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Azulejos_de_Lisboa.jpg/1200px-Azulejos_de_Lisboa.jpg",
                     badgeLabel = "City Open Data",
                     statusBadge = "Municipal Open Data",
@@ -55,8 +55,8 @@ class MunicipalOpenDataService {
                     category = "sights",
                     distance = "8 min walk",
                     walkMinutes = 8,
-                    rating = 4.8,
-                    reviewCount = 450,
+                    rating = null,
+                    reviewCount = null,
                     imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/2/25/Miradouro_da_Gra%C3%A7a_Lisboa.jpg/1200px-Miradouro_da_Gra%C3%A7a_Lisboa.jpg",
                     badgeLabel = "City Open Data",
                     statusBadge = "Municipal Open Data",
@@ -67,29 +67,8 @@ class MunicipalOpenDataService {
                     locationName = "Graça Civic District"
                 )
             )
-        } else {
-            // Generic Municipal Open Data generator for other global coordinates
-            spots.add(
-                ScoutSpotEntity(
-                    id = "muni_civic_art_${cityName.hashCode()}",
-                    title = "$cityName Civic Heritage Monument",
-                    description = "Official Municipal Open Data catalog item. Preserved civic public art installation and historical marker.",
-                    category = "history",
-                    distance = "4 min walk",
-                    walkMinutes = 4,
-                    rating = 4.7,
-                    reviewCount = 120,
-                    imageUrl = "",
-                    badgeLabel = "City Open Data",
-                    statusBadge = "Municipal Open Data",
-                    tagsRaw = "municipal|||open_data|||monument",
-                    proTip = "Cataloged in $cityName Municipal Open Data Portal.",
-                    latitude = userLat + 0.002,
-                    longitude = userLng - 0.002,
-                    locationName = "$cityName Civic District"
-                )
-            )
         }
+        // Do not generate synthetic offset monuments for non-Lisbon cities without municipal dataset records.
 
         spots
     }

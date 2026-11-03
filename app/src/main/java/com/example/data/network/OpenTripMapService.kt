@@ -60,11 +60,9 @@ class OpenTripMapService(
                     val spotLat = point.optDouble("lat", lat)
                     val spotLon = point.optDouble("lon", lon)
                     val kinds = item.optString("kinds", "tourist_object")
-                    val rate = item.optInt("rate", 3)
 
                     val category = parseCategoryFromKinds(kinds)
                     val description = formatKindsDescription(kinds)
-                    val rating = (3.5 + (rate * 0.3)).coerceAtMost(5.0)
 
                     spots.add(
                         ScoutSpotEntity(
@@ -74,8 +72,8 @@ class OpenTripMapService(
                             category = category,
                             distance = "Nearby",
                             walkMinutes = 8,
-                            rating = rating,
-                            reviewCount = 42 + (rate * 18),
+                            rating = null,
+                            reviewCount = null,
                             imageUrl = "",
                             badgeLabel = "OpenTripMap",
                             statusBadge = "OpenTripMap POI",

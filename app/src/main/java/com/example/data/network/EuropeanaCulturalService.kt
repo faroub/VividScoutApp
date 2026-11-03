@@ -61,8 +61,14 @@ class EuropeanaCulturalService(
                     val dataProvider = item.optJSONArray("dataProvider")?.optString(0) ?: "European Cultural Institution"
                     val europeanaId = item.optString("id", "europeana_$i")
 
-                    val offsetLat = lat + ((i % 3 - 1) * 0.003)
-                    val offsetLng = lon + ((i / 3 - 1) * 0.003)
+                    // Extract actual coordinates provided by Europeana record
+                    val spotLat = item.optDouble("latitude", item.optDouble("edmPlaceLatitude", Double.NaN))
+                    val spotLon = item.optDouble("longitude", item.optDouble("edmPlaceLongitude", Double.NaN))
+
+                    // Require actual coordinates from the provider — do not invent offset coordinates
+                    if (spotLat.isNaN() || spotLon.isNaN() || (spotLat == 0.0 && spotLon == 0.0)) {
+                        continue
+                    }
 
                     spots.add(
                         ScoutSpotEntity(
@@ -72,15 +78,15 @@ class EuropeanaCulturalService(
                             category = "history",
                             distance = "Heritage District",
                             walkMinutes = 8,
-                            rating = 4.7,
-                            reviewCount = 92,
+                            rating = null,
+                            reviewCount = null,
                             imageUrl = edmIsShownBy,
                             badgeLabel = "Europeana",
                             statusBadge = "Europeana Cultural Item",
                             tagsRaw = "europeana|||archive|||$edmConceptLabel",
                             proTip = "Archived by $dataProvider.",
-                            latitude = offsetLat,
-                            longitude = offsetLng,
+                            latitude = spotLat,
+                            longitude = spotLon,
                             locationName = locationName
                         )
                     )
