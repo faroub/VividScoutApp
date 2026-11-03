@@ -3,9 +3,8 @@
 ## System Architecture & Refactoring Status
 
 1. **Composable File Sizes**:
-   - `ExploreScreen.kt`: Modularized with sub-composables in `ExploreSearchBar.kt`, `ExploreFilterRibbon.kt`, `ExploreSpotCard.kt`, `ExploreRadarCard.kt`, `ExploreHeader.kt`, `ExploreState.kt`.
-   - `RadarScreen.kt`: Modularized with sub-composables in `RadarBanners.kt`, `RadarViewModeSelector.kt`, `RadarOsmScraperCard.kt`, `RadarDetectedSpotItem.kt`.
-   - `ProfileScreen.kt`: Modularized with sub-composables in `ProfileGpsTelemetryCard.kt`, `ProfileSettingsSection.kt`.
+   - `ExploreScreen.kt`: Modularized with sub-composables in `ExploreSearchBar.kt`, `ExploreFilterRibbon.kt`, `ExploreSpotCard.kt`, `ExploreHeader.kt`, `ExploreState.kt`, `ExploreFilterSection.kt`.
+   - `ProfileScreen.kt`: Modularized with sub-composables in `ProfileGpsTelemetryCard.kt`, `ProfileSettingsSection.kt`, `ProfileHeaderSection.kt`, `ProfilePrefetchCard.kt`.
    - `MapCanvasView.kt`: Modularized with sub-composables in `MapRegionDownloaderBar.kt`, `MapRouteHud.kt`, `MapCanvasControls.kt`.
    - *Note on secondary overlay/sheet components*: `RoutePlannerSheet.kt`, `SpotGemModal.kt`, `SpotDetailBottomSheet.kt`, and `ARNavigationOverlay.kt` remain functional as standalone modal sheets/overlays.
 
@@ -21,14 +20,13 @@
    - `rating = null` and `reviewCount = null` assigned to AI and curated spots unless verified by authentic user reviews.
 
 5. **City-Independent Proximity Discovery**:
-   - AI queries and fallback generation resolve dynamic cities using `GlobalCityCatalog.findNearestCityName(lat, lng)`.
-   - Active fallback coordinates dynamically track the user-selected city in `DefaultLocationConfig`.
+   - AI queries and fallback generation resolve dynamic cities using `GlobalCityCatalog` in `GlobalCity.kt`.
+   - Active fallback coordinates dynamically track the user-selected city in `DefaultLocationConfig.kt`.
 
 6. **Fallback Location Status Visibility**:
    - Prominent fallback indicators across UI:
      - `VividScoutTopBar`: Amber `"Fallback: <City>"` badge when GPS is inactive.
      - `ExploreScreen`: Warning banner with quick action to change city or enable GPS.
-     - `RadarScreen`: Warning banner showing fallback status.
      - `ProfileGpsTelemetryCard`: Simulated Fallback GPS badge with annotated coordinates.
      - `SpotGemModal`: Amber tag banner alerting user that submission coordinates are at fallback location.
 
@@ -37,4 +35,4 @@
    - Firestore security rules configured in `firestore.rules` (reported).
 
 8. **Automated Verification**:
-   - `./gradlew :app:testDebugUnitTest`: 128 unit and integration tests passing, 0 skipped, 0 failed.
+   - `./gradlew :app:testDebugUnitTest`: 155 unit and integration tests passing, 0 skipped, 0 failed.
