@@ -684,3 +684,4 @@ fun VividScoutApp(
         }
     }
 }
+}
