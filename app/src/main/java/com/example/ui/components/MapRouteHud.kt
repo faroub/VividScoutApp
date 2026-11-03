@@ -113,14 +113,14 @@ fun MapRouteHud(
                 IconButton(
                     onClick = onClearTrailClick,
                     modifier = Modifier
-                        .size(28.dp)
+                        .size(48.dp)
                         .testTag("vector_route_clear_btn")
                 ) {
                     Icon(
                         imageVector = Icons.Default.Close,
-                        contentDescription = "Clear Route",
+                        contentDescription = "Clear Active Walking Route",
                         tint = Color(0xFFEF4444),
-                        modifier = Modifier.size(16.dp)
+                        modifier = Modifier.size(20.dp)
                     )
                 }
             }

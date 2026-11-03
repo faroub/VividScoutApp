@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -43,11 +44,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.data.local.ScoutSpotEntity
+import com.example.data.sync.OfflineSyncState
+import com.example.data.sync.OfflineSyncStateResolver
+import com.example.ui.theme.BrandCoral
+import com.example.ui.theme.BrandTeal
 import com.example.ui.theme.PrimaryContainer
 import com.example.ui.theme.Secondary
 import com.example.ui.theme.SecondaryContainer
 import com.example.ui.theme.SurfaceContainerLow
 import com.example.ui.theme.SurfaceContainerLowest
+import com.example.util.SafeLog
 
 @Composable
 fun OfflineQueueDialog(
@@ -159,41 +165,88 @@ fun OfflineQueueDialog(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         items(drafts) { draft ->
+                            val syncItem = OfflineSyncStateResolver.resolveState(draft)
                             Surface(
                                 shape = RoundedCornerShape(12.dp),
                                 color = SurfaceContainerLow,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Row(
-                                    modifier = Modifier.padding(10.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = draft.title,
-                                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                                            color = MaterialTheme.colorScheme.onSurface,
-                                            maxLines = 1
-                                        )
-                                        Text(
-                                            text = "${draft.locationName} • GPS Lat: ${draft.latitude}",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
+                                Column(modifier = Modifier.padding(10.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = draft.title,
+                                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                                color = MaterialTheme.colorScheme.onSurface,
+                                                maxLines = 1
+                                            )
+                                            Text(
+                                                text = "${draft.locationName} • GPS Lat: ${SafeLog.sanitizeCoordinate(draft.latitude)}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+
+                                        val badgeColor = when (syncItem.state) {
+                                            OfflineSyncState.WAITING -> PrimaryContainer
+                                            OfflineSyncState.SYNCING -> BrandTeal
+                                            OfflineSyncState.FAILED -> BrandCoral
+                                            OfflineSyncState.SYNCED -> Secondary
+                                        }
+
+                                        val badgeText = when (syncItem.state) {
+                                            OfflineSyncState.WAITING -> "Waiting"
+                                            OfflineSyncState.SYNCING -> "Syncing..."
+                                            OfflineSyncState.FAILED -> "Failed"
+                                            OfflineSyncState.SYNCED -> "Synced ✓"
+                                        }
+
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(999.dp))
+                                                .background(badgeColor.copy(alpha = 0.15f))
+                                                .padding(horizontal = 8.dp, vertical = 3.dp)
+                                        ) {
+                                            Text(
+                                                text = badgeText,
+                                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                                color = badgeColor
+                                            )
+                                        }
                                     }
 
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(999.dp))
-                                            .background(PrimaryContainer.copy(alpha = 0.15f))
-                                            .padding(horizontal = 8.dp, vertical = 3.dp)
-                                    ) {
-                                        Text(
-                                            text = "Queued",
-                                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                            color = PrimaryContainer
-                                        )
+                                    if (syncItem.state == OfflineSyncState.FAILED) {
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text(
+                                                text = syncItem.failureReasonPlainLanguage ?: "Connection unavailable. Tap Retry.",
+                                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                                color = BrandCoral,
+                                                modifier = Modifier.weight(1f).padding(end = 6.dp)
+                                            )
+
+                                            Button(
+                                                onClick = onSyncAll,
+                                                colors = ButtonDefaults.buttonColors(containerColor = BrandCoral),
+                                                shape = RoundedCornerShape(999.dp),
+                                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                                                modifier = Modifier.height(28.dp).testTag("retry_failed_draft_${draft.id}")
+                                            ) {
+                                                Text(
+                                                    text = "Retry",
+                                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                                    color = Color.White
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             }

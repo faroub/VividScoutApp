@@ -1,5 +1,6 @@
 package com.example.ui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -53,19 +54,19 @@ fun MapZoomPresetSelector(
                     .background(if (isSelected) BrandTeal else Color(0xF2080B1E))
                     .border(
                         1.dp,
-                        if (isSelected) BrandTeal else Color.White.copy(alpha = 0.2f),
+                        if (isSelected) BrandTeal else Color.White.copy(alpha = 0.3f),
                         RoundedCornerShape(999.dp)
                     )
                     .clickable { onSetZoomPreset(preset) }
-                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                    .padding(horizontal = 10.dp, vertical = 6.dp)
                     .testTag("zoom_preset_chip_${preset.name.lowercase()}"),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = preset.label,
                     style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                    color = if (isSelected) Color.White else Color.White.copy(alpha = 0.85f),
-                    fontSize = 10.sp
+                    color = if (isSelected) Color.White else Color.White.copy(alpha = 0.9f),
+                    fontSize = 10.5.sp
                 )
             }
         }
@@ -87,14 +88,14 @@ fun MapCanvasControls(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        // Region Downloader Button
+        // Region Downloader Button (48dp Touch Target)
         if (onStartRegionDownload != null) {
             Box(
                 modifier = Modifier
-                    .size(36.dp)
+                    .size(48.dp)
                     .clip(CircleShape)
-                    .background(if (isRegionDownloadMode) BrandTeal else Color(0xFF080B1E).copy(alpha = 0.9f))
-                    .border(1.dp, if (isRegionDownloadMode) Color.White else BrandTeal.copy(alpha = 0.8f), CircleShape)
+                    .background(if (isRegionDownloadMode) BrandTeal else Color(0xFF080B1E).copy(alpha = 0.95f))
+                    .border(1.dp, if (isRegionDownloadMode) Color.White else BrandTeal, CircleShape)
                     .clickable {
                         if (isRegionDownloadMode) {
                             onCancelRegionDownload?.invoke()
@@ -107,88 +108,88 @@ fun MapCanvasControls(
             ) {
                 Icon(
                     imageVector = Icons.Default.CloudDownload,
-                    contentDescription = if (isRegionDownloadMode) "Exit Region Downloader" else "Download Offline Region",
+                    contentDescription = if (isRegionDownloadMode) "Exit Region Downloader" else "Download Offline Region Map",
                     tint = if (isRegionDownloadMode) Color.Black else BrandTeal,
-                    modifier = Modifier.size(18.dp)
+                    modifier = Modifier.size(22.dp)
                 )
             }
         }
 
-        // Offline Walking Route Planner Button
+        // Offline Walking Route Planner Button (48dp Touch Target)
         if (onPlanTrailClick != null) {
             Box(
                 modifier = Modifier
-                    .size(36.dp)
+                    .size(48.dp)
                     .clip(CircleShape)
-                    .background(Color(0xFF080B1E).copy(alpha = 0.9f))
-                    .border(1.dp, BrandCoral.copy(alpha = 0.8f), CircleShape)
+                    .background(Color(0xFF080B1E).copy(alpha = 0.95f))
+                    .border(1.dp, BrandCoral, CircleShape)
                     .clickable { onPlanTrailClick() }
                     .testTag("vector_route_planner_btn"),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = Icons.Default.Route,
-                    contentDescription = "Plan Route",
+                    contentDescription = "Plan Walking Route",
                     tint = BrandCoral,
-                    modifier = Modifier.size(18.dp)
+                    modifier = Modifier.size(22.dp)
                 )
             }
         }
 
-        // Center on GPS Beacon
+        // Center on GPS Beacon (48dp Touch Target)
         Box(
             modifier = Modifier
-                .size(36.dp)
+                .size(48.dp)
                 .clip(CircleShape)
-                .background(Color(0xFF080B1E).copy(alpha = 0.9f))
-                .border(1.dp, BrandTeal.copy(alpha = 0.5f), CircleShape)
+                .background(Color(0xFF080B1E).copy(alpha = 0.95f))
+                .border(1.dp, BrandTeal, CircleShape)
                 .clickable { onResetPan() }
                 .testTag("vector_center_on_me"),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = Icons.Default.MyLocation,
-                contentDescription = "Center on GPS",
+                contentDescription = "Center Map on Current Location",
                 tint = BrandTeal,
-                modifier = Modifier.size(18.dp)
+                modifier = Modifier.size(22.dp)
             )
         }
 
-        // Step Zoom In (+)
+        // Step Zoom In (+) (48dp Touch Target)
         Box(
             modifier = Modifier
-                .size(36.dp)
+                .size(48.dp)
                 .clip(CircleShape)
-                .background(Color(0xFF080B1E).copy(alpha = 0.9f))
-                .border(1.dp, Color.White.copy(alpha = 0.25f), CircleShape)
+                .background(Color(0xFF080B1E).copy(alpha = 0.95f))
+                .border(1.dp, Color.White.copy(alpha = 0.4f), CircleShape)
                 .clickable { onZoomIn() }
                 .testTag("vector_zoom_in"),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = Icons.Default.Add,
-                contentDescription = "Zoom In",
+                contentDescription = "Zoom In Map",
                 tint = Color.White,
-                modifier = Modifier.size(18.dp)
+                modifier = Modifier.size(22.dp)
             )
         }
 
-        // Step Zoom Out (-)
+        // Step Zoom Out (-) (48dp Touch Target)
         Box(
             modifier = Modifier
-                .size(36.dp)
+                .size(48.dp)
                 .clip(CircleShape)
-                .background(Color(0xFF080B1E).copy(alpha = 0.9f))
-                .border(1.dp, Color.White.copy(alpha = 0.25f), CircleShape)
+                .background(Color(0xFF080B1E).copy(alpha = 0.95f))
+                .border(1.dp, Color.White.copy(alpha = 0.4f), CircleShape)
                 .clickable { onZoomOut() }
                 .testTag("vector_zoom_out"),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = Icons.Default.Remove,
-                contentDescription = "Zoom Out",
+                contentDescription = "Zoom Out Map",
                 tint = Color.White,
-                modifier = Modifier.size(18.dp)
+                modifier = Modifier.size(22.dp)
             )
         }
     }
