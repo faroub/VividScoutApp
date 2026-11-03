@@ -1,21 +1,4 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!--
-  VividScout Android Lint Baseline
-  Regenerated: 2026-11-01
-  All Group (a) code bugs/permission flaws (MissingPermission, DiscouragedApi, UseKtx, TypographyEllipsis, MissingTranslation)
-  were fixed directly in code. This baseline contains strictly Group (b) low-risk resources and Group (c) dependency notices:
-
-  Group (b) Low Risk Issues:
-  - UnusedResources (136): Unused resource strings and drawables retained for future localized screens.
-  - VectorRaster (6): Vector drawables exceeding 200x200 dp raster viewports.
-  - IconLauncherShape (5): Legacy launcher icon shape PNG fallbacks.
-
-  Group (c) Acceptable / Pinned Dependency Notices:
-  - GradleDependency (23): Library version recommendations; pinned to tested stable dependency matrix.
-  - NewerVersionAvailable (10): Optional library version updates.
-  - AndroidGradlePluginVersion (2): AGP build tool version notice.
-  - OldTargetApi (1): Target SDK version notice.
--->
 <issues format="6" by="lint 9.1.1" type="baseline" client="gradle" dependencies="false" name="AGP (9.1.1)" variant="all" version="9.1.1">
 
     <issue
