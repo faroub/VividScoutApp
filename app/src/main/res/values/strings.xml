@@ -129,4 +129,6 @@
     <string name="voting_available_after_sync">Voting available after cloud sync</string>
     <string name="community_voting_opens_after_update">Voting opens after the community update</string>
     <string name="post_tip_error_container_unavailable">Unable to post note: Application service container unavailable.</string>
+    <!-- Optional custom Firestore database ID (leave empty to use the default database) -->
+    <string name="firestore_database_id" translatable="false" />
 </resources>

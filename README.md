@@ -29,7 +29,7 @@ app/google-services.json
 - **Firebase AI Logic (`firebase-ai`)**: Uses the Google Gemini 3.8 Flash model (`gemini-3.8-flash`) to generate structured, real-time spot recommendations and pre-cache 5km trajectory corridor POIs.
 
 ### Firestore Database ID
-The database ID is dynamically retrieved from string resource `R.string.firestore_database_id` (defined in `app/src/main/res/values/strings.xml`). If absent or blank, `FirestoreSyncManager.kt` falls back to the default project database ID `ai-studio-android-vividsco-23e1f418-990c-46e5-8dcb-37171a4b89b4`.
+The database ID is dynamically retrieved from string resource `R.string.firestore_database_id` (defined in `app/src/main/res/values/strings.xml`). If the string resource is blank or undefined, `FirestoreSyncManager.kt` uses the default FirebaseFirestore instance (`FirebaseFirestore.getInstance()`) and logs a warning in Logcat.
 
 ---
 

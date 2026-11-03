@@ -38,14 +38,12 @@ object FirestoreSyncManager {
                 FirebaseApp.initializeApp(context)
             }
             val resId = context.resources.getIdentifier("firestore_database_id", "string", context.packageName)
-            val databaseId = if (resId != 0) {
-                context.getString(resId)
-            } else {
-                "ai-studio-android-vividsco-23e1f418-990c-46e5-8dcb-37171a4b89b4"
-            }
+            val databaseId = if (resId != 0) context.getString(resId) else ""
+
             if (databaseId.isNotBlank()) {
                 FirebaseFirestore.getInstance(FirebaseApp.getInstance(), databaseId)
             } else {
+                Log.w(TAG, "R.string.firestore_database_id is blank or undefined. Using default FirebaseFirestore instance.")
                 FirebaseFirestore.getInstance()
             }
         } catch (e: Exception) {
