@@ -103,7 +103,11 @@ class CommunityViewModel(
 
     fun upvoteTip(tipId: String) {
         viewModelScope.launch {
-            val currentUid = FirebaseAuth.getInstance().currentUser?.uid ?: ""
+            val currentUid = try {
+                FirebaseAuth.getInstance().currentUser?.uid ?: ""
+            } catch (e: Exception) {
+                ""
+            }
             if (currentUid.isNotBlank()) {
                 communityRepository.upvoteTip(tipId, currentUid)
             }

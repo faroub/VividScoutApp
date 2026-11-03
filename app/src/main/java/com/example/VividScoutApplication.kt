@@ -28,12 +28,16 @@ class VividScoutApplication : Application(), ImageLoaderFactory {
 
         applicationScope.launch {
             try {
-                if (FirebaseApp.getApps(this@VividScoutApplication).isEmpty()) {
+                val app = if (FirebaseApp.getApps(this@VividScoutApplication).isNotEmpty()) {
+                    FirebaseApp.getInstance()
+                } else {
                     FirebaseApp.initializeApp(this@VividScoutApplication)
                 }
-                val auth = FirebaseAuth.getInstance()
-                if (auth.currentUser == null) {
-                    auth.signInAnonymously()
+                if (app != null) {
+                    val auth = FirebaseAuth.getInstance(app)
+                    if (auth.currentUser == null) {
+                        auth.signInAnonymously()
+                    }
                 }
             } catch (e: Exception) {
                 // Background auth initialization handled gracefully

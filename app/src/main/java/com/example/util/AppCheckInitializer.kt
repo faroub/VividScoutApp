@@ -17,11 +17,18 @@ private const val TAG = "AppCheckInit"
  */
 fun configureAppCheck(context: Context) {
     try {
-        if (FirebaseApp.getApps(context).isEmpty()) {
+        val app = if (FirebaseApp.getApps(context).isNotEmpty()) {
+            FirebaseApp.getInstance()
+        } else {
             FirebaseApp.initializeApp(context)
         }
 
-        val appCheck = FirebaseAppCheck.getInstance()
+        if (app == null) {
+            Log.d(TAG, "FirebaseApp is not configured; skipping App Check initialization.")
+            return
+        }
+
+        val appCheck = FirebaseAppCheck.getInstance(app)
         if (BuildConfig.DEBUG) {
             appCheck.installAppCheckProviderFactory(
                 DebugAppCheckProviderFactory.getInstance()
@@ -34,6 +41,6 @@ fun configureAppCheck(context: Context) {
             Log.d(TAG, "PlayIntegrityAppCheckProviderFactory installed for Release build.")
         }
     } catch (e: Exception) {
-        Log.e(TAG, "Failed to initialize Firebase App Check", e)
+        Log.d(TAG, "Firebase App Check initialization skipped: ${e.message}")
     }
 }

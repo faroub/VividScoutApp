@@ -36,9 +36,12 @@ object FirestoreSyncManager {
     private fun getFirestore(context: Context): FirebaseFirestore? {
         return try {
             configureAppCheck(context)
-            if (FirebaseApp.getApps(context).isEmpty()) {
+            val app = if (FirebaseApp.getApps(context).isNotEmpty()) {
+                FirebaseApp.getInstance()
+            } else {
                 FirebaseApp.initializeApp(context)
-            }
+            } ?: return null
+
             val databaseId = try {
                 context.getString(R.string.firestore_database_id)
             } catch (_: Exception) {
@@ -46,27 +49,32 @@ object FirestoreSyncManager {
             }
 
             if (databaseId.isNotBlank()) {
-                FirebaseFirestore.getInstance(FirebaseApp.getInstance(), databaseId)
+                FirebaseFirestore.getInstance(app, databaseId)
             } else {
-                Log.w(TAG, "R.string.firestore_database_id is blank or undefined. Using default FirebaseFirestore instance.")
-                FirebaseFirestore.getInstance()
+                FirebaseFirestore.getInstance(app)
             }
         } catch (e: Exception) {
-            Log.w(TAG, "Failed to initialize Firestore instance: ${e.message}")
+            Log.d(TAG, "Failed to initialize Firestore instance: ${e.message}")
             null
         }
     }
 
-    private suspend fun ensureFirebaseAuth(): Boolean = withContext(Dispatchers.IO) {
+    private suspend fun ensureFirebaseAuth(context: Context): Boolean = withContext(Dispatchers.IO) {
         return@withContext try {
-            val auth = com.google.firebase.auth.FirebaseAuth.getInstance()
+            val app = if (FirebaseApp.getApps(context).isNotEmpty()) {
+                FirebaseApp.getInstance()
+            } else {
+                FirebaseApp.initializeApp(context)
+            } ?: return@withContext false
+
+            val auth = com.google.firebase.auth.FirebaseAuth.getInstance(app)
             if (auth.currentUser == null) {
                 auth.signInAnonymously().await()
                 SafeLog.d(TAG, "Successfully authenticated Firebase user anonymously (${SafeLog.sanitizeUid(auth.currentUser?.uid)})")
             }
             auth.currentUser != null
         } catch (e: Exception) {
-            Log.w(TAG, "Firebase Auth anonymous sign-in failed: ${e.message}")
+            Log.d(TAG, "Firebase Auth sign-in skipped: ${e.message}")
             false
         }
     }
@@ -80,7 +88,7 @@ object FirestoreSyncManager {
         scoutDao: ScoutDao,
         discoveredGemDao: DiscoveredGemDao?
     ): Boolean = withContext(Dispatchers.IO) {
-        if (!ensureFirebaseAuth()) {
+        if (!ensureFirebaseAuth(context)) {
             Log.w(TAG, "Cannot sync draft '${spot.id}': Firebase Auth required for Firestore writes")
             return@withContext false
         }
@@ -147,7 +155,7 @@ object FirestoreSyncManager {
         tip: CommunityTipEntity,
         tipDao: CommunityTipDao? = null
     ): Boolean = withContext(Dispatchers.IO) {
-        if (!ensureFirebaseAuth()) {
+        if (!ensureFirebaseAuth(context)) {
             Log.w(TAG, "Cannot post tip '${tip.id}': Firebase Auth required for Firestore writes")
             return@withContext false
         }
@@ -191,7 +199,7 @@ object FirestoreSyncManager {
         context: Context,
         tipId: String
     ): Boolean = withContext(Dispatchers.IO) {
-        if (!ensureFirebaseAuth()) return@withContext false
+        if (!ensureFirebaseAuth(context)) return@withContext false
         val firestore = getFirestore(context) ?: return@withContext false
         val currentUid = FirebaseAuth.getInstance().currentUser?.uid
         if (currentUid.isNullOrBlank()) {
