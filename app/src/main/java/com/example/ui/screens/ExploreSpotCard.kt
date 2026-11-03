@@ -68,6 +68,7 @@ import com.example.util.ImageResolver
 import androidx.compose.runtime.remember
 import com.example.data.model.ExploreMapLayer
 import com.example.ui.components.SourceAttributionRow
+import com.example.util.Geo
 
 @Composable
 fun ScoutSpotCard(
@@ -241,7 +242,10 @@ fun ScoutSpotCard(
                             modifier = Modifier.size(13.dp)
                         )
                         Spacer(modifier = Modifier.width(3.dp))
-                        val distText = spot.computedDistanceString(userCoordinates.first, userCoordinates.second)
+                        val distText = Geo.formatDistanceAndWalkTime(
+                            userCoordinates.first, userCoordinates.second,
+                            spot.latitude, spot.longitude
+                        )
                         Text(
                             text = distText,
                             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),

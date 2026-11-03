@@ -49,6 +49,7 @@ import com.example.ui.theme.HistoryPurple
 import com.example.ui.theme.HistoryPurpleBg
 import com.example.ui.theme.SightsGreen
 import com.example.ui.theme.SightsGreenBg
+import com.example.util.Geo
 import com.example.util.ImageResolver
 import java.util.Locale
 
@@ -60,7 +61,9 @@ fun SpotPreviewPopupCard(
     spot: ScoutSpotEntity,
     onCardClick: () -> Unit,
     onDismiss: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    userLat: Double = Double.NaN,
+    userLng: Double = Double.NaN
 ) {
     val categoryColor = when (spot.category.lowercase()) {
         "sights" -> SightsGreen
@@ -163,26 +166,26 @@ fun SpotPreviewPopupCard(
                         )
                     }
 
-                    val dist = spot.distance
-                    val walk = spot.walkMinutes
-                    if (dist.isNotBlank() || walk > 0) {
-                        val walkText = buildString {
-                            if (dist.isNotBlank()) append(dist)
-                            if (walk > 0) {
-                                if (isNotEmpty()) append(" • ")
-                                append("$walk min walk")
-                            }
-                        }
-                        Text(
-                            text = walkText,
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Medium
-                            ),
-                            color = Color(0xFF94A3B8),
-                            maxLines = 1
-                        )
+                    val formattedDist = Geo.formatDistanceAndWalkTime(
+                        userLat, userLng, spot.latitude, spot.longitude
+                    )
+                    val walkText = if (formattedDist != "—") {
+                        formattedDist
+                    } else if (spot.distance.isNotBlank()) {
+                        "${spot.distance}${if (spot.walkMinutes > 0) " • ${spot.walkMinutes} min walk" else ""}"
+                    } else {
+                        "—"
                     }
+
+                    Text(
+                        text = walkText,
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium
+                        ),
+                        color = Color(0xFF94A3B8),
+                        maxLines = 1
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(4.dp))
