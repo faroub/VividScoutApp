@@ -39,7 +39,7 @@ data class AutoCleanupReport(
  * Room is the single source of truth; live spot discovery results from Firebase AI Logic (Gemini 3.8 Flash)
  * and Overpass API are inserted into Room in the background so the app remains 100% functional offline.
  */
-class ScoutGemRepository(
+open class ScoutGemRepository(
     private val scoutDao: ScoutDao,
     private val discoveredGemDao: DiscoveredGemDao? = null,
     private val recentSearchDao: RecentSearchDao? = null,

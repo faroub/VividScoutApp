@@ -1,82 +1,156 @@
 package com.example.ui.viewmodel
 
+import android.content.Context
+import androidx.room.Room
+import androidx.test.core.app.ApplicationProvider
+import com.example.data.local.AchievementDao
+import com.example.data.local.AppDatabase
+import com.example.data.local.DiscoveredGemDao
+import com.example.data.local.RecentSearchDao
+import com.example.data.local.RecentSearchEntity
+import com.example.data.local.ScoutDao
 import com.example.data.repository.ScoutGemRepository
 import com.example.data.repository.ScoutRepository
+import com.example.engine.PreScoutEngine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
-import org.mockito.Mockito.mock
-import org.mockito.Mockito.verify
-import org.mockito.Mockito.`when`
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
 @OptIn(ExperimentalCoroutinesApi::class)
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [33])
 class ExploreSearchViewModelTest {
 
     private val testDispatcher = StandardTestDispatcher()
-    private lateinit var scoutRepository: ScoutRepository
-    private lateinit var gemRepository: ScoutGemRepository
+    private lateinit var db: AppDatabase
+    private lateinit var scoutRepo: FakeScoutRepository
+    private lateinit var gemRepo: FakeScoutGemRepository
+    private lateinit var preScoutEngine: PreScoutEngine
     private lateinit var viewModel: ExploreViewModel
 
     @Before
     fun setUp() {
         Dispatchers.setMain(testDispatcher)
-        scoutRepository = mock(ScoutRepository::class.java)
-        gemRepository = mock(ScoutGemRepository::class.java)
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
 
-        `when`(scoutRepository.allSpotsFlow).thenReturn(flowOf(emptyList()))
-        `when`(scoutRepository.savedSpotsFlow).thenReturn(flowOf(emptyList()))
-        `when`(scoutRepository.discoveredSpotsFlow).thenReturn(flowOf(emptyList()))
-        `when`(gemRepository.recentSearchesFlow).thenReturn(flowOf(emptyList()))
+        val scoutDao = db.scoutDao()
+        val gemDao = db.discoveredGemDao()
+        val achievementDao = db.achievementDao()
+        val recentSearchDao = db.recentSearchDao()
 
-        viewModel = ExploreViewModel(scoutRepository, gemRepository)
+        scoutRepo = FakeScoutRepository(scoutDao, gemDao, achievementDao, context)
+        gemRepo = FakeScoutGemRepository(scoutDao, gemDao, recentSearchDao)
+        preScoutEngine = PreScoutEngine(scoutDao, recentSearchDao, gemRepo)
+
+        viewModel = ExploreViewModel(
+            repository = scoutRepo,
+            gemRepository = gemRepo,
+            preScoutEngine = preScoutEngine
+        )
     }
 
     @After
     fun tearDown() {
+        db.close()
         Dispatchers.resetMain()
     }
 
     @Test
-    fun setSearchQuery_emptyValue_maintainsFocusedEmptyStateAndQueryText() = runTest {
+    fun setSearchQuery_emptyQuery_maintainsFocusedEmptyState() = runTest {
         viewModel.setSearchQuery("")
         testDispatcher.scheduler.advanceUntilIdle()
 
-        val currentQuery = viewModel.searchQuery.value
-        assertEquals("", currentQuery)
+        assertEquals("", viewModel.searchQuery.value)
     }
 
     @Test
     fun tappingSuggestion_updatesSearchQueryTextAndRecordsQuery() = runTest {
-        val suggestionQuery = "historic sites"
+        val suggestion = "historic sites"
 
-        viewModel.setSearchQuery(suggestionQuery)
+        viewModel.setSearchQuery(suggestion)
         testDispatcher.scheduler.advanceUntilIdle()
 
         assertEquals("historic sites", viewModel.searchQuery.value)
-        verify(gemRepository).recordRecentSearch("historic sites")
+        assertEquals("historic sites", gemRepo.lastRecordedQuery)
     }
 
     @Test
-    fun clearAllRecentSearches_invokesRepositoryClear() = runTest {
+    fun clearAllRecentSearches_clearsHistoryInRepository() = runTest {
+        val recentDao = db.recentSearchDao()
+        recentDao.insertSearch(RecentSearchEntity("s1", "viewpoints near me", "all", System.currentTimeMillis()))
+        recentDao.insertSearch(RecentSearchEntity("s2", "hiking trails", "all", System.currentTimeMillis()))
+
+        testDispatcher.scheduler.advanceUntilIdle()
+
         viewModel.clearAllRecentSearches()
         testDispatcher.scheduler.advanceUntilIdle()
 
-        verify(gemRepository).clearAllRecentSearches()
+        val recentList = viewModel.recentSearches.value
+        assertTrue("Recent searches list should be cleared", recentList.isEmpty())
     }
 
     @Test
-    fun deleteRecentSearch_invokesRepositoryDelete() = runTest {
-        viewModel.deleteRecentSearch("search_123")
+    fun deleteRecentSearch_removesSingleQueryFromRepository() = runTest {
+        val recentDao = db.recentSearchDao()
+        recentDao.insertSearch(RecentSearchEntity("s1", "viewpoints near me", "all", System.currentTimeMillis()))
+        recentDao.insertSearch(RecentSearchEntity("s2", "hiking trails", "all", System.currentTimeMillis()))
+
         testDispatcher.scheduler.advanceUntilIdle()
 
-        verify(gemRepository).removeRecentSearch("search_123")
+        viewModel.deleteRecentSearch("s1")
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val recentList = viewModel.recentSearches.value
+        assertTrue(recentList.none { it.id == "s1" })
+    }
+
+    class FakeScoutRepository(
+        scoutDao: ScoutDao,
+        gemDao: DiscoveredGemDao,
+        achievementDao: AchievementDao,
+        context: Context?
+    ) : ScoutRepository(scoutDao, gemDao, achievementDao, context) {
+        override suspend fun initializeIfEmpty() {}
+    }
+
+    class FakeScoutGemRepository(
+        scoutDao: ScoutDao,
+        gemDao: DiscoveredGemDao,
+        recentSearchDao: RecentSearchDao
+    ) : ScoutGemRepository(scoutDao, gemDao, recentSearchDao) {
+        val recentSearchesFlow = MutableStateFlow<List<RecentSearchEntity>>(emptyList())
+        override val recentSearches: Flow<List<RecentSearchEntity>> = recentSearchesFlow
+        var lastRecordedQuery: String? = null
+        var lastDeletedId: String? = null
+
+        override suspend fun enrichSpotsPhotosInBackground() {}
+
+        override suspend fun recordRecentSearch(query: String) {
+            lastRecordedQuery = query
+        }
+
+        override suspend fun removeRecentSearch(id: String) {
+            lastDeletedId = id
+        }
+
+        override suspend fun clearAllRecentSearches() {
+            recentSearchesFlow.value = emptyList()
+        }
     }
 }

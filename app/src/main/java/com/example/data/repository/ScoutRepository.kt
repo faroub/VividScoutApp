@@ -14,7 +14,7 @@ import com.example.data.local.AchievementDao
 import com.example.data.local.AchievementEntity
 import com.example.data.location.DefaultLocationConfig
 
-class ScoutRepository(
+open class ScoutRepository(
     private val scoutDao: ScoutDao,
     private val discoveredGemDao: DiscoveredGemDao? = null,
     private val achievementDao: AchievementDao? = null,
@@ -209,7 +209,7 @@ class ScoutRepository(
         scoutDao.deleteUnsavedDistantSpots(minLat, maxLat, minLng, maxLng)
     }
 
-    suspend fun initializeIfEmpty() = withContext(Dispatchers.IO) {
+    open suspend fun initializeIfEmpty(): Int = withContext(Dispatchers.IO) {
         val legacySeedIds = listOf("spot_1", "spot_2", "spot_3", "spot_4", "spot_5", "spot_6", "spot_7", "spot_8")
         scoutDao.deleteSpotsByIds(legacySeedIds)
     }
