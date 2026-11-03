@@ -104,6 +104,39 @@ abstract class AppDatabase : RoomDatabase() {
         suspend fun populateInitialAchievements(dao: AchievementDao) {
             val initialAchievements = listOf(
                 AchievementEntity(
+                    id = "heritage_variety_5",
+                    title = "Heritage Variety",
+                    description = "Visited five different heritage types",
+                    category = "sights",
+                    tierLevel = 1,
+                    currentProgress = 0,
+                    targetGoal = 5,
+                    isUnlocked = false,
+                    iconResName = "ic_cat_sights"
+                ),
+                AchievementEntity(
+                    id = "district_variety_3",
+                    title = "District Explorer",
+                    description = "Walked in three different districts",
+                    category = "shortcut",
+                    tierLevel = 2,
+                    currentProgress = 0,
+                    targetGoal = 3,
+                    isUnlocked = false,
+                    iconResName = "ic_cat_shortcut"
+                ),
+                AchievementEntity(
+                    id = "country_variety_2",
+                    title = "Globe Trotter",
+                    description = "Visited spots in two countries",
+                    category = "history",
+                    tierLevel = 3,
+                    currentProgress = 0,
+                    targetGoal = 2,
+                    isUnlocked = false,
+                    iconResName = "ic_cat_history"
+                ),
+                AchievementEntity(
                     id = "sights_explorer",
                     title = "Sights Explorer",
                     description = "Discover 3 scenic viewpoints, miradouros, or panorama terraces in Alfama.",

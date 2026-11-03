@@ -261,13 +261,20 @@ private fun AchievementBadgeCard(
 
                 Spacer(modifier = Modifier.height(4.dp))
 
+                val progressText = when (achievement.id) {
+                    "heritage_variety_5" -> "${achievement.currentProgress} of ${achievement.targetGoal} heritage types"
+                    "district_variety_3" -> "${achievement.currentProgress} of ${achievement.targetGoal} districts"
+                    "country_variety_2" -> "${achievement.currentProgress} of ${achievement.targetGoal} countries"
+                    else -> "${achievement.currentProgress} of ${achievement.targetGoal} items"
+                }
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "${achievement.currentProgress} / ${achievement.targetGoal} spots discovered",
+                        text = progressText,
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
