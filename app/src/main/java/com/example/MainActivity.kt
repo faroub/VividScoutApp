@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.example.data.model.GlobalCityCatalog
 import com.example.ui.components.OfflineSyncStatus
 import com.example.engine.ScoutVectorEngine
 import com.example.ui.components.ARNavigationOverlay
@@ -210,7 +211,8 @@ fun VividScoutApp(
         LocalAppLanguage provides profileState.appLanguage,
         LocalAppStrings provides AppStrings.forLanguage(profileState.appLanguage)
     ) {
-        when {
+        Box(modifier = Modifier.fillMaxSize()) {
+            when {
             !locationState.isLocked -> {
                 StartupGpsLocatingScreen(
                     status = locationState.gpsStatus,
@@ -584,27 +586,6 @@ fun VividScoutApp(
                     )
                 }
 
-                // Global City / Destination Selector Dialog
-                if (exploreState.showGlobalCityDialog) {
-                    GlobalCitySelectionDialog(
-                        selectedCity = com.example.data.model.GlobalCityCatalog.POPULAR_WORLD_CITIES.find { exploreState.selectedGlobalCity.contains(it.name, ignoreCase = true) },
-                        isUsingGps = locationState.isUsingGpsLocation,
-                        onSelectCity = { city ->
-                            val cityName = "${city.name}, ${city.country}"
-                            exploreViewModel.selectGlobalCity(cityName)
-                            locationViewModel.setManualCoordinates(city.latitude, city.longitude, cityName)
-                        },
-                        onSelectGpsLocation = {
-                            locationViewModel.enableGpsMode()
-                            exploreViewModel.dismissGlobalCityDialog()
-                            if (!locationState.hasLocationPermission) {
-                                requestLocationPermission()
-                            }
-                        },
-                        onDismiss = { exploreViewModel.dismissGlobalCityDialog() }
-                    )
-                }
-
                 // Touristic Place Sources Modal Dialog
                 if (exploreState.showTouristicSourcesModal) {
                     com.example.ui.dialogs.TouristicSourcesModal(
@@ -679,6 +660,27 @@ fun VividScoutApp(
                     )
                 }
             }
+        }
+
+        // Global City / Destination Selector Dialog (rendered independently of GPS startup branch)
+        if (exploreState.showGlobalCityDialog) {
+            GlobalCitySelectionDialog(
+                selectedCity = GlobalCityCatalog.POPULAR_WORLD_CITIES.find { exploreState.selectedGlobalCity.contains(it.name, ignoreCase = true) },
+                isUsingGps = locationState.isUsingGpsLocation,
+                onSelectCity = { city ->
+                    val cityName = "${city.name}, ${city.country}"
+                    exploreViewModel.selectGlobalCity(cityName)
+                    locationViewModel.setManualCoordinates(city.latitude, city.longitude, cityName)
+                },
+                onSelectGpsLocation = {
+                    locationViewModel.enableGpsMode()
+                    exploreViewModel.dismissGlobalCityDialog()
+                    if (!locationState.hasLocationPermission) {
+                        requestLocationPermission()
+                    }
+                },
+                onDismiss = { exploreViewModel.dismissGlobalCityDialog() }
+            )
         }
     }
 }
