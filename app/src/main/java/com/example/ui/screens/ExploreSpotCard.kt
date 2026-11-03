@@ -67,6 +67,7 @@ import com.example.util.ImageResolver
 
 import androidx.compose.runtime.remember
 import com.example.data.model.ExploreMapLayer
+import com.example.ui.components.SourceAttributionRow
 
 @Composable
 fun ScoutSpotCard(
@@ -378,6 +379,12 @@ fun ScoutSpotCard(
                         }
                     }
                 }
+
+                // Data Source Attribution Row
+                SourceAttributionRow(
+                    sourceNameOrTag = spot.contributor ?: spot.badgeLabel,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
 
                 // Contributor row OR Audio row OR Action bar
                 Row(

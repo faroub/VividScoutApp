@@ -71,6 +71,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.example.ui.components.SourceAttributionRow
 import com.example.ui.theme.BrandCoral
 import com.example.ui.theme.LocalAppStrings
 import com.example.ui.theme.PrimaryContainer
@@ -322,6 +323,11 @@ fun SpotGemModal(
                                 text = strings.spotGemSubtitle,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            SourceAttributionRow(
+                                sourceNameOrTag = "OpenStreetMap / Community",
+                                license = "ODbL",
+                                modifier = Modifier.padding(top = 4.dp)
                             )
                         }
 

@@ -82,6 +82,7 @@ import com.example.data.model.WeatherReport
 import com.example.data.repository.CommunityTipRepository
 import com.example.data.repository.WeatherRepository
 import com.example.di.AppContainer
+import com.example.ui.components.SourceAttributionRow
 import com.example.ui.components.WeatherCard
 import com.example.ui.theme.SecondaryContainer
 import com.example.ui.theme.SurfaceContainerLow
@@ -536,6 +537,12 @@ fun SpotDetailBottomSheet(
                         }
                     }
                 }
+
+                // Data Source Attribution Row
+                SourceAttributionRow(
+                    sourceNameOrTag = spot.contributor ?: spot.badgeLabel,
+                    modifier = Modifier.padding(vertical = 2.dp)
+                )
 
                 // Community Ground Truth & Tips Section
                 Surface(
