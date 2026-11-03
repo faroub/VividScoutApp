@@ -253,6 +253,37 @@ object DatabaseMigrations {
         }
     }
 
+    /**
+     * Migration from version 12 to version 13:
+     * Creates cached_places table for geohash-based spatial tile caching.
+     */
+    val MIGRATION_12_13 = object : Migration(12, 13) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `cached_places` (
+                    `placeId` TEXT NOT NULL,
+                    `primaryName` TEXT NOT NULL,
+                    `primaryDescription` TEXT NOT NULL,
+                    `latitude` REAL NOT NULL,
+                    `longitude` REAL NOT NULL,
+                    `category` TEXT NOT NULL,
+                    `imageUrl` TEXT,
+                    `sourceUrl` TEXT,
+                    `license` TEXT,
+                    `languageCode` TEXT NOT NULL,
+                    `sourcesJson` TEXT NOT NULL,
+                    `tileKey` TEXT NOT NULL,
+                    `fetchedTimestamp` INTEGER NOT NULL,
+                    PRIMARY KEY(`placeId`)
+                )
+                """.trimIndent()
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_cached_places_tileKey` ON `cached_places` (`tileKey`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_cached_places_fetchedTimestamp` ON `cached_places` (`fetchedTimestamp`)")
+        }
+    }
+
     val ALL_MIGRATIONS: Array<Migration> = arrayOf(
         MIGRATION_1_2,
         MIGRATION_2_3,
@@ -264,6 +295,7 @@ object DatabaseMigrations {
         MIGRATION_8_9,
         MIGRATION_9_10,
         MIGRATION_10_11,
-        MIGRATION_11_12
+        MIGRATION_11_12,
+        MIGRATION_12_13
     )
 }

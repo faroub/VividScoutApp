@@ -6,6 +6,7 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.example.data.places.CachedPlaceEntity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -18,9 +19,10 @@ import kotlinx.coroutines.launch
         WeatherCacheEntity::class,
         AchievementEntity::class,
         CommunityTipEntity::class,
-        TipVoteEntity::class
+        TipVoteEntity::class,
+        CachedPlaceEntity::class
     ],
-    version = 12,
+    version = 13,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -32,6 +34,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun achievementDao(): AchievementDao
     abstract fun communityTipDao(): CommunityTipDao
     abstract fun tipVoteDao(): TipVoteDao
+    abstract fun cachedPlaceDao(): com.example.data.places.CachedPlaceDao
 
     companion object {
         @Volatile

@@ -142,6 +142,7 @@ dependencies {
   // Firebase Auth for secure cloud attestation and Firestore writes
   implementation(libs.firebase.auth)
   implementation(libs.firebase.config)
+  implementation(libs.firebase.functions)
   implementation(libs.firebase.appcheck.playintegrity)
   implementation(libs.firebase.appcheck.recaptcha)
   implementation(libs.firebase.appcheck.debug)
