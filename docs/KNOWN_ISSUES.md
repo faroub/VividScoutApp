@@ -5,7 +5,7 @@
 1. **Composable File Sizes**:
    - `ExploreScreen.kt`: Modularized with sub-composables in `ExploreSearchBar.kt`, `ExploreFilterRibbon.kt`, `ExploreSpotCard.kt`, `ExploreHeader.kt`, `ExploreState.kt`, `ExploreFilterSection.kt`.
    - `ProfileScreen.kt`: Modularized with sub-composables in `ProfileGpsTelemetryCard.kt`, `ProfileSettingsSection.kt`, `ProfileHeaderSection.kt`, `ProfilePrefetchCard.kt`.
-   - `MapCanvasView.kt`: Modularized with sub-composables in `MapRegionDownloaderBar.kt`, `MapRouteHud.kt`, `MapCanvasControls.kt`.
+   - `MapCanvasView.kt`: Modularized with sub-composables in `SpotPreviewPopupCard.kt`, `MapRegionDownloaderBar.kt`, `MapRouteHud.kt`, `MapCanvasControls.kt`.
    - *Note on secondary overlay/sheet components*: `RoutePlannerSheet.kt`, `SpotGemModal.kt`, `SpotDetailBottomSheet.kt`, and `ARNavigationOverlay.kt` remain functional as standalone modal sheets/overlays.
 
 2. **Route-Corridor Validation**:
@@ -35,4 +35,4 @@
    - Firestore security rules configured in `firestore.rules` (reported).
 
 8. **Automated Verification**:
-   - `./gradlew :app:testDebugUnitTest`: 155 unit and integration tests passing, 0 skipped, 0 failed.
+   - `./gradlew :app:testDebugUnitTest`: 157 unit and integration tests passing, 0 skipped, 0 failed.
