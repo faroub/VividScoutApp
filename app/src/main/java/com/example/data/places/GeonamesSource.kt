@@ -12,6 +12,7 @@ import kotlinx.coroutines.withContext
  * Ensures zero usernames/credentials are embedded in the Android APK.
  */
 class GeonamesSource(
+    private val callableProvider: (suspend (HashMap<String, Any>) -> List<Map<String, Any?>>)? = null,
     private val functionsProvider: () -> FirebaseFunctions = { FirebaseFunctions.getInstance() }
 ) : PlaceSource {
 
@@ -24,14 +25,17 @@ class GeonamesSource(
         lon: Double,
         radiusMeters: Int
     ): Result<List<PlaceCandidate>> = withContext(Dispatchers.IO) {
-        try {
-            val functions = try {
-                functionsProvider()
-            } catch (e: Exception) {
-                SafeLog.w(TAG, "FirebaseFunctions uninitialized in test environment: ${e.message}")
-                return@withContext Result.success(emptyList())
-            }
+        if (lat.isNaN() || !lat.isFinite() || lon.isNaN() || !lon.isFinite() || lat < -90.0 || lat > 90.0 || lon < -180.0 || lon > 180.0) {
+            SafeLog.w(TAG, "Invalid coordinates provided: lat=$lat, lon=$lon")
+            return@withContext Result.success(emptyList())
+        }
 
+        if (radiusMeters < 100 || radiusMeters > 50000) {
+            SafeLog.w(TAG, "Invalid radiusMeters provided: $radiusMeters")
+            return@withContext Result.success(emptyList())
+        }
+
+        try {
             val payload = hashMapOf<String, Any>(
                 "lat" to lat,
                 "lon" to lon,
@@ -39,8 +43,19 @@ class GeonamesSource(
                 "sources" to listOf("geonames")
             )
 
-            val result = functions.getHttpsCallable("nearbyPlaces").call(payload).await()
-            val rawList = result.data as? List<Map<String, Any?>> ?: return@withContext Result.success(emptyList())
+            val rawList = if (callableProvider != null) {
+                callableProvider.invoke(payload)
+            } else {
+                val functions = try {
+                    functionsProvider()
+                } catch (e: Exception) {
+                    SafeLog.w(TAG, "FirebaseFunctions uninitialized in test environment: ${e.message}")
+                    return@withContext Result.success(emptyList())
+                }
+                val result = functions.getHttpsCallable("nearbyPlaces").call(payload).await()
+                @Suppress("UNCHECKED_CAST")
+                (result.data as? List<Map<String, Any?>>).orEmpty()
+            }
 
             val candidates = rawList.mapNotNull { item ->
                 val name = item["name"] as? String ?: return@mapNotNull null

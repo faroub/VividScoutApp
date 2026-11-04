@@ -1,93 +1,86 @@
 package com.example.data.network
 
-import android.util.Log
 import com.example.data.local.ScoutSpotEntity
+import com.example.data.places.GeonamesSource
+import com.example.util.Geo
+import com.example.util.SafeLog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import org.json.JSONObject
-import java.util.concurrent.TimeUnit
 
 /**
  * Service to retrieve geographical gazetteer POIs, hilltops, historical monuments,
- * and geographical features from the GeoNames Geographical Database (25M+ global places).
+ * and geographical features from GeoNames database via secure backend Cloud Function.
  */
 class GeonamesService(
-    private val client: OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(6, TimeUnit.SECONDS)
-        .readTimeout(8, TimeUnit.SECONDS)
-        .build()
+    private val geonamesSource: GeonamesSource = GeonamesSource()
 ) {
 
     companion object {
         private const val TAG = "GeonamesService"
-        private const val USER_AGENT = "VividScoutApp/1.0 (Android; GeoNames Gazetteer Resolver; contact: scout@example.com)"
-        private const val DEMO_USERNAME = "demo"
     }
 
     /**
-     * Fetches nearby geographical POIs and gazetteer landmarks from GeoNames.
+     * Fetches nearby geographical POIs and gazetteer landmarks from GeoNames via secure nearbyPlaces Cloud Function.
+     * Enforces strict coordinate validation, radius filtering, and zero demo credentials in Android source code.
      */
     suspend fun fetchNearbyGeonamesPOIs(
         lat: Double,
         lon: Double,
-        radiusKm: Double = 3.0
+        radiusMeters: Int = 3000
     ): List<ScoutSpotEntity> = withContext(Dispatchers.IO) {
-        val spots = mutableListOf<ScoutSpotEntity>()
-        try {
-            // GeoNames findNearbyWikipedia API endpoint
-            val url = "https://secure.geonames.org/findNearbyWikipediaJSON?lat=$lat&lng=$lon&radius=$radiusKm&maxRows=10&username=$DEMO_USERNAME"
-            val request = Request.Builder()
-                .url(url)
-                .header("User-Agent", USER_AGENT)
-                .header("Accept", "application/json")
-                .build()
-
-            client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    Log.d(TAG, "GeoNames request returned code ${response.code}")
-                    return@use
-                }
-                val body = response.body?.string() ?: return@use
-                val root = JSONObject(body)
-                val geonamesArr = root.optJSONArray("geonames") ?: return@use
-
-                for (i in 0 until geonamesArr.length()) {
-                    val item = geonamesArr.getJSONObject(i)
-                    val title = item.optString("title").ifEmpty { null } ?: continue
-                    val summary = item.optString("summary", "Gazetteer landmark cataloged on GeoNames database.")
-                    val spotLat = item.optDouble("lat", lat)
-                    val spotLng = item.optDouble("lng", lon)
-                    val feature = item.optString("feature", "landmark")
-                    val thumbnail = item.optString("thumbnailImg", "")
-                    val geoNameId = item.optLong("geoNameId", i.toLong())
-
-                    spots.add(
-                        ScoutSpotEntity(
-                            id = "geonames_$geoNameId",
-                            title = title,
-                            description = summary,
-                            category = if (feature.contains("mountain") || feature.contains("hill")) "sights" else "history",
-                            distance = "Nearby",
-                            walkMinutes = 6,
-                            rating = null,
-                            reviewCount = null,
-                            imageUrl = thumbnail,
-                            badgeLabel = "GeoNames",
-                            statusBadge = "GeoNames Gazetteer",
-                            tagsRaw = "geonames|||gazetteer|||$feature",
-                            proTip = "GeoNames gazetteer entry #$geoNameId ($feature).",
-                            latitude = spotLat,
-                            longitude = spotLng,
-                            locationName = "GeoNames POI"
-                        )
-                    )
-                }
-            }
-        } catch (e: Exception) {
-            Log.d(TAG, "GeoNames fetch handled: ${e.message}")
+        // Validate input coordinates
+        if (lat.isNaN() || !lat.isFinite() || lon.isNaN() || !lon.isFinite() ||
+            lat < -90.0 || lat > 90.0 || lon < -180.0 || lon > 180.0) {
+            SafeLog.w(TAG, "Invalid coordinates provided to GeonamesService: lat=$lat, lon=$lon")
+            return@withContext emptyList()
         }
-        spots
+
+        val result = geonamesSource.fetchNear(lat, lon, radiusMeters)
+        if (result.isFailure) return@withContext emptyList()
+
+        val candidates = result.getOrNull().orEmpty()
+        val verifiedSpots = mutableListOf<ScoutSpotEntity>()
+
+        for (candidate in candidates) {
+            val spotLat = candidate.latitude
+            val spotLon = candidate.longitude
+
+            // Validate candidate coordinates (reject NaN, out of bounds, or invalid Null Island)
+            if (spotLat.isNaN() || !spotLat.isFinite() || spotLon.isNaN() || !spotLon.isFinite() ||
+                spotLat < -90.0 || spotLat > 90.0 || spotLon < -180.0 || spotLon > 180.0 ||
+                (spotLat == 0.0 && spotLon == 0.0)) {
+                continue
+            }
+
+            // Enforce exact geodesic radius filtering
+            val distMeters = Geo.calculateDistanceMeters(lat, lon, spotLat, spotLon)
+            if (distMeters.isNaN() || distMeters > radiusMeters) {
+                continue
+            }
+
+            verifiedSpots.add(
+                ScoutSpotEntity(
+                    id = candidate.sourceId,
+                    title = candidate.name,
+                    description = candidate.description.ifBlank { "Gazetteer landmark cataloged on GeoNames database." },
+                    category = candidate.category,
+                    distance = Geo.formatDistance(distMeters),
+                    walkMinutes = Geo.calculateWalkMinutes(distMeters),
+                    rating = null, // Never invent ratings
+                    reviewCount = null, // Never invent review counts
+                    imageUrl = candidate.imageUrl.orEmpty(),
+                    badgeLabel = "GeoNames",
+                    statusBadge = "GeoNames Gazetteer",
+                    tagsRaw = "geonames|||gazetteer|||${candidate.category}",
+                    proTip = "GeoNames gazetteer entry (${candidate.name}). License: CC BY 4.0.",
+                    contributor = "@geonames_gazetteer",
+                    latitude = spotLat,
+                    longitude = spotLon,
+                    locationName = "GeoNames POI"
+                )
+            )
+        }
+
+        verifiedSpots
     }
 }

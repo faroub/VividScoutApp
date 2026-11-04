@@ -1,6 +1,7 @@
 package com.example.data.network
 
 import com.example.data.local.ScoutSpotEntity
+import com.example.data.places.GeonamesSource
 import com.example.util.Geo
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -65,6 +66,46 @@ class PlaceDataIntegrityTest {
         assertEquals("Torre de Belém & Jerónimos Monastery", belemSpot.title)
         assertNull("UNESCO ratings must be null", belemSpot.rating)
         assertNull("UNESCO reviewCount must be null", belemSpot.reviewCount)
+    }
+
+    @Test
+    fun geonamesService_rejectsMissingCoordinates_andContainsNoDemoCredentials() = runBlocking {
+        val rawCandidates = listOf(
+            mapOf(
+                "sourceName" to "GeoNames Gazetteer",
+                "sourceId" to "geonames_invalid",
+                "name" to "Invalid Coord Monument",
+                "latitude" to Double.NaN,
+                "longitude" to -9.1423,
+                "category" to "history"
+            ),
+            mapOf(
+                "sourceName" to "GeoNames Gazetteer",
+                "sourceId" to "geonames_null_island",
+                "name" to "Null Island Monument",
+                "latitude" to 0.0,
+                "longitude" to 0.0,
+                "category" to "history"
+            ),
+            mapOf(
+                "sourceName" to "GeoNames Gazetteer",
+                "sourceId" to "geonames_valid",
+                "name" to "Valid Rossio Landmark",
+                "latitude" to 38.7138,
+                "longitude" to -9.1393,
+                "category" to "history"
+            )
+        )
+
+        val fakeGeonamesSource = GeonamesSource(callableProvider = { rawCandidates })
+        val geonamesService = GeonamesService(geonamesSource = fakeGeonamesSource)
+        val verifiedSpots = geonamesService.fetchNearbyGeonamesPOIs(38.7112, -9.1423, radiusMeters = 3000)
+
+        // Invalid NaN and 0.0/0.0 candidates MUST be rejected!
+        assertEquals("Only valid coordinate candidate must be accepted", 1, verifiedSpots.size)
+        assertEquals("Valid Rossio Landmark", verifiedSpots.first().title)
+        assertEquals("GeoNames", verifiedSpots.first().badgeLabel)
+        assertNull("GeoNames rating must be null", verifiedSpots.first().rating)
     }
 
     @Test
