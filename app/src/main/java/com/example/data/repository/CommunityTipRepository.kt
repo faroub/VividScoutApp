@@ -105,8 +105,16 @@ class CommunityTipRepository(
         }
 
         if (!cloudSuccess) {
-            // Cloud transaction failed or rejected duplicate vote: change nothing locally
-            return@withContext false
+            // Attempt reconciliation from authoritative cloud state (e.g. after previous crash/retry)
+            val reconciled = context?.let { ctx ->
+                FirestoreSyncManager.reconcileTipVoteInCloud(ctx, tipId, dao, tipVoteDao)
+            } ?: false
+
+            if (!reconciled) {
+                // Cloud transaction failed and no vote doc exists in cloud: change nothing locally
+                return@withContext false
+            }
+            return@withContext true
         }
 
         // 3. Record local vote in tip_votes and increment local count in ONE Room @Transaction

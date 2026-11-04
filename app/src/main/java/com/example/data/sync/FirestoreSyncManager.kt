@@ -8,14 +8,18 @@ import com.example.data.local.CommunityTipEntity
 import com.example.data.local.DiscoveredGemDao
 import com.example.data.local.ScoutDao
 import com.example.data.local.ScoutSpotEntity
+import com.example.data.local.TipVoteDao
+import com.example.data.local.TipVoteEntity
 import com.example.data.model.ScoutCategory
 import com.example.util.SafeLog
 import com.example.util.configureAppCheck
 import com.google.firebase.Firebase
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.SetOptions
 import com.google.firebase.firestore.firestore
 import kotlinx.coroutines.Dispatchers
@@ -149,6 +153,7 @@ object FirestoreSyncManager {
 
     /**
      * Posts a community tip or status update to the Firestore 'community_tips' collection.
+     * Idempotent: On retries, preserves existing cloud upvotes and legacyUpvotes fields.
      */
     suspend fun postCommunityTipToCloud(
         context: Context,
@@ -162,24 +167,39 @@ object FirestoreSyncManager {
         val firestore = getFirestore(context) ?: return@withContext false
         val currentUid = FirebaseAuth.getInstance().currentUser?.uid ?: ""
         try {
-            val tipData = hashMapOf(
-                "id" to tip.id,
-                "ownerUid" to currentUid,
-                "spotId" to tip.spotId,
-                "spotTitle" to tip.spotTitle,
-                "authorName" to tip.authorName,
-                "content" to tip.content,
-                "timestamp" to tip.timestamp,
-                "isStatusUpdate" to tip.isStatusUpdate,
-                "statusCategory" to tip.statusCategory,
-                "legacyUpvotes" to tip.legacyUpvotes,
-                "upvotes" to 0
-            )
+            val tipRef = firestore.collection(TIPS_COLLECTION).document(tip.id)
+            val docSnap = tipRef.get().await()
 
-            firestore.collection(TIPS_COLLECTION)
-                .document(tip.id)
-                .set(tipData, SetOptions.merge())
-                .await()
+            if (docSnap.exists()) {
+                // Idempotent Retry: Preserve existing cloud upvotes and legacyUpvotes!
+                val updateData = hashMapOf<String, Any>(
+                    "id" to tip.id,
+                    "ownerUid" to currentUid,
+                    "spotId" to tip.spotId,
+                    "spotTitle" to tip.spotTitle,
+                    "authorName" to tip.authorName,
+                    "content" to tip.content,
+                    "timestamp" to tip.timestamp,
+                    "isStatusUpdate" to tip.isStatusUpdate,
+                    "statusCategory" to tip.statusCategory
+                )
+                tipRef.set(updateData, SetOptions.merge()).await()
+            } else {
+                val createData = hashMapOf<String, Any>(
+                    "id" to tip.id,
+                    "ownerUid" to currentUid,
+                    "spotId" to tip.spotId,
+                    "spotTitle" to tip.spotTitle,
+                    "authorName" to tip.authorName,
+                    "content" to tip.content,
+                    "timestamp" to tip.timestamp,
+                    "isStatusUpdate" to tip.isStatusUpdate,
+                    "statusCategory" to tip.statusCategory,
+                    "legacyUpvotes" to tip.legacyUpvotes,
+                    "upvotes" to 0
+                )
+                tipRef.set(createData).await()
+            }
 
             tipDao?.markTipAsSynced(tip.id)
             Log.i(TAG, "Posted community tip '${tip.id}' to cloud Firestore")
@@ -248,6 +268,36 @@ object FirestoreSyncManager {
     }
 
     /**
+     * Reconciles user vote state from Cloud Firestore when an upvote transaction encounters an ambiguous outcome or duplicate vote error.
+     * If user vote doc exists in Cloud Firestore, ensures local Room DB records the vote.
+     */
+    suspend fun reconcileTipVoteInCloud(
+        context: Context,
+        tipId: String,
+        tipDao: CommunityTipDao,
+        tipVoteDao: TipVoteDao?
+    ): Boolean = withContext(Dispatchers.IO) {
+        if (!ensureFirebaseAuth(context)) return@withContext false
+        val firestore = getFirestore(context) ?: return@withContext false
+        val currentUid = FirebaseAuth.getInstance().currentUser?.uid ?: return@withContext false
+
+        try {
+            val voteRef = firestore.collection(TIPS_COLLECTION).document(tipId).collection("votes").document(currentUid)
+            val voteSnap = voteRef.get().await()
+
+            if (voteSnap.exists()) {
+                if (tipVoteDao != null && !tipVoteDao.hasUserVoted(tipId, currentUid)) {
+                    tipVoteDao.recordVoteAndIncrementCount(tipId, currentUid, tipDao)
+                }
+                return@withContext true
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Reconciliation check failed for tip '$tipId': ${e.message}")
+        }
+        false
+    }
+
+    /**
      * Retries uploading all pending locally authored community tips to Firestore.
      */
     suspend fun syncPendingTipsToCloud(
@@ -277,62 +327,80 @@ object FirestoreSyncManager {
         var newGemsCount = 0
 
         try {
-            // 1. Fetch remote community tips
-            val tipsSnapshot = firestore.collection(TIPS_COLLECTION)
-                .limit(50)
-                .get()
-                .await()
-
+            // 1. Fetch remote community tips using cursor-based pagination (page size = 50, max 500)
+            var lastDoc: DocumentSnapshot? = null
+            var hasMorePages = true
             val remoteTips = mutableListOf<CommunityTipEntity>()
-            for (doc in tipsSnapshot.documents) {
-                val id = doc.getString("id") ?: doc.id
-                val spotId = doc.getString("spotId") ?: ""
-                val rawContent = doc.getString("content") ?: ""
-                if (spotId.isBlank() || rawContent.isBlank()) continue
+            var totalFetched = 0
 
-                val content = rawContent.trim().take(500)
-                val author = (doc.getString("authorName") ?: "@scout").trim().take(50)
+            while (hasMorePages && totalFetched < 500) {
+                var query = firestore.collection(TIPS_COLLECTION)
+                    .orderBy("timestamp", Query.Direction.DESCENDING)
+                    .limit(50)
 
-                val hasLegacyUpvotesField = doc.contains("legacyUpvotes")
-                val legacyVotes: Int
-                val recordedVotes: Int
-                val isMigrated: Boolean
+                if (lastDoc != null) {
+                    query = query.startAfter(lastDoc)
+                }
 
-                if (hasLegacyUpvotesField) {
-                    legacyVotes = (doc.getLong("legacyUpvotes") ?: 0L).toInt()
-                    recordedVotes = (doc.getLong("upvotes") ?: 0L).toInt()
-                    isMigrated = true
-                } else {
-                    val rawUpvotes = (doc.getLong("upvotes") ?: 0L).toInt()
-                    legacyVotes = rawUpvotes
-                    recordedVotes = 0
-                    isMigrated = false
-                    Log.w(
-                        TAG,
-                        "Downloaded unmigrated tip document '$id': missing 'legacyUpvotes' field. " +
-                        "Treating $rawUpvotes as legacy count until migration script is executed."
+                val pageSnapshot = query.get().await()
+                if (pageSnapshot.isEmpty) {
+                    hasMorePages = false
+                    break
+                }
+
+                for (doc in pageSnapshot.documents) {
+                    val id = doc.getString("id") ?: doc.id
+                    val spotId = doc.getString("spotId") ?: ""
+                    val rawContent = doc.getString("content") ?: ""
+                    if (spotId.isBlank() || rawContent.isBlank()) continue
+
+                    val content = rawContent.trim().take(500)
+                    val author = (doc.getString("authorName") ?: "@scout").trim().take(50)
+
+                    val hasLegacyUpvotesField = doc.contains("legacyUpvotes")
+                    val legacyVotes: Int
+                    val recordedVotes: Int
+                    val isMigrated: Boolean
+
+                    if (hasLegacyUpvotesField) {
+                        legacyVotes = (doc.getLong("legacyUpvotes") ?: 0L).toInt()
+                        recordedVotes = (doc.getLong("upvotes") ?: 0L).toInt()
+                        isMigrated = true
+                    } else {
+                        val rawUpvotes = (doc.getLong("upvotes") ?: 0L).toInt()
+                        legacyVotes = rawUpvotes
+                        recordedVotes = 0
+                        isMigrated = false
+                    }
+
+                    remoteTips.add(
+                        CommunityTipEntity(
+                            id = id.take(128),
+                            spotId = spotId.take(128),
+                            spotTitle = (doc.getString("spotTitle") ?: "Community Gem").trim().take(120),
+                            authorName = author,
+                            content = content,
+                            timestamp = doc.getLong("timestamp") ?: System.currentTimeMillis(),
+                            isStatusUpdate = doc.getBoolean("isStatusUpdate") ?: false,
+                            statusCategory = (doc.getString("statusCategory") ?: "INSIGHT").trim().take(32),
+                            legacyUpvotes = legacyVotes,
+                            upvotes = recordedVotes,
+                            peerNodeId = "cloud-firestore",
+                            isLocallyAuthored = false,
+                            isSyncedToCloud = true,
+                            isMigrated = isMigrated
+                        )
                     )
                 }
 
-                remoteTips.add(
-                    CommunityTipEntity(
-                        id = id.take(128),
-                        spotId = spotId.take(128),
-                        spotTitle = (doc.getString("spotTitle") ?: "Community Gem").trim().take(120),
-                        authorName = author,
-                        content = content,
-                        timestamp = doc.getLong("timestamp") ?: System.currentTimeMillis(),
-                        isStatusUpdate = doc.getBoolean("isStatusUpdate") ?: false,
-                        statusCategory = (doc.getString("statusCategory") ?: "INSIGHT").trim().take(32),
-                        legacyUpvotes = legacyVotes,
-                        upvotes = recordedVotes,
-                        peerNodeId = "cloud-firestore",
-                        isLocallyAuthored = false,
-                        isSyncedToCloud = true,
-                        isMigrated = isMigrated
-                    )
-                )
+                totalFetched += pageSnapshot.size()
+                if (pageSnapshot.size() < 50) {
+                    hasMorePages = false
+                } else {
+                    lastDoc = pageSnapshot.documents.last()
+                }
             }
+
             if (remoteTips.isNotEmpty()) {
                 tipDao.insertTips(remoteTips)
                 newTipsCount = remoteTips.size
