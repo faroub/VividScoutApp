@@ -27,6 +27,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -37,6 +38,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.offline.GeoBoundingBox
+import com.example.data.offline.OfflineMapTileEstimator
 import com.example.ui.theme.BrandTeal
 
 @Composable
@@ -101,6 +103,16 @@ fun MapRegionDownloaderBar(
                     )
                 }
             }
+
+            val tileEstimate = remember(selectionBounds) {
+                OfflineMapTileEstimator.estimateTilePackForBounds(selectionBounds)
+            }
+
+            Text(
+                text = "${tileEstimate.formattedSize} (${tileEstimate.formattedTime}) • ~${tileEstimate.tileCount} tiles",
+                style = MaterialTheme.typography.labelSmall,
+                color = Color(0xFF94A3B8)
+            )
 
             // Adjustment controls
             Row(

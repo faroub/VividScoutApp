@@ -39,6 +39,12 @@ data class GeoBoundingBox(
     val formattedDimensions: String
         get() = String.format(java.util.Locale.US, "%.1f km × %.1f km", widthKm, heightKm)
 
+    val isValid: Boolean
+        get() = !minLat.isNaN() && !maxLat.isNaN() && !minLng.isNaN() && !maxLng.isNaN() &&
+                minLat in -90.0..90.0 && maxLat in -90.0..90.0 &&
+                minLng in -180.0..180.0 && maxLng in -180.0..180.0 &&
+                minLat <= maxLat && minLng <= maxLng
+
     fun contains(lat: Double, lng: Double): Boolean {
         return lat in minLat..maxLat && lng in minLng..maxLng
     }
