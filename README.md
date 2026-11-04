@@ -108,6 +108,38 @@ VividScout enforces privacy-first logging using `com.example.util.SafeLog`:
 
 ---
 
+## Continuous Integration & Local Regression Suite
+
+VividScout includes an automated GitHub Actions CI workflow in `.github/workflows/ci.yml` that triggers on `push` to `main` and on pull requests:
+- **JDK 17 & Node.js 20 Setup**: Environment configured with Gradle dependency caching.
+- **Node Cloud Function & Security Rules Tests**: Runs `node functions/nearbyPlaces.test.js` and `node functions/firebase-security-rules.test.js`.
+- **Android Unit Tests**: Runs `./gradlew testDebugUnitTest --stacktrace`.
+- **Android Lint**: Runs `./gradlew lintDebug --stacktrace`.
+- **Android Debug APK Assembly**: Runs `./gradlew assembleDebug --stacktrace`.
+
+### Local Regression Test Commands
+
+To execute the complete regression test suite locally in your terminal:
+
+```bash
+# 1. Run Node.js Cloud Function Validation Tests
+node functions/nearbyPlaces.test.js
+
+# 2. Run Real Firebase Security Rules Test Suite
+node functions/firebase-security-rules.test.js
+
+# 3. Run Android Unit Test Suite
+./gradlew testDebugUnitTest
+
+# 4. Run Android Lint Checks
+./gradlew lintDebug
+
+# 5. Build Android Debug Variant
+./gradlew assembleDebug
+```
+
+---
+
 ## Documentation & Known Issues
 
 For detailed architectural notes, lint baseline details, and refactoring history, refer to:
