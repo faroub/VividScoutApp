@@ -1,19 +1,24 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    match /spot_photos/{spotId}/{filename} {
+    // Ownership-aware storage path: spot_photos/{uid}/{spotId}/{filename}
+    match /spot_photos/{uid}/{spotId}/{filename} {
+      // Public reads allowed for viewing photos
       allow read: if true;
+
+      // Create allowed only if authenticated UID matches path owner
       allow create: if request.auth != null
+                    && request.auth.uid == uid
                     && request.resource.size < 5 * 1024 * 1024
-                    && (request.resource.contentType == 'image/jpeg' || request.resource.contentType == 'image/png')
-                    && request.resource.metadata.ownerUid == request.auth.uid;
-      // Allow updates ONLY by the original photo uploader (ownerUid check)
+                    && (request.resource.contentType == 'image/jpeg' || request.resource.contentType == 'image/png');
+
+      // Updates and deletes allowed ONLY by the authenticated path owner
       allow update: if request.auth != null
-                    && resource.metadata.ownerUid == request.auth.uid
+                    && request.auth.uid == uid
                     && request.resource.size < 5 * 1024 * 1024
-                    && (request.resource.contentType == 'image/jpeg' || request.resource.contentType == 'image/png')
-                    && request.resource.metadata.ownerUid == request.auth.uid;
-      allow delete: if request.auth != null && resource.metadata.ownerUid == request.auth.uid;
+                    && (request.resource.contentType == 'image/jpeg' || request.resource.contentType == 'image/png');
+
+      allow delete: if request.auth != null && request.auth.uid == uid;
     }
   }
 }

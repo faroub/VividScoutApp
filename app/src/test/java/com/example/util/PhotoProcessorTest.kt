@@ -21,7 +21,9 @@ class PhotoProcessorTest {
         // Create 2400 x 1800 test bitmap
         val originalBitmap = Bitmap.createBitmap(2400, 1800, Bitmap.Config.ARGB_8888)
 
-        val processedBytes = PhotoProcessor.processAndStripExif(originalBitmap)
+        val processedResult = PhotoProcessor.processBitmap(originalBitmap)
+        assertTrue(processedResult.isSuccess)
+        val processedBytes = processedResult.getOrThrow().jpegBytes
         assertNotNull(processedBytes)
         assertTrue(processedBytes.isNotEmpty())
 
