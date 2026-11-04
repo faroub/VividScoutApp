@@ -21,7 +21,7 @@ import java.util.Locale
  * Manages real-time user coordinates tracking using Google Play Services Location API
  * (FusedLocationProviderClient).
  */
-class LocationTracker(private val context: Context) {
+open class LocationTracker(private val context: Context) {
 
     private val fusedLocationClient: FusedLocationProviderClient by lazy {
         LocationServices.getFusedLocationProviderClient(context)
@@ -31,16 +31,16 @@ class LocationTracker(private val context: Context) {
     val defaultLocation: Location = DefaultLocationConfig.defaultLocation
 
     private val _currentLocation = MutableStateFlow<Location?>(null)
-    val currentLocation: StateFlow<Location?> = _currentLocation.asStateFlow()
+    open val currentLocation: StateFlow<Location?> = _currentLocation.asStateFlow()
 
     private val _isTracking = MutableStateFlow(false)
-    val isTracking: StateFlow<Boolean> = _isTracking.asStateFlow()
+    open val isTracking: StateFlow<Boolean> = _isTracking.asStateFlow()
 
-    private val _hasPermission = MutableStateFlow(hasPermissionInitially())
-    val hasPermission: StateFlow<Boolean> = _hasPermission.asStateFlow()
+    private val _hasPermission = MutableStateFlow(if (context != null) hasPermissionInitially() else false)
+    open val hasPermission: StateFlow<Boolean> = _hasPermission.asStateFlow()
 
-    private val _isPrecise = MutableStateFlow(hasFinePermissionInitially())
-    val isPrecise: StateFlow<Boolean> = _isPrecise.asStateFlow()
+    private val _isPrecise = MutableStateFlow(if (context != null) hasFinePermissionInitially() else false)
+    open val isPrecise: StateFlow<Boolean> = _isPrecise.asStateFlow()
 
     private val locationCallback = object : LocationCallback() {
         override fun onLocationResult(result: LocationResult) {
@@ -68,11 +68,11 @@ class LocationTracker(private val context: Context) {
         return hasFinePermissionInitially() || hasCoarsePermissionInitially()
     }
 
-    fun hasFinePermission(): Boolean = hasFinePermissionInitially()
+    open fun hasFinePermission(): Boolean = hasFinePermissionInitially()
 
-    fun hasCoarsePermission(): Boolean = hasCoarsePermissionInitially()
+    open fun hasCoarsePermission(): Boolean = hasCoarsePermissionInitially()
 
-    fun checkHasPermission(): Boolean {
+    open fun checkHasPermission(): Boolean {
         val fine = hasFinePermissionInitially()
         val coarse = hasCoarsePermissionInitially()
         val granted = fine || coarse
@@ -81,7 +81,7 @@ class LocationTracker(private val context: Context) {
         return granted
     }
 
-    fun isGpsProviderEnabled(): Boolean {
+    open fun isGpsProviderEnabled(): Boolean {
         return try {
             val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as? android.location.LocationManager
             locationManager?.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER) == true ||
@@ -91,7 +91,7 @@ class LocationTracker(private val context: Context) {
         }
     }
 
-    fun refreshPermissionState(): Boolean {
+    open fun refreshPermissionState(): Boolean {
         val granted = checkHasPermission()
         if (granted && !_isTracking.value) {
             startTracking()
@@ -101,7 +101,7 @@ class LocationTracker(private val context: Context) {
         return granted
     }
 
-    fun onPermissionResult(fineGranted: Boolean, coarseGranted: Boolean) {
+    open fun onPermissionResult(fineGranted: Boolean, coarseGranted: Boolean) {
         val granted = fineGranted || coarseGranted
         _hasPermission.value = granted
         _isPrecise.value = fineGranted
@@ -112,11 +112,11 @@ class LocationTracker(private val context: Context) {
         }
     }
 
-    fun onPermissionResult(granted: Boolean) {
+    open fun onPermissionResult(granted: Boolean) {
         onPermissionResult(fineGranted = granted, coarseGranted = granted)
     }
 
-    fun startTracking() {
+    open fun startTracking() {
         if (!_hasPermission.value && !checkHasPermission()) {
             return
         }
@@ -151,7 +151,7 @@ class LocationTracker(private val context: Context) {
         }
     }
 
-    fun stopTracking() {
+    open fun stopTracking() {
         try {
             fusedLocationClient.removeLocationUpdates(locationCallback)
         } catch (e: Exception) {
