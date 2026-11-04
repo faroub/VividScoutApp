@@ -88,6 +88,15 @@ export KEY_PASSWORD="your_key_password"
 
 ---
 
+## Community Voting & Account Identity Policy
+
+VividScout enforces a strict **One Vote Per Firebase Account** policy on all community tips and status updates:
+- **Per-Account Vote Tracking**: Firestore security rules enforce unique subcollection documents (`community_tips/{tipId}/votes/{authenticatedUid}`). Each authenticated Firebase account can submit at most 1 vote per tip.
+- **Anonymous Account Scope**: Firebase UIDs represent individual Firebase Authentication accounts. To preserve voting history across device resets, users can link their anonymous account to a Google account or Credential Manager credential.
+- **Zero Invasive PII Collection**: VividScout never requests or collects phone numbers, national identity documents, or invasive biometric identifiers.
+
+---
+
 ## Privacy-Preserving Logging & Telemetry
 
 VividScout enforces privacy-first logging using `com.example.util.SafeLog`:

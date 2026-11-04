@@ -62,40 +62,47 @@ service cloud.firestore {
 
     match /community_tips/{tipId} {
       allow read: if true;
+
+      function isValidTipData(data) {
+        return data.keys().hasOnly([
+                 'id', 'ownerUid', 'spotId', 'spotTitle', 'authorName', 'content',
+                 'timestamp', 'isStatusUpdate', 'statusCategory', 'legacyUpvotes', 'upvotes'
+               ])
+            && data.ownerUid is string && data.ownerUid.size() <= 128
+            && data.id is string && data.id.size() <= 128
+            && data.spotId is string && data.spotId.size() <= 128
+            && data.spotTitle is string && data.spotTitle.size() >= 2 && data.spotTitle.size() <= 120
+            && data.authorName is string && data.authorName.size() >= 2 && data.authorName.size() <= 50
+            && data.content is string && data.content.size() >= 2 && data.content.size() <= 500
+            && data.statusCategory is string && data.statusCategory.size() >= 2 && data.statusCategory.size() <= 32
+            && data.isStatusUpdate is bool
+            && data.timestamp is number
+            && data.legacyUpvotes is number && data.legacyUpvotes >= 0 && data.legacyUpvotes <= 1000000
+            && data.upvotes is number && data.upvotes >= 0 && data.upvotes <= 1000000;
+      }
+
       allow create: if isAuthenticated()
-                    && request.resource.data.keys().hasOnly([
-                         'id', 'ownerUid', 'spotId', 'spotTitle', 'authorName', 'content',
-                         'timestamp', 'isStatusUpdate', 'statusCategory', 'legacyUpvotes', 'upvotes'
-                       ])
                     && request.resource.data.ownerUid == request.auth.uid
-                    && request.resource.data.id is string
-                    && request.resource.data.id.size() <= 128
-                    && request.resource.data.spotId is string
-                    && request.resource.data.spotId.size() <= 128
-                    && request.resource.data.content is string
-                    && request.resource.data.content.size() >= 2
-                    && request.resource.data.content.size() <= 500
-                    && request.resource.data.timestamp is number
-                    && request.resource.data.legacyUpvotes is number
+                    && request.resource.data.id == tipId
+                    && isValidTipData(request.resource.data)
                     && request.resource.data.upvotes == 0;
 
-      // Allow +1 upvote increment only when a corresponding vote document is created in the same request,
+      // Allow +1 upvote increment when unique per-account vote doc is created in same request,
       // OR owner-only tip retries (which CANNOT modify upvotes or legacyUpvotes)
       allow update: if isAuthenticated() && (
         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['upvotes'])
          && request.resource.data.upvotes == resource.data.upvotes + 1
          && existsAfter(/databases/$(database)/documents/community_tips/$(tipId)/votes/$(request.auth.uid))) ||
         (isOwner(resource.data.ownerUid)
-         && request.resource.data.ownerUid == request.auth.uid
-         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-              'id', 'ownerUid', 'spotId', 'spotTitle', 'authorName', 'content',
-              'timestamp', 'isStatusUpdate', 'statusCategory', 'legacyUpvotes'
-            ]))
+         && request.resource.data.ownerUid == resource.data.ownerUid
+         && isValidTipData(request.resource.data)
+         && request.resource.data.upvotes == resource.data.upvotes
+         && request.resource.data.legacyUpvotes == resource.data.legacyUpvotes)
       );
 
       allow delete: if false;
 
-      // Per-user vote tracking subcollection: a user may read or create only their own vote document
+      // Per-account unique vote tracking subcollection: a user may read or create only their own vote document
       match /votes/{userId} {
         allow read: if isAuthenticated() && userId == request.auth.uid;
         allow create: if isAuthenticated()
@@ -103,7 +110,7 @@ service cloud.firestore {
                       && request.resource.data.keys().hasOnly(['uid', 'timestamp'])
                       && request.resource.data.uid == request.auth.uid
                       && request.resource.data.timestamp is number;
-        allow update, delete: if false;
+        allow update, delete: if false; // Immutable vote records
       }
     }
 
