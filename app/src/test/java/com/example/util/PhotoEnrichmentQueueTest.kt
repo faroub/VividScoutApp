@@ -65,14 +65,36 @@ class PhotoEnrichmentQueueTest {
     }
 
     @Test
-    fun boundedBatching_processesMoreThanThirtySpotsInBatches() {
-        // Create 45 spots needing enrichment
-        val spots = (1..45).map { i -> createSpot("spot_$i") }
+    fun photoQueue_seventyFiveEligibleSpots_allEventuallyProcessedAcrossBatches() {
+        // Create 75 eligible spots needing photos
+        val allSpots = (1..75).map { i -> createSpot("spot_$i", isSaved = (i <= 10)) }
 
-        val firstBatch = spots.sortedByDescending { it.isSaved }.take(30)
-        assertEquals("First batch size must be capped at 30", 30, firstBatch.size)
+        val processedIds = mutableSetOf<String>()
+        val batchSize = 30
 
-        val remainingBatch = spots.drop(30)
-        assertEquals("Remaining 15 spots must be processed in second batch", 15, remainingBatch.size)
+        var remaining = allSpots.filter { LocationPhotoResolver.isGenericOrStockPhoto(it.imageUrl) && !processedIds.contains(it.id) }
+            .sortedByDescending { it.isSaved }
+
+        // Pass 1: Processes 30 spots
+        val pass1 = remaining.take(batchSize)
+        assertEquals(30, pass1.size)
+        processedIds.addAll(pass1.map { it.id })
+
+        // Pass 2: Processes next 30 spots
+        remaining = allSpots.filter { LocationPhotoResolver.isGenericOrStockPhoto(it.imageUrl) && !processedIds.contains(it.id) }
+            .sortedByDescending { it.isSaved }
+        val pass2 = remaining.take(batchSize)
+        assertEquals(30, pass2.size)
+        processedIds.addAll(pass2.map { it.id })
+
+        // Pass 3: Processes remaining 15 spots
+        remaining = allSpots.filter { LocationPhotoResolver.isGenericOrStockPhoto(it.imageUrl) && !processedIds.contains(it.id) }
+            .sortedByDescending { it.isSaved }
+        val pass3 = remaining.take(batchSize)
+        assertEquals(15, pass3.size)
+        processedIds.addAll(pass3.map { it.id })
+
+        // Verify all 75 items were processed across batches
+        assertEquals("Every single spot out of 75 must eventually be processed across batches", 75, processedIds.size)
     }
 }

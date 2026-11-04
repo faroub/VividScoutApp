@@ -552,71 +552,79 @@ open class ScoutGemRepository(
         }
 
         try {
-            val now = System.currentTimeMillis()
-            val allCandidates = if (spots.isNotEmpty()) spots else scoutDao.getAllSpotsList()
+            var passCount = 0
+            val maxPasses = 10 // Safety guard against runaway loops
 
-            val eligible = allCandidates.filter { spot ->
-                val isGeneric = LocationPhotoResolver.isGenericOrStockPhoto(spot.imageUrl)
-                if (!isGeneric) {
-                    completedPhotoIds.add(spot.id)
-                    return@filter false
-                }
+            while (passCount < maxPasses) {
+                passCount++
+                val now = System.currentTimeMillis()
+                val allCandidates = if (spots.isNotEmpty() && passCount == 1) spots else scoutDao.getAllSpotsList()
 
-                if (inProgressPhotoIds.contains(spot.id) || completedPhotoIds.contains(spot.id)) {
-                    return@filter false
-                }
-
-                val attempt = failedPhotoAttempts[spot.id]
-                if (attempt != null) {
-                    val backoffMs = (1000L * (1 shl (attempt.failedCount.coerceAtMost(5))))
-                    if (attempt.failedCount >= 3 && (now - attempt.lastAttemptTimestamp) < backoffMs) {
+                val eligible = allCandidates.filter { spot ->
+                    val isGeneric = LocationPhotoResolver.isGenericOrStockPhoto(spot.imageUrl)
+                    if (!isGeneric) {
+                        completedPhotoIds.add(spot.id)
                         return@filter false
                     }
+
+                    if (inProgressPhotoIds.contains(spot.id) || completedPhotoIds.contains(spot.id)) {
+                        return@filter false
+                    }
+
+                    val attempt = failedPhotoAttempts[spot.id]
+                    if (attempt != null) {
+                        val backoffMs = (1000L * (1 shl (attempt.failedCount.coerceAtMost(5))))
+                        if (attempt.failedCount >= 5 || (now - attempt.lastAttemptTimestamp) < backoffMs) {
+                            return@filter false
+                        }
+                    }
+
+                    true
                 }
 
-                true
-            }
+                if (eligible.isEmpty()) {
+                    break // All eligible spots processed or backing off
+                }
 
-            if (eligible.isEmpty()) return@withContext
+                val priorityQueue = eligible.sortedWith(
+                    compareByDescending<ScoutSpotEntity> { it.isSaved }
+                        .thenByDescending { it.timestamp }
+                )
 
-            val priorityQueue = eligible.sortedWith(
-                compareByDescending<ScoutSpotEntity> { it.isSaved }
-                    .thenByDescending { it.timestamp }
-            )
-
-            val currentBatch = priorityQueue.take(30)
-            for (spot in currentBatch) {
-                inProgressPhotoIds.add(spot.id)
-                try {
-                    val resolved = LocationPhotoResolver.resolveEnrichedPhoto(
-                        title = spot.title,
-                        category = spot.category,
-                        districtOrLocation = spot.locationName,
-                        latitude = spot.latitude,
-                        longitude = spot.longitude,
-                        spotId = spot.id
-                    )
-
-                    val isAuthenticPhoto = resolved.url.isNotBlank() && !LocationPhotoResolver.isGenericOrStockPhoto(resolved.url)
-                    if (isAuthenticPhoto) {
-                        scoutDao.updateImageUrl(spot.id, resolved.url)
-                        completedPhotoIds.add(spot.id)
-                        failedPhotoAttempts.remove(spot.id)
-                        Log.i(
-                            "ScoutGemRepository",
-                            "Wikimedia Commons Resolution SUCCESS: Validated 1200px HD photo for '${spot.title}' (isSaved=${spot.isSaved}): ${resolved.url}"
+                val currentBatch = priorityQueue.take(30)
+                for (spot in currentBatch) {
+                    inProgressPhotoIds.add(spot.id)
+                    try {
+                        val resolved = LocationPhotoResolver.resolveEnrichedPhoto(
+                            title = spot.title,
+                            category = spot.category,
+                            districtOrLocation = spot.locationName,
+                            latitude = spot.latitude,
+                            longitude = spot.longitude,
+                            spotId = spot.id
                         )
-                    } else {
+
+                        val isAuthenticPhoto = resolved.url.isNotBlank() && !LocationPhotoResolver.isGenericOrStockPhoto(resolved.url)
+                        if (isAuthenticPhoto) {
+                            scoutDao.updateImageUrl(spot.id, resolved.url)
+                            completedPhotoIds.add(spot.id)
+                            failedPhotoAttempts.remove(spot.id)
+                            Log.i(
+                                "ScoutGemRepository",
+                                "Wikimedia Commons Resolution SUCCESS: Validated photo for '${spot.title}' (isSaved=${spot.isSaved}): ${resolved.url}"
+                            )
+                        } else {
+                            val currentFailed = failedPhotoAttempts[spot.id]?.failedCount ?: 0
+                            failedPhotoAttempts[spot.id] = PhotoAttemptInfo(currentFailed + 1, System.currentTimeMillis())
+                        }
+                        delay(50L)
+                    } catch (e: Exception) {
                         val currentFailed = failedPhotoAttempts[spot.id]?.failedCount ?: 0
                         failedPhotoAttempts[spot.id] = PhotoAttemptInfo(currentFailed + 1, System.currentTimeMillis())
+                        Log.w("ScoutGemRepository", "Background photo enrichment error for ${spot.id} ('${spot.title}'): ${e.message}")
+                    } finally {
+                        inProgressPhotoIds.remove(spot.id)
                     }
-                    delay(120L)
-                } catch (e: Exception) {
-                    val currentFailed = failedPhotoAttempts[spot.id]?.failedCount ?: 0
-                    failedPhotoAttempts[spot.id] = PhotoAttemptInfo(currentFailed + 1, System.currentTimeMillis())
-                    Log.w("ScoutGemRepository", "Background photo enrichment error for ${spot.id} ('${spot.title}'): ${e.message}")
-                } finally {
-                    inProgressPhotoIds.remove(spot.id)
                 }
             }
         } finally {
