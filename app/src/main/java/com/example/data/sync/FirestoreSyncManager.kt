@@ -171,10 +171,11 @@ object FirestoreSyncManager {
             val docSnap = tipRef.get().await()
 
             if (docSnap.exists()) {
-                // Idempotent Retry: Preserve existing cloud upvotes and legacyUpvotes!
+                val originalOwnerUid = docSnap.getString("ownerUid") ?: currentUid
+                // Idempotent Retry: Preserve original ownerUid, existing cloud upvotes, and legacyUpvotes!
                 val updateData = hashMapOf<String, Any>(
                     "id" to tip.id,
-                    "ownerUid" to currentUid,
+                    "ownerUid" to originalOwnerUid,
                     "spotId" to tip.spotId,
                     "spotTitle" to tip.spotTitle,
                     "authorName" to tip.authorName,

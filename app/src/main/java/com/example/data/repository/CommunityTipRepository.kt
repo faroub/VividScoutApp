@@ -59,10 +59,15 @@ class CommunityTipRepository(
             isLocallyAuthored = true
         )
         dao.insertTip(newTip)
-        context?.let { ctx ->
-            FirestoreSyncManager.postCommunityTipToCloud(ctx, newTip)
+        val cloudSynced = context?.let { ctx ->
+            FirestoreSyncManager.postCommunityTipToCloud(ctx, newTip, dao)
+        } ?: false
+
+        if (cloudSynced) {
+            newTip.copy(isSyncedToCloud = true)
+        } else {
+            newTip
         }
-        newTip
     }
 
     suspend fun syncWithCloud(scoutDao: ScoutDao? = null): Pair<Int, Int> = withContext(Dispatchers.IO) {

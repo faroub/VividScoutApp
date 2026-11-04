@@ -5,7 +5,6 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.example.data.local.AppDatabase
 import com.example.data.local.CommunityTipEntity
-import com.example.data.local.TipVoteEntity
 import com.example.data.sync.TipUpvoteCloud
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -37,6 +36,30 @@ class CommunityTipSyncTest {
     @After
     fun tearDown() {
         db.close()
+    }
+
+    @Test
+    fun postTip_offlinePosting_retainsUnsyncedStateInRoom() = runBlocking {
+        val tipDao = db.communityTipDao()
+
+        // Repository without Context / Offline mode
+        val repository = CommunityTipRepository(
+            dao = tipDao,
+            context = null
+        )
+
+        val offlineTip = repository.postTip(
+            spotId = "spot_offline_1",
+            spotTitle = "Offline Spot",
+            content = "Offline tip created without network."
+        )
+
+        assertFalse("Offline created tip must return isSyncedToCloud = false", offlineTip.isSyncedToCloud)
+
+        val storedTip = tipDao.getTipById(offlineTip.id)
+        assertNotNull(storedTip)
+        assertFalse("Room DB must retain isSyncedToCloud = false for offline tips", storedTip!!.isSyncedToCloud)
+        assertTrue("Room DB must record isLocallyAuthored = true", storedTip.isLocallyAuthored)
     }
 
     @Test
@@ -81,7 +104,6 @@ class CommunityTipSyncTest {
         )
         tipDao.insertTip(initialTip)
 
-        // Mock cloud service that fails due to duplicate vote
         val fakeCloudService = object : TipUpvoteCloud {
             override suspend fun incrementTipUpvote(tipId: String): Boolean = false
         }
@@ -93,7 +115,6 @@ class CommunityTipSyncTest {
             cloudService = fakeCloudService
         )
 
-        // Upvote fails in cloud, doesn't crash, local state remains unchanged
         val success = repository.upvoteTip("tip_cloud_1", "user_abc")
         assertFalse("Duplicate vote attempt must return false without crashing", success)
 
@@ -105,7 +126,6 @@ class CommunityTipSyncTest {
     fun remoteTipPagination_supportsMoreThanFiftyRemoteTips() = runBlocking {
         val tipDao = db.communityTipDao()
 
-        // Insert 75 remote tips across 2 pages
         val remoteTipsPage1 = (1..50).map { i ->
             CommunityTipEntity(
                 id = "remote_tip_$i",
