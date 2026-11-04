@@ -10,6 +10,7 @@ import com.example.data.model.ScoutGem
 import com.example.data.model.toScoutGem
 import com.example.data.network.GeminiSpotService
 import com.example.data.network.OverpassRetrofitClient
+import com.example.data.places.PlaceRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -43,6 +44,7 @@ open class ScoutGemRepository(
     private val scoutDao: ScoutDao,
     private val discoveredGemDao: DiscoveredGemDao? = null,
     private val recentSearchDao: RecentSearchDao? = null,
+    val placeRepository: PlaceRepository? = null,
     val overpassClient: OverpassRetrofitClient = OverpassRetrofitClient(),
     val geminiSpotService: GeminiSpotService = GeminiSpotService(),
     val openTripMapService: com.example.data.network.OpenTripMapService = com.example.data.network.OpenTripMapService(),

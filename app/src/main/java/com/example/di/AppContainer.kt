@@ -3,8 +3,13 @@ package com.example.di
 import android.content.Context
 import com.example.data.local.AppDatabase
 import com.example.data.location.LocationTracker
+import com.example.data.network.OverpassScraperService
+import com.example.data.network.WikidataSearchService
 import com.example.data.offline.OfflineMapManager
 import com.example.data.offline.OfflineRegionStorage
+import com.example.data.places.GeonamesSource
+import com.example.data.places.OpenTripMapSource
+import com.example.data.places.PlaceRepository
 import com.example.data.repository.CommunityTipRepository
 import com.example.data.repository.ScoutGemRepository
 import com.example.data.repository.ScoutRepository
@@ -15,6 +20,7 @@ interface AppContainer {
     val database: AppDatabase
     val scoutRepository: ScoutRepository
     val gemRepository: ScoutGemRepository
+    val placeRepository: PlaceRepository
     val locationTracker: LocationTracker
     val offlineMapManager: OfflineMapManager
     val regionStorage: OfflineRegionStorage
@@ -38,11 +44,24 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
         )
     }
 
+    override val placeRepository: PlaceRepository by lazy {
+        PlaceRepository(
+            cachedPlaceDao = database.cachedPlaceDao(),
+            placeSources = listOf(
+                OverpassScraperService(),
+                WikidataSearchService(),
+                OpenTripMapSource(),
+                GeonamesSource()
+            )
+        )
+    }
+
     override val gemRepository: ScoutGemRepository by lazy {
         ScoutGemRepository(
-            database.scoutDao(),
-            database.discoveredGemDao(),
-            database.recentSearchDao()
+            scoutDao = database.scoutDao(),
+            discoveredGemDao = database.discoveredGemDao(),
+            recentSearchDao = database.recentSearchDao(),
+            placeRepository = placeRepository
         )
     }
 

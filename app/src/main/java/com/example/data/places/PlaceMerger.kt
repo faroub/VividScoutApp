@@ -1,5 +1,6 @@
 package com.example.data.places
 
+import java.text.Normalizer
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.max
@@ -103,10 +104,13 @@ object PlaceMerger {
     }
 
     /**
-     * Normalizes place names by lowercasing and stripping punctuation and excess whitespace.
+     * Normalizes place names by decomposing Unicode accents (NFD form), stripping diacritics/punctuation,
+     * lowercasing, and removing excess whitespace.
      */
     fun normalizeName(name: String): String {
-        return name.lowercase()
+        val nfd = Normalizer.normalize(name, Normalizer.Form.NFD)
+        val strippedAccents = nfd.replace(Regex("\\p{InCombiningDiacriticalMarks}+"), "")
+        return strippedAccents.lowercase()
             .replace(Regex("[^a-z0-9\\s]"), "")
             .replace(Regex("\\s+"), " ")
             .trim()

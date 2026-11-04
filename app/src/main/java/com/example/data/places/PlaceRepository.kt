@@ -1,5 +1,6 @@
 package com.example.data.places
 
+import com.example.util.Geo
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
@@ -31,25 +32,31 @@ class PlaceRepository(
         radiusMeters: Int = 3000,
         currentTimeMs: Long = System.currentTimeMillis()
     ): PlaceRepositoryResult = withContext(Dispatchers.IO) {
-        val tileKey = GeohashUtils.encode(lat, lon, precision = 5)
+        val centerTile = GeohashUtils.encode(lat, lon, precision = 5)
+        val coveringTiles = GeohashUtils.getCoveringTiles(lat, lon, radiusMeters)
 
-        // 1. Look up cached places for the tile key
-        val cachedEntities = cachedPlaceDao.getPlacesForTiles(listOf(tileKey))
+        // 1. Look up cached places across covering neighbor tiles
+        val cachedEntities = cachedPlaceDao.getPlacesForTiles(coveringTiles)
 
         val isCacheFresh = cachedEntities.isNotEmpty() &&
                 cachedEntities.all { (currentTimeMs - it.fetchedTimestamp) < CACHE_EXPIRATION_MS }
 
-        // 2. If fresh cache exists (< 7 days old), return without network calls
+        // 2. If fresh cache exists (< 7 days old), filter by distance and return
         if (isCacheFresh) {
             val cachedMerged = cachedEntities.map { entityToMergedPlace(it) }
+                .filter { place ->
+                    val dist = Geo.calculateDistanceMeters(lat, lon, place.latitude, place.longitude)
+                    !dist.isNaN() && dist <= radiusMeters
+                }
+
             return@withContext PlaceRepositoryResult(
                 places = cachedMerged,
                 isStale = false,
-                sourceTileKey = tileKey
+                sourceTileKey = centerTile
             )
         }
 
-        // 3. If missing or stale, fetch from enabled PlaceSources
+        // 3. If missing or stale, fetch from enabled PlaceSources concurrently
         val networkCandidates = mutableListOf<PlaceCandidate>()
         var networkSuccess = false
 
@@ -74,35 +81,44 @@ class PlaceRepository(
             }
         }
 
-        // 4. If network call succeeded, merge with PlaceMerger and update Room cache
+        // 4. If network call succeeded, merge with PlaceMerger and update Room cache transactionally
         if (networkSuccess && networkCandidates.isNotEmpty()) {
             val mergedPlaces = PlaceMerger.mergeCandidates(networkCandidates)
-            val cacheEntities = mergedPlaces.map { mergedToEntity(it, tileKey, currentTimeMs) }
+            val cacheEntities = mergedPlaces.map { mergedToEntity(it, centerTile, currentTimeMs) }
 
-            cachedPlaceDao.deleteTile(tileKey)
-            cachedPlaceDao.insertPlaces(cacheEntities)
+            cachedPlaceDao.replaceTilePlaces(centerTile, cacheEntities)
+
+            val radiusFiltered = mergedPlaces.filter { place ->
+                val dist = Geo.calculateDistanceMeters(lat, lon, place.latitude, place.longitude)
+                !dist.isNaN() && dist <= radiusMeters
+            }
 
             return@withContext PlaceRepositoryResult(
-                places = mergedPlaces,
+                places = radiusFiltered,
                 isStale = false,
-                sourceTileKey = tileKey
+                sourceTileKey = centerTile
             )
         }
 
         // 5. If network fails or yields no candidates, fallback to cached data marked as stale
         if (cachedEntities.isNotEmpty()) {
             val staleMerged = cachedEntities.map { entityToMergedPlace(it) }
+                .filter { place ->
+                    val dist = Geo.calculateDistanceMeters(lat, lon, place.latitude, place.longitude)
+                    !dist.isNaN() && dist <= radiusMeters
+                }
+
             return@withContext PlaceRepositoryResult(
                 places = staleMerged,
                 isStale = true,
-                sourceTileKey = tileKey
+                sourceTileKey = centerTile
             )
         }
 
         PlaceRepositoryResult(
             places = emptyList(),
             isStale = true,
-            sourceTileKey = tileKey
+            sourceTileKey = centerTile
         )
     }
 
@@ -127,7 +143,8 @@ class PlaceRepository(
     }
 
     private fun mergedToEntity(merged: MergedPlace, tileKey: String, timestamp: Long): CachedPlaceEntity {
-        val placeId = "merged_${merged.latitude}_${merged.longitude}_${merged.primaryName.hashCode()}"
+        val safeName = PlaceMerger.normalizeName(merged.primaryName).replace(" ", "_")
+        val placeId = "merged_${merged.latitude}_${merged.longitude}_$safeName"
         val sourcesJson = try {
             jsonAdapter.toJson(merged.sources)
         } catch (e: Exception) {
