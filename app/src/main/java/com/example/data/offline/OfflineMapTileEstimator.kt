@@ -15,32 +15,33 @@ data class TileEstimateResult(
     val estimatedDownloadSeconds: Int,
     val formattedSize: String,
     val formattedTime: String,
-    val isValid: Boolean = true
+    val isValid: Boolean = true,
+    val isCapped: Boolean = false
 )
 
 /**
  * Corrected 2D Web Mercator Tile Estimator.
  *
- * In a 2D square tiled map system, increasing zoom level by +1 quadruples the number of tiles (4x area scaling),
- * as each tile at zoom Z splits into a 2x2 grid of 4 sub-tiles at zoom Z+1.
+ * In a 2D square tiled map system, tile bounds (minX, maxX, minY, maxY) are calculated
+ * independently at every zoom level to accurately count only tiles intersecting the selected bounding box.
  *
  * Estimation Formulas:
- * - Base Tile Grid at minZoom: tileWidth * tileHeight.
- * - Zoom Level Scaling: baseTiles * 4^(z - minZoom).
+ * - Independent Tile Bounds at Zoom z: (maxX - minX + 1) * (maxY - minY + 1).
  * - Average vector map tile size = 35 KB (0.035 MB).
- * - Download Throughput = 1.5 MB/sec typical connection.
+ * - Download Throughput = 1.5 MB/sec typical connection estimate.
  * - Estimated MB = totalTiles * 0.035 MB.
  * - Estimated Seconds = ceil(estimatedMB / 1.5 MB/s).
  */
 object OfflineMapTileEstimator {
 
     const val AVERAGE_VECTOR_TILE_SIZE_MB = 0.035 // 35 KB average vector tile
-    const val AVERAGE_DOWNLOAD_SPEED_MBPS = 1.5 // 1.5 MB/sec typical download throughput
+    const val AVERAGE_DOWNLOAD_SPEED_MBPS = 1.5 // 1.5 MB/sec typical download throughput estimate
     const val STALE_THRESHOLD_MS = 30L * 24 * 3600 * 1000L // 30 days
     const val MAX_SAFE_TILE_CAP = 1_000_000L
 
     /**
-     * Estimates total tile count, download size, and duration for a geographic bounding box.
+     * Estimates total tile count, download size, and duration for a geographic bounding box
+     * by calculating actual Web Mercator tile bounds independently at every zoom level.
      */
     fun estimateTilePackForBounds(
         bounds: GeoBoundingBox,
@@ -51,16 +52,56 @@ object OfflineMapTileEstimator {
             return invalidEstimateResult()
         }
 
-        val minX = lngToTileX(bounds.minLng, minZoom)
-        val maxX = lngToTileX(bounds.maxLng, minZoom)
-        val minY = latToTileY(bounds.maxLat, minZoom) // Max lat maps to smaller Y tile
-        val maxY = latToTileY(bounds.minLat, minZoom)
+        // Antimeridian crossing check (minLng > maxLng) -> reject as invalid
+        if (bounds.minLng > bounds.maxLng) {
+            return invalidEstimateResult()
+        }
 
-        val tileWidth = max(1L, (maxX - minX + 1).toLong())
-        val tileHeight = max(1L, (maxY - minY + 1).toLong())
-        val baseTiles = tileWidth * tileHeight
+        var totalTiles = 0L
+        var isCapped = false
 
-        return estimateTilePackInternal(minZoom, maxZoom, baseTiles)
+        for (z in minZoom..maxZoom) {
+            val minX = lngToTileX(bounds.minLng, z)
+            val maxX = lngToTileX(bounds.maxLng, z)
+            val minY = latToTileY(bounds.maxLat, z) // Max lat maps to smaller Y tile index
+            val maxY = latToTileY(bounds.minLat, z)
+
+            val tileWidth = max(1L, (maxX - minX + 1).toLong())
+            val tileHeight = max(1L, (maxY - minY + 1).toLong())
+            val tilesAtZoom = tileWidth * tileHeight
+
+            totalTiles += tilesAtZoom
+            if (totalTiles >= MAX_SAFE_TILE_CAP) {
+                totalTiles = MAX_SAFE_TILE_CAP
+                isCapped = true
+                break
+            }
+        }
+
+        val estimatedMB = totalTiles * AVERAGE_VECTOR_TILE_SIZE_MB
+        val estimatedSecs = max(1, ceil(estimatedMB / AVERAGE_DOWNLOAD_SPEED_MBPS).toInt())
+
+        val formattedSize = if (isCapped) {
+            String.format(Locale.US, "Est. >%.1f MB (Capped)", estimatedMB)
+        } else {
+            String.format(Locale.US, "Est. %.1f MB", estimatedMB)
+        }
+
+        val formattedTime = if (estimatedSecs < 60) {
+            "~$estimatedSecs sec"
+        } else {
+            "~${ceil(estimatedSecs / 60.0).toInt()} min"
+        }
+
+        return TileEstimateResult(
+            tileCount = totalTiles,
+            estimatedSizeMB = estimatedMB,
+            estimatedDownloadSeconds = estimatedSecs,
+            formattedSize = formattedSize,
+            formattedTime = formattedTime,
+            isValid = true,
+            isCapped = isCapped
+        )
     }
 
     /**
@@ -87,16 +128,17 @@ object OfflineMapTileEstimator {
         baseTiles: Long
     ): TileEstimateResult {
         var totalTiles = 0L
+        var isCapped = false
 
         for (z in minZoom..maxZoom) {
             val zoomDelta = z - minZoom
-            // 4^zoomDelta == 1L shl (2 * zoomDelta)
             val zoomMultiplier = if (zoomDelta < 15) (1L shl (2 * zoomDelta)) else MAX_SAFE_TILE_CAP
             val tilesAtZoom = baseTiles * zoomMultiplier
 
             totalTiles += tilesAtZoom
             if (totalTiles >= MAX_SAFE_TILE_CAP) {
                 totalTiles = MAX_SAFE_TILE_CAP
+                isCapped = true
                 break
             }
         }
@@ -104,7 +146,12 @@ object OfflineMapTileEstimator {
         val estimatedMB = totalTiles * AVERAGE_VECTOR_TILE_SIZE_MB
         val estimatedSecs = max(1, ceil(estimatedMB / AVERAGE_DOWNLOAD_SPEED_MBPS).toInt())
 
-        val formattedSize = String.format(Locale.US, "Est. %.1f MB", estimatedMB)
+        val formattedSize = if (isCapped) {
+            String.format(Locale.US, "Est. >%.1f MB (Capped)", estimatedMB)
+        } else {
+            String.format(Locale.US, "Est. %.1f MB", estimatedMB)
+        }
+
         val formattedTime = if (estimatedSecs < 60) {
             "~$estimatedSecs sec"
         } else {
@@ -117,7 +164,8 @@ object OfflineMapTileEstimator {
             estimatedDownloadSeconds = estimatedSecs,
             formattedSize = formattedSize,
             formattedTime = formattedTime,
-            isValid = true
+            isValid = true,
+            isCapped = isCapped
         )
     }
 
@@ -134,7 +182,8 @@ object OfflineMapTileEstimator {
             estimatedDownloadSeconds = 0,
             formattedSize = "Est. 0 MB",
             formattedTime = "~0 sec",
-            isValid = false
+            isValid = false,
+            isCapped = false
         )
     }
 

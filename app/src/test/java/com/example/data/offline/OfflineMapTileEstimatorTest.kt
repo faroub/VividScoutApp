@@ -9,97 +9,148 @@ import java.util.Locale
 class OfflineMapTileEstimatorTest {
 
     @Test
-    fun estimateTilePack_singleZoomLevel_matchesIndependentGroundTruth() {
-        // Base grid = 2 x 3 = 6 tiles at zoom 14 only
-        val result = OfflineMapTileEstimator.estimateTilePack(
-            minZoom = 14,
-            maxZoom = 14,
-            boundingTileWidth = 2,
-            boundingTileHeight = 3
-        )
+    fun webMercatorXyz_knownCoordinates_calculatesExactTileCoordinates() {
+        // Standard Web Mercator XYZ test value:
+        // Lisbon 38.7112° N, -9.1423° W at zoom 12 -> Tile X = 1943, Tile Y = 1569
+        val tileX = OfflineMapTileEstimator.lngToTileX(-9.1423, 12)
+        val tileY = OfflineMapTileEstimator.latToTileY(38.7112, 12)
 
-        // Hand-calculated expected value: 2 * 3 = 6 tiles
-        assertEquals(6L, result.tileCount)
-        assertTrue(result.isValid)
+        assertEquals("Lisbon longitude -9.1423 at zoom 12 maps to tile X = 1943", 1943, tileX)
+        assertEquals("Lisbon latitude 38.7112 at zoom 12 maps to tile Y = 1569", 1569, tileY)
     }
 
     @Test
-    fun estimateTilePack_multipleZoomLevels_quadruplesTilesPerZoomIncrease() {
-        // Base grid = 1 x 1 = 1 tile at minZoom 12 through maxZoom 14
-        // Zoom 12: 1 tile
-        // Zoom 13: 4 tiles (1 * 4^1)
-        // Zoom 14: 16 tiles (1 * 4^2)
-        // Expected Total = 1 + 4 + 16 = 21 tiles
-        val result = OfflineMapTileEstimator.estimateTilePack(
+    fun estimateTilePackForBounds_tinySelectionInOneTile_countsOneTilePerZoom() {
+        // Very tight 10m x 10m bounding box in central Lisbon (contained in single tile at zoom 12..16)
+        val tinyBounds = GeoBoundingBox(
+            minLat = 38.71120,
+            minLng = -9.14230,
+            maxLat = 38.71125,
+            maxLng = -9.14225
+        )
+
+        val result = OfflineMapTileEstimator.estimateTilePackForBounds(
+            bounds = tinyBounds,
             minZoom = 12,
-            maxZoom = 14,
-            boundingTileWidth = 1,
-            boundingTileHeight = 1
-        )
-
-        // Hand-calculated expected ground truth constant: 21 tiles
-        assertEquals(21L, result.tileCount)
-    }
-
-    @Test
-    fun estimateTilePack_eachAdditionalZoomLevel_scalesQuadratically() {
-        // 1 tile base at zoom 12
-        val zoom12Only = OfflineMapTileEstimator.estimateTilePack(12, 12, 1, 1).tileCount
-        assertEquals(1L, zoom12Only) // 1
-
-        val zoom12To13 = OfflineMapTileEstimator.estimateTilePack(12, 13, 1, 1).tileCount
-        assertEquals(5L, zoom12To13) // 1 + 4 = 5
-
-        val zoom12To14 = OfflineMapTileEstimator.estimateTilePack(12, 14, 1, 1).tileCount
-        assertEquals(21L, zoom12To14) // 1 + 4 + 16 = 21
-
-        val zoom12To15 = OfflineMapTileEstimator.estimateTilePack(12, 15, 1, 1).tileCount
-        assertEquals(85L, zoom12To15) // 1 + 4 + 16 + 64 = 85
-    }
-
-    @Test
-    fun estimateTilePack_differentBoundingAreas_scalesBaseTilesAccurately() {
-        // Base grid = 2 x 4 = 8 tiles at zoom 12..13
-        // Zoom 12: 8 tiles
-        // Zoom 13: 8 * 4 = 32 tiles
-        // Expected Total = 8 + 32 = 40 tiles
-        val result = OfflineMapTileEstimator.estimateTilePack(
-            minZoom = 12,
-            maxZoom = 13,
-            boundingTileWidth = 2,
-            boundingTileHeight = 4
-        )
-
-        // Hand-calculated expected ground truth constant: 40 tiles
-        assertEquals(40L, result.tileCount)
-    }
-
-    @Test
-    fun estimateTilePack_invalidZoomRanges_returnsInvalidEstimateResult() {
-        // Inverted range (minZoom > maxZoom)
-        val inverted = OfflineMapTileEstimator.estimateTilePack(minZoom = 16, maxZoom = 12)
-        assertFalse("Inverted zoom range must be marked invalid", inverted.isValid)
-        assertEquals(0L, inverted.tileCount)
-
-        // Out of bounds minZoom (-1)
-        val negativeZoom = OfflineMapTileEstimator.estimateTilePack(minZoom = -1, maxZoom = 10)
-        assertFalse("Negative zoom must be marked invalid", negativeZoom.isValid)
-        assertEquals(0L, negativeZoom.tileCount)
-    }
-
-    @Test
-    fun estimateTilePack_largeRegionsAndOverflowBoundaries_capsSafelyWithoutOverflow() {
-        // Extreme zoom range 0..20
-        val result = OfflineMapTileEstimator.estimateTilePack(
-            minZoom = 0,
-            maxZoom = 20,
-            boundingTileWidth = 10,
-            boundingTileHeight = 10
+            maxZoom = 16
         )
 
         assertTrue(result.isValid)
-        assertEquals("Large regions must cap safely at MAX_SAFE_TILE_CAP without overflow",
-            OfflineMapTileEstimator.MAX_SAFE_TILE_CAP, result.tileCount)
+        assertFalse(result.isCapped)
+
+        // Hand-calculated expected value: 1 tile at each zoom 12, 13, 14, 15, 16 = 5 total tiles
+        assertEquals("Tiny 10m selection contained in 1 tile at zoom 12..16 must equal 5 total tiles", 5L, result.tileCount)
+    }
+
+    @Test
+    fun estimateTilePackForBounds_selectionCrossingHorizontalTileBoundary_countsBothTiles() {
+        // Bounding box straddling longitude -9.140625 (boundary between X=1943 and X=1944 at zoom 12)
+        val horizontalBoundaryBounds = GeoBoundingBox(
+            minLat = 38.7110,
+            minLng = -9.1410,
+            maxLat = 38.7114,
+            maxLng = -9.1390
+        )
+
+        val minX = OfflineMapTileEstimator.lngToTileX(horizontalBoundaryBounds.minLng, 12)
+        val maxX = OfflineMapTileEstimator.lngToTileX(horizontalBoundaryBounds.maxLng, 12)
+
+        assertEquals(1943, minX)
+        assertEquals(1944, maxX) // Crosses horizontal boundary
+
+        val result = OfflineMapTileEstimator.estimateTilePackForBounds(
+            bounds = horizontalBoundaryBounds,
+            minZoom = 12,
+            maxZoom = 12
+        )
+
+        assertEquals("Selection crossing 1 horizontal tile boundary at zoom 12 must count 2 tiles", 2L, result.tileCount)
+    }
+
+    @Test
+    fun estimateTilePackForBounds_selectionCrossingVerticalTileBoundary_countsBothTiles() {
+        // Bounding box straddling latitude 38.685° N (boundary between Y=1569 and Y=1570 at zoom 12)
+        val verticalBoundaryBounds = GeoBoundingBox(
+            minLat = 38.6700,
+            minLng = -9.1423,
+            maxLat = 38.7000,
+            maxLng = -9.1420
+        )
+
+        val minY = OfflineMapTileEstimator.latToTileY(verticalBoundaryBounds.maxLat, 12)
+        val maxY = OfflineMapTileEstimator.latToTileY(verticalBoundaryBounds.minLat, 12)
+
+        assertEquals(1569, minY)
+        assertEquals(1570, maxY) // Crosses vertical boundary
+
+        val result = OfflineMapTileEstimator.estimateTilePackForBounds(
+            bounds = verticalBoundaryBounds,
+            minZoom = 12,
+            maxZoom = 12
+        )
+
+        assertEquals("Selection crossing 1 vertical tile boundary at zoom 12 must count 2 tiles", 2L, result.tileCount)
+    }
+
+    @Test
+    fun estimateTilePackForBounds_selectionCrossingBothBoundaries_countsFourTiles() {
+        // Bounding box crossing both horizontal (-9.140625°) and vertical (38.685°) boundaries at zoom 12
+        val crossBounds = GeoBoundingBox(
+            minLat = 38.6700,
+            minLng = -9.1410,
+            maxLat = 38.7000,
+            maxLng = -9.1390
+        )
+
+        val result = OfflineMapTileEstimator.estimateTilePackForBounds(
+            bounds = crossBounds,
+            minZoom = 12,
+            maxZoom = 12
+        )
+
+        assertEquals("Selection crossing both boundaries at zoom 12 must count 2x2 = 4 tiles", 4L, result.tileCount)
+    }
+
+    @Test
+    fun estimateTilePackForBounds_antimeridianCrossing_isRejectedAsInvalid() {
+        // Antimeridian crossing (minLng = 179.0 > maxLng = -179.0)
+        val antimeridianBounds = GeoBoundingBox(
+            minLat = 20.0,
+            minLng = 179.0,
+            maxLat = 22.0,
+            maxLng = -179.0
+        )
+
+        val result = OfflineMapTileEstimator.estimateTilePackForBounds(
+            bounds = antimeridianBounds,
+            minZoom = 12,
+            maxZoom = 14
+        )
+
+        assertFalse("Antimeridian crossing bounds must be rejected as invalid", result.isValid)
+        assertEquals(0L, result.tileCount)
+    }
+
+    @Test
+    fun estimateTilePackForBounds_overflowAndCappedEstimates_indicatesCappedStateInFormattedSize() {
+        // Large region covering Europe
+        val largeRegionBounds = GeoBoundingBox(
+            minLat = 35.0,
+            minLng = -10.0,
+            maxLat = 60.0,
+            maxLng = 30.0
+        )
+
+        val result = OfflineMapTileEstimator.estimateTilePackForBounds(
+            bounds = largeRegionBounds,
+            minZoom = 12,
+            maxZoom = 18
+        )
+
+        assertTrue(result.isValid)
+        assertTrue("Large region exceeding 1M tiles MUST be marked as isCapped = true", result.isCapped)
+        assertEquals(OfflineMapTileEstimator.MAX_SAFE_TILE_CAP, result.tileCount)
+        assertTrue("Formatted size MUST explicitly label capped results", result.formattedSize.contains("Capped"))
     }
 
     @Test
