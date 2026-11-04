@@ -8,6 +8,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -46,6 +47,7 @@ class LocationViewModelTest {
     fun manualCitySelection_withoutPermission_transitionsStartupToExplore() = runTest {
         fakeLocationTracker.hasPermissionFlow.value = false
         viewModel = LocationViewModel(fakeLocationTracker)
+        backgroundScope.launch { viewModel.userCoordinates.collect {} }
         testDispatcher.scheduler.advanceUntilIdle()
 
         // 1. Initial State without permission
@@ -69,6 +71,7 @@ class LocationViewModelTest {
         fakeLocationTracker.hasPermissionFlow.value = true
         fakeLocationTracker.isGpsEnabled = true
         viewModel = LocationViewModel(fakeLocationTracker)
+        backgroundScope.launch { viewModel.userCoordinates.collect {} }
         testDispatcher.scheduler.advanceUntilIdle()
 
         // Initial State acquiring lock
@@ -90,6 +93,7 @@ class LocationViewModelTest {
         fakeLocationTracker.hasPermissionFlow.value = true
         fakeLocationTracker.isGpsEnabled = true
         viewModel = LocationViewModel(fakeLocationTracker)
+        backgroundScope.launch { viewModel.userCoordinates.collect {} }
         testDispatcher.scheduler.advanceUntilIdle()
 
         // Set manual coordinates first
@@ -110,6 +114,7 @@ class LocationViewModelTest {
     fun permissionDeniedRecoveryPath_incrementsDeniedCountAndOpensDialogs() = runTest {
         fakeLocationTracker.hasPermissionFlow.value = false
         viewModel = LocationViewModel(fakeLocationTracker)
+        backgroundScope.launch { viewModel.userCoordinates.collect {} }
         testDispatcher.scheduler.advanceUntilIdle()
 
         // First denial -> Rationale dialog
@@ -132,6 +137,7 @@ class LocationViewModelTest {
         fakeLocationTracker.hasPermissionFlow.value = true
         fakeLocationTracker.isGpsEnabled = false // GPS Provider turned off in Android Settings
         viewModel = LocationViewModel(fakeLocationTracker)
+        backgroundScope.launch { viewModel.userCoordinates.collect {} }
         testDispatcher.scheduler.advanceUntilIdle()
 
         assertEquals(GpsAcquisitionStatus.GpsDisabled, viewModel.gpsStatus.value)
@@ -141,6 +147,7 @@ class LocationViewModelTest {
     fun gpsPermissionRestoredFromSettings_refreshesAndAcquiresLock() = runTest {
         fakeLocationTracker.hasPermissionFlow.value = false
         viewModel = LocationViewModel(fakeLocationTracker)
+        backgroundScope.launch { viewModel.userCoordinates.collect {} }
         testDispatcher.scheduler.advanceUntilIdle()
 
         assertEquals(GpsAcquisitionStatus.PermissionRequired, viewModel.gpsStatus.value)

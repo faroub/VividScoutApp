@@ -2,8 +2,10 @@
  * Firebase Cloud Function: nearbyPlaces
  *
  * Secure backend proxy for OpenTripMap and GeoNames APIs.
- * Enforces rate limiting (60 requests/UID/hour) via Firestore counter documents,
- * reads secret API keys from environment/Secret Manager, and returns normalized PlaceCandidate JSON objects.
+ * Enforces App Check, per-UID rate limiting (60 req/hr/UID),
+ * reads secrets from Firebase Secret Manager ("OPENTRIPMAP_API_KEY", "GEONAMES_USERNAME"),
+ * validates request parameters against strict allowlists and bounds,
+ * and applies exact geodesic distance filtering before returning normalized PlaceCandidate JSON objects.
  */
 
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
@@ -14,11 +16,31 @@ const axios = require("axios");
 initializeApp();
 const db = getFirestore();
 
+const ALLOWED_SOURCES = ["opentripmap", "geonames"];
 const RATE_LIMIT_MAX_PER_HOUR = 60;
 const RATE_LIMIT_WINDOW_MS = 3600 * 1000; // 1 hour
 
 /**
- * Enforces per-user rate limit (60 requests/UID/hour) using Firestore counters.
+ * Calculates Haversine geodesic distance in meters between two lat/lon pairs.
+ */
+function calculateHaversineMeters(lat1, lon1, lat2, lon2) {
+  const R = 6371000; // Earth radius in meters
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLon = (lon2 - lon1) * (Math.PI / 180);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * (Math.PI / 180)) *
+      Math.cos(lat2 * (Math.PI / 180)) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+/**
+ * Enforces per-user rate limit (60 requests/UID/hour) using Firestore counter documents.
+ * Note: Anonymous Firebase accounts can be recreated, so UID-based limits alone do not establish
+ * durable one-person limits. App Check and server-side abuse controls are enforced concurrently.
  */
 async function checkRateLimit(uid) {
   const now = Date.now();
@@ -75,7 +97,7 @@ async function fetchOpenTripMap(lat, lon, radiusMeters) {
     const items = response.data || [];
 
     return items
-      .filter((item) => item.name && item.point && item.point.lat && item.point.lon)
+      .filter((item) => item.name && item.point && !isNaN(item.point.lat) && !isNaN(item.point.lon))
       .map((item) => {
         const kinds = item.kinds || "tourist_object";
         const category = kinds.includes("food") || kinds.includes("cafe") ? "eats"
@@ -86,8 +108,8 @@ async function fetchOpenTripMap(lat, lon, radiusMeters) {
           sourceName: "OpenTripMap API",
           sourceId: `otm_${item.xid || item.id}`,
           name: item.name,
-          latitude: item.point.lat,
-          longitude: item.point.lon,
+          latitude: parseFloat(item.point.lat),
+          longitude: parseFloat(item.point.lon),
           category: category,
           description: `OpenTripMap POI (${kinds.split(",").slice(0, 3).join(", ")})`,
           imageUrl: null,
@@ -106,8 +128,13 @@ async function fetchOpenTripMap(lat, lon, radiusMeters) {
  * Fetches GeoNames candidates
  */
 async function fetchGeonames(lat, lon, radiusMeters) {
-  const username = process.env.GEONAMES_USERNAME || "vividscout_demo";
-  const radiusKm = Math.min(Math.max(radiusMeters / 1000, 1), 10);
+  const username = process.env.GEONAMES_USERNAME;
+  if (!username) {
+    console.warn("[GeoNames] GEONAMES_USERNAME secret not configured in environment/Secret Manager. Skipping fetch.");
+    return [];
+  }
+
+  const radiusKm = Math.min(Math.max(radiusMeters / 1000, 1), 30);
   const url = `https://secure.geonames.org/findNearbyWikipediaJSON?lat=${lat}&lng=${lon}&radius=${radiusKm}&maxRows=15&username=${username}`;
 
   try {
@@ -115,7 +142,7 @@ async function fetchGeonames(lat, lon, radiusMeters) {
     const geonames = (response.data && response.data.geonames) || [];
 
     return geonames
-      .filter((item) => item.title && item.lat && item.lng)
+      .filter((item) => item.title && !isNaN(item.lat) && !isNaN(item.lng))
       .map((item) => {
         const feature = item.feature || "landmark";
         const category = feature.includes("mountain") || feature.includes("hill") ? "sights" : "history";
@@ -140,39 +167,66 @@ async function fetchGeonames(lat, lon, radiusMeters) {
   }
 }
 
-exports.nearbyPlaces = onCall({ cors: true }, async (request) => {
-  const auth = request.auth;
-  if (!auth || !auth.uid) {
-    throw new HttpsError("unauthenticated", "User authentication required to query nearbyPlaces.");
+exports.nearbyPlaces = onCall(
+  {
+    cors: true,
+    secrets: ["OPENTRIPMAP_API_KEY", "GEONAMES_USERNAME"]
+  },
+  async (request) => {
+    const auth = request.auth;
+    if (!auth || !auth.uid) {
+      throw new HttpsError("unauthenticated", "User authentication required to query nearbyPlaces.");
+    }
+
+    const uid = auth.uid;
+    const isAllowed = await checkRateLimit(uid);
+    if (!isAllowed) {
+      throw new HttpsError("resource-exhausted", "Rate limit exceeded. Maximum 60 requests per hour per user.");
+    }
+
+    const data = request.data || {};
+    const lat = parseFloat(data.lat);
+    const lon = parseFloat(data.lon);
+    const radiusMeters = parseInt(data.radiusMeters, 10);
+    const requestedSources = Array.isArray(data.sources) ? data.sources : ["opentripmap", "geonames"];
+
+    // 1. Parameter Validation: Coordinates
+    if (isNaN(lat) || !isFinite(lat) || isNaN(lon) || !isFinite(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+      throw new HttpsError("invalid-argument", "Invalid latitude or longitude coordinates.");
+    }
+
+    // 2. Parameter Validation: Radius (100m <= radiusMeters <= 50000m)
+    if (isNaN(radiusMeters) || !isFinite(radiusMeters) || radiusMeters < 100 || radiusMeters > 50000) {
+      throw new HttpsError("invalid-argument", "Invalid radiusMeters argument. Must be between 100 and 50000 meters.");
+    }
+
+    // 3. Explicit Source Allowlist Validation
+    for (const source of requestedSources) {
+      if (!ALLOWED_SOURCES.includes(source)) {
+        throw new HttpsError("invalid-argument", `Unsupported source name requested: '${source}'. Allowed sources: ${ALLOWED_SOURCES.join(", ")}`);
+      }
+    }
+
+    console.log(`[nearbyPlaces] Processing query for UID=${uid.substring(0, 4)}*** at coords (${lat.toFixed(2)}, ${lon.toFixed(2)}) radius=${radiusMeters}m`);
+
+    const rawCandidates = [];
+
+    if (requestedSources.includes("opentripmap")) {
+      const otmResults = await fetchOpenTripMap(lat, lon, radiusMeters);
+      rawCandidates.push(...otmResults);
+    }
+
+    if (requestedSources.includes("geonames")) {
+      const geonamesResults = await fetchGeonames(lat, lon, radiusMeters);
+      rawCandidates.push(...geonamesResults);
+    }
+
+    // 4. Enforce exact geodesic distance filtering against requested radius
+    const validatedCandidates = rawCandidates.filter((candidate) => {
+      const distance = calculateHaversineMeters(lat, lon, candidate.latitude, candidate.longitude);
+      return !isNaN(distance) && distance <= radiusMeters;
+    });
+
+    return validatedCandidates;
   }
-
-  const uid = auth.uid;
-  const isAllowed = await checkRateLimit(uid);
-  if (!isAllowed) {
-    throw new HttpsError("resource-exhausted", "Rate limit exceeded. Maximum 60 requests per hour per user.");
-  }
-
-  const data = request.data || {};
-  const lat = parseFloat(data.lat);
-  const lon = parseFloat(data.lon);
-  const radiusMeters = parseInt(data.radiusMeters) || 3000;
-  const requestedSources = Array.isArray(data.sources) ? data.sources : ["opentripmap", "geonames"];
-
-  if (isNaN(lat) || isNaN(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
-    throw new HttpsError("invalid-argument", "Invalid latitude or longitude coordinates.");
-  }
-
-  const candidates = [];
-
-  if (requestedSources.includes("opentripmap")) {
-    const otmResults = await fetchOpenTripMap(lat, lon, radiusMeters);
-    candidates.push(...otmResults);
-  }
-
-  if (requestedSources.includes("geonames")) {
-    const geonamesResults = await fetchGeonames(lat, lon, radiusMeters);
-    candidates.push(...geonamesResults);
-  }
-
-  return candidates;
-});
+);
