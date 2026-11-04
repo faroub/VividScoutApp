@@ -1,6 +1,7 @@
 package com.example.data.places
 
 import java.text.Normalizer
+import java.util.Locale
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.max
@@ -57,6 +58,9 @@ object PlaceMerger {
 
         val normA = normalizeName(a.name)
         val normB = normalizeName(b.name)
+
+        if (normA.isBlank() || normB.isBlank()) return false
+
         val similarity = calculateJaroWinklerSimilarity(normA, normB)
 
         return similarity >= MIN_NAME_SIMILARITY
@@ -104,14 +108,17 @@ object PlaceMerger {
     }
 
     /**
-     * Normalizes place names by decomposing Unicode accents (NFD form), stripping diacritics/punctuation,
-     * lowercasing, and removing excess whitespace.
+     * Normalizes place names in a script-aware manner by:
+     * 1. Decomposing Unicode accents and diacritics (NFD form).
+     * 2. Lowercasing using Locale.ROOT for locale-independent normalization.
+     * 3. Retaining letters (\p{L}) and numbers (\p{N}) from all Unicode scripts (Arabic, Cyrillic, Greek, CJK, Latin, etc.).
+     * 4. Stripping punctuation and compressing redundant whitespace.
      */
     fun normalizeName(name: String): String {
         val nfd = Normalizer.normalize(name, Normalizer.Form.NFD)
         val strippedAccents = nfd.replace(Regex("\\p{InCombiningDiacriticalMarks}+"), "")
-        return strippedAccents.lowercase()
-            .replace(Regex("[^a-z0-9\\s]"), "")
+        return strippedAccents.lowercase(Locale.ROOT)
+            .replace(Regex("[^\\p{L}\\p{N}\\s]"), "")
             .replace(Regex("\\s+"), " ")
             .trim()
     }
