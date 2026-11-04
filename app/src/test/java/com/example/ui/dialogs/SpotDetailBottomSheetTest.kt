@@ -6,6 +6,7 @@ import com.example.data.local.CommunityTipEntity
 import com.example.data.location.LocationTracker
 import com.example.data.offline.OfflineMapManager
 import com.example.data.offline.OfflineRegionStorage
+import com.example.data.places.PlaceRepository
 import com.example.data.repository.CommunityTipRepository
 import com.example.data.repository.ScoutGemRepository
 import com.example.data.repository.ScoutRepository
@@ -56,6 +57,7 @@ class SpotDetailBottomSheetTest {
         override val database: AppDatabase get() = TODO()
         override val scoutRepository: ScoutRepository get() = TODO()
         override val gemRepository: ScoutGemRepository get() = TODO()
+        override val placeRepository: PlaceRepository get() = TODO()
         override val locationTracker: LocationTracker get() = TODO()
         override val offlineMapManager: OfflineMapManager get() = TODO()
         override val regionStorage: OfflineRegionStorage get() = TODO()

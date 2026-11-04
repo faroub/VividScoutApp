@@ -37,6 +37,7 @@ object LocationPhotoResolver {
         if (url.isNullOrBlank()) return true
         val trimmed = url.trim()
         if (trimmed.startsWith("ic_cat_") || trimmed.startsWith("img_lisbon_")) return true
+        if (trimmed.contains("images.unsplash.com")) return true
         if (KNOWN_GENERIC_STOCK_IDS.any { trimmed.contains(it) }) return true
         if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) return false
         return true

@@ -1,5 +1,6 @@
 package com.example.data.repository
 
+import android.util.Log
 import com.example.data.local.DiscoveredGemDao
 import com.example.data.local.RecentSearchDao
 import com.example.data.local.RecentSearchEntity
@@ -11,6 +12,7 @@ import com.example.data.model.toScoutGem
 import com.example.data.network.GeminiSpotService
 import com.example.data.network.OverpassRetrofitClient
 import com.example.data.places.PlaceRepository
+import com.example.util.LocationPhotoResolver
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -21,7 +23,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
+import java.util.Collections
 
 /**
  * Diagnostic summary produced when auto-cleanup runs on the local Room database.
@@ -526,6 +530,16 @@ open class ScoutGemRepository(
         log
     }
 
+    data class PhotoAttemptInfo(
+        val failedCount: Int = 0,
+        val lastAttemptTimestamp: Long = 0L
+    )
+
+    private val inProgressPhotoIds = Collections.synchronizedSet(HashSet<String>())
+    private val completedPhotoIds = Collections.synchronizedSet(HashSet<String>())
+    private val failedPhotoAttempts = Collections.synchronizedMap(HashMap<String, PhotoAttemptInfo>())
+    private val enrichmentMutex = Mutex()
+
     /**
      * Automatically enriches spots having placeholder or generic image URLs
      * by querying live Wikipedia & Wikimedia Commons APIs for 1200px HD resolution metadata
@@ -533,54 +547,90 @@ open class ScoutGemRepository(
      * Prioritizes saved/bookmarked spots first, followed by active feed spots.
      */
     open suspend fun enrichSpotsPhotosInBackground(spots: List<ScoutSpotEntity> = emptyList()) = withContext(Dispatchers.IO) {
-        val targets = if (spots.isNotEmpty()) {
-            spots.filter { com.example.util.LocationPhotoResolver.isGenericOrStockPhoto(it.imageUrl) }
-        } else {
-            scoutDao.getAllSpotsList().filter { com.example.util.LocationPhotoResolver.isGenericOrStockPhoto(it.imageUrl) }
+        if (!enrichmentMutex.tryLock()) {
+            return@withContext
         }
 
-        if (targets.isEmpty()) return@withContext
+        try {
+            val now = System.currentTimeMillis()
+            val allCandidates = if (spots.isNotEmpty()) spots else scoutDao.getAllSpotsList()
 
-        // Tier 1: Saved and bookmarked spots (isSaved == true) first, Tier 2: Active feed spots
-        val sortedTargets = targets.sortedByDescending { it.isSaved }
-
-        // Enrich up to 30 spots per pass with graceful pacing
-        for (spot in sortedTargets.take(30)) {
-            try {
-                val resolved = com.example.util.LocationPhotoResolver.resolveEnrichedPhoto(
-                    title = spot.title,
-                    category = spot.category,
-                    districtOrLocation = spot.locationName,
-                    latitude = spot.latitude,
-                    longitude = spot.longitude,
-                    spotId = spot.id
-                )
-                if (resolved.url.isNotBlank() && !com.example.util.LocationPhotoResolver.isGenericOrStockPhoto(resolved.url)) {
-                    scoutDao.updateImageUrl(spot.id, resolved.url)
-                    android.util.Log.i(
-                        "ScoutGemRepository",
-                        "Wikimedia Commons Resolution SUCCESS: Validated 1200px HD photo for '${spot.title}' (isSaved=${spot.isSaved}): ${resolved.url}"
-                    )
-                } else {
-                    android.util.Log.i(
-                        "ScoutGemRepository",
-                        "Wikimedia Commons Resolution FALLBACK: Retaining existing image '${spot.imageUrl}' for '${spot.title}'."
-                    )
+            val eligible = allCandidates.filter { spot ->
+                val isGeneric = LocationPhotoResolver.isGenericOrStockPhoto(spot.imageUrl)
+                if (!isGeneric) {
+                    completedPhotoIds.add(spot.id)
+                    return@filter false
                 }
-                delay(120L) // Polite delay between network queries
-            } catch (e: Exception) {
-                android.util.Log.w("ScoutGemRepository", "Background photo enrichment error for ${spot.id} ('${spot.title}'): ${e.message}")
+
+                if (inProgressPhotoIds.contains(spot.id) || completedPhotoIds.contains(spot.id)) {
+                    return@filter false
+                }
+
+                val attempt = failedPhotoAttempts[spot.id]
+                if (attempt != null) {
+                    val backoffMs = (1000L * (1 shl (attempt.failedCount.coerceAtMost(5))))
+                    if (attempt.failedCount >= 3 && (now - attempt.lastAttemptTimestamp) < backoffMs) {
+                        return@filter false
+                    }
+                }
+
+                true
             }
+
+            if (eligible.isEmpty()) return@withContext
+
+            val priorityQueue = eligible.sortedWith(
+                compareByDescending<ScoutSpotEntity> { it.isSaved }
+                    .thenByDescending { it.timestamp }
+            )
+
+            val currentBatch = priorityQueue.take(30)
+            for (spot in currentBatch) {
+                inProgressPhotoIds.add(spot.id)
+                try {
+                    val resolved = LocationPhotoResolver.resolveEnrichedPhoto(
+                        title = spot.title,
+                        category = spot.category,
+                        districtOrLocation = spot.locationName,
+                        latitude = spot.latitude,
+                        longitude = spot.longitude,
+                        spotId = spot.id
+                    )
+
+                    val isAuthenticPhoto = resolved.url.isNotBlank() && !LocationPhotoResolver.isGenericOrStockPhoto(resolved.url)
+                    if (isAuthenticPhoto) {
+                        scoutDao.updateImageUrl(spot.id, resolved.url)
+                        completedPhotoIds.add(spot.id)
+                        failedPhotoAttempts.remove(spot.id)
+                        Log.i(
+                            "ScoutGemRepository",
+                            "Wikimedia Commons Resolution SUCCESS: Validated 1200px HD photo for '${spot.title}' (isSaved=${spot.isSaved}): ${resolved.url}"
+                        )
+                    } else {
+                        val currentFailed = failedPhotoAttempts[spot.id]?.failedCount ?: 0
+                        failedPhotoAttempts[spot.id] = PhotoAttemptInfo(currentFailed + 1, System.currentTimeMillis())
+                    }
+                    delay(120L)
+                } catch (e: Exception) {
+                    val currentFailed = failedPhotoAttempts[spot.id]?.failedCount ?: 0
+                    failedPhotoAttempts[spot.id] = PhotoAttemptInfo(currentFailed + 1, System.currentTimeMillis())
+                    Log.w("ScoutGemRepository", "Background photo enrichment error for ${spot.id} ('${spot.title}'): ${e.message}")
+                } finally {
+                    inProgressPhotoIds.remove(spot.id)
+                }
+            }
+        } finally {
+            enrichmentMutex.unlock()
         }
     }
 
     /**
      * Triggered automatically when device transitions from offline to online state.
-     * Resets attempted enrichment cache and re-queries Room for spots lacking high-res photos.
-     * Prioritizes saved/bookmarked spots first, then active feed spots.
+     * Resets failed photo attempts so queued spots can be retried.
      */
     suspend fun triggerPhotoMetadataReSync() = withContext(Dispatchers.IO) {
-        attemptedEnrichmentIds.clear()
+        failedPhotoAttempts.clear()
+        inProgressPhotoIds.clear()
         val allSpots = scoutDao.getAllSpotsList()
         val unEnriched = allSpots.filter { com.example.util.LocationPhotoResolver.isGenericOrStockPhoto(it.imageUrl) }
         if (unEnriched.isNotEmpty()) {
