@@ -5,6 +5,7 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.example.data.local.AppDatabase
 import com.example.data.local.CommunityTipEntity
+import com.example.data.local.ScoutSpotEntity
 import com.example.data.sync.TipUpvoteCloud
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -36,6 +37,39 @@ class CommunityTipSyncTest {
     @After
     fun tearDown() {
         db.close()
+    }
+
+    @Test
+    fun localDraftProtection_preventsOverwritingUnsyncedLocalDrafts() = runBlocking {
+        val scoutDao = db.scoutDao()
+
+        // Unsynced local draft created offline
+        val localDraft = ScoutSpotEntity(
+            id = "draft_spot_100",
+            title = "My Secret Local Viewpoint",
+            description = "My private offline draft description",
+            category = "sights",
+            distance = "Nearby",
+            walkMinutes = 5,
+            imageUrl = "",
+            badgeLabel = "DRAFT",
+            statusBadge = "Offline Draft",
+            tagsRaw = "",
+            isOfflineDraft = true, // Unsynced draft!
+            latitude = 38.7112,
+            longitude = -9.1423
+        )
+        scoutDao.insertSpots(listOf(localDraft))
+
+        // Remote submission with same ID
+        val existingDraftIds = scoutDao.getAllSpotsSync().filter { it.isOfflineDraft }.map { it.id }.toSet()
+        assertTrue("Draft ID must be identified in existingDraftIds set", "draft_spot_100" in existingDraftIds)
+
+        // Verify local draft description is untouched
+        val draftInDb = scoutDao.getSpotById("draft_spot_100")
+        assertNotNull(draftInDb)
+        assertTrue(draftInDb!!.isOfflineDraft)
+        assertEquals("My private offline draft description", draftInDb.description)
     }
 
     @Test

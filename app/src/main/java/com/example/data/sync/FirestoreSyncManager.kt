@@ -407,67 +407,94 @@ object FirestoreSyncManager {
                 newTipsCount = remoteTips.size
             }
 
-            // 2. Fetch remote community submissions
-            val subsSnapshot = firestore.collection(SUBMISSIONS_COLLECTION)
-                .limit(30)
-                .get()
-                .await()
-
-            val existingIds = scoutDao.getAllSpotsSync().map { it.id }.toSet()
+            // 2. Fetch remote community submissions using cursor-based pagination (page size = 30, max 300)
+            var lastSubDoc: DocumentSnapshot? = null
+            var hasMoreSubPages = true
+            var totalSubsFetched = 0
+            val existingDraftIds = scoutDao.getAllSpotsSync().filter { it.isOfflineDraft }.map { it.id }.toSet()
+            val existingAllIds = scoutDao.getAllSpotsSync().map { it.id }.toSet()
             val remoteSpots = mutableListOf<ScoutSpotEntity>()
-            for (doc in subsSnapshot.documents) {
-                val id = doc.getString("id") ?: doc.id
-                if (id in existingIds) continue
 
-                val rawTitle = doc.getString("title") ?: continue
-                val lat = doc.getDouble("latitude") ?: continue
-                val lng = doc.getDouble("longitude") ?: continue
+            while (hasMoreSubPages && totalSubsFetched < 300) {
+                var subQuery = firestore.collection(SUBMISSIONS_COLLECTION)
+                    .orderBy("timestamp", Query.Direction.DESCENDING)
+                    .limit(30)
 
-                // Validate coordinates are geographically plausible
-                if (lat.isNaN() || lng.isNaN() || (lat == 0.0 && lng == 0.0) || lat < -90.0 || lat > 90.0 || lng < -180.0 || lng > 180.0) {
-                    Log.w(TAG, "Skipping remote submission '$id': invalid coordinates ($lat, $lng)")
-                    continue
+                if (lastSubDoc != null) {
+                    subQuery = subQuery.startAfter(lastSubDoc)
                 }
 
-                val title = rawTitle.trim().take(120)
-                if (title.length < 2) continue
+                val subPageSnapshot = subQuery.get().await()
+                if (subPageSnapshot.isEmpty) {
+                    hasMoreSubPages = false
+                    break
+                }
 
-                val rawCategory = doc.getString("category") ?: "sights"
-                val normalizedCategory = ScoutCategory.normalize(rawCategory)
+                for (doc in subPageSnapshot.documents) {
+                    val id = doc.getString("id") ?: doc.id
 
-                val description = (doc.getString("description") ?: "Shared community scout gem.").trim().take(1000)
-                val locationName = (doc.getString("locationName") ?: "Community Location").trim().take(100)
-                val contributor = (doc.getString("contributor") ?: "@CommunityScout").trim().take(50)
-                val userNotes = (doc.getString("userNotes") ?: "Shared by community scout.").trim().take(500)
+                    // Do NOT overwrite locally edited or unsynced drafts!
+                    if (id in existingDraftIds) continue
+                    if (id in existingAllIds) continue
 
-                remoteSpots.add(
-                    ScoutSpotEntity(
-                        id = id.take(128),
-                        title = title,
-                        description = description,
-                        category = normalizedCategory,
-                        distance = "Discovered",
-                        walkMinutes = 5,
-                        rating = null,
-                        reviewCount = null,
-                        imageUrl = doc.getString("photoUri") ?: "ic_cat_sights",
-                        badgeLabel = "COMMUNITY SCOUT",
-                        statusBadge = "Community Shared",
-                        tagsRaw = "Community Shared|||Cloud Sync",
-                        proTip = userNotes,
-                        contributor = contributor,
-                        upvotes = 1,
-                        isSaved = false,
-                        isOfflineDraft = false,
-                        isDiscovered = false,
-                        offlineCached = true,
-                        locationName = locationName,
-                        latitude = lat,
-                        longitude = lng,
-                        timestamp = doc.getLong("timestamp") ?: System.currentTimeMillis()
+                    val rawTitle = doc.getString("title") ?: continue
+                    val lat = doc.getDouble("latitude") ?: continue
+                    val lng = doc.getDouble("longitude") ?: continue
+
+                    // Validate coordinates are geographically plausible
+                    if (lat.isNaN() || lng.isNaN() || (lat == 0.0 && lng == 0.0) || lat < -90.0 || lat > 90.0 || lng < -180.0 || lng > 180.0) {
+                        Log.w(TAG, "Skipping remote submission '$id': invalid coordinates ($lat, $lng)")
+                        continue
+                    }
+
+                    val title = rawTitle.trim().take(120)
+                    if (title.length < 2) continue
+
+                    val rawCategory = doc.getString("category") ?: "sights"
+                    val normalizedCategory = ScoutCategory.normalize(rawCategory)
+
+                    val description = (doc.getString("description") ?: "Shared community scout gem.").trim().take(1000)
+                    val locationName = (doc.getString("locationName") ?: "Community Location").trim().take(100)
+                    val contributor = (doc.getString("contributor") ?: "@CommunityScout").trim().take(50)
+                    val userNotes = (doc.getString("userNotes") ?: "Shared by community scout.").trim().take(500)
+
+                    remoteSpots.add(
+                        ScoutSpotEntity(
+                            id = id.take(128),
+                            title = title,
+                            description = description,
+                            category = normalizedCategory,
+                            distance = "Discovered",
+                            walkMinutes = 5,
+                            rating = null,
+                            reviewCount = null,
+                            imageUrl = doc.getString("photoUri") ?: "ic_cat_sights",
+                            badgeLabel = "COMMUNITY SCOUT",
+                            statusBadge = "Community Shared",
+                            tagsRaw = "Community Shared|||Cloud Sync",
+                            proTip = userNotes,
+                            contributor = contributor,
+                            upvotes = 1,
+                            isSaved = false,
+                            isOfflineDraft = false,
+                            isDiscovered = false,
+                            offlineCached = true,
+                            locationName = locationName,
+                            latitude = lat,
+                            longitude = lng,
+                            timestamp = doc.getLong("timestamp") ?: System.currentTimeMillis()
+                        )
                     )
-                )
+                }
+
+                totalSubsFetched += subPageSnapshot.size()
+                if (subPageSnapshot.size() < 30) {
+                    hasMoreSubPages = false
+                } else {
+                    lastSubDoc = subPageSnapshot.documents.last()
+                }
             }
+
             if (remoteSpots.isNotEmpty()) {
                 scoutDao.insertSpots(remoteSpots)
                 newGemsCount = remoteSpots.size
