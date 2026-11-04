@@ -34,21 +34,31 @@ class PlaceDataIntegrityTest {
     }
 
     @Test
-    fun municipalOpenDataService_doesNotGenerateFictionalAttractionsForNonLisbonCities() = runBlocking {
+    fun municipalOpenDataService_honestProvenance_andSmallRadiusFiltering() = runBlocking {
         val service = MunicipalOpenDataService()
 
-        // Non-Lisbon city (Dresden, Germany)
-        val dresdenSpots = service.fetchMunicipalDataSpots("Dresden", 51.0504, 13.7373)
-        assertTrue("Municipal open data service must return empty list for non-verified cities (no synthetic monuments)", dresdenSpots.isEmpty())
+        // 1. Non-Lisbon city (Dresden, Germany) -> Empty List
+        val dresdenSpots = service.fetchMunicipalDataSpots("Dresden", 51.0504, 13.7373, radiusMeters = 3000)
+        assertTrue("Municipal data service must return empty list for non-supported cities", dresdenSpots.isEmpty())
 
-        // Verified city (Lisbon)
-        val lisbonSpots = service.fetchMunicipalDataSpots("Lisbon", 38.7112, -9.1423)
+        // 2. Verified city (Lisbon) within 3000m -> Honest provenance
+        val lisbonSpots = service.fetchMunicipalDataSpots("Lisbon", 38.7112, -9.1423, radiusMeters = 3000)
         assertTrue("Lisbon verified dataset items must be returned", lisbonSpots.isNotEmpty())
         for (spot in lisbonSpots) {
             assertNull("Municipal ratings must be null", spot.rating)
             assertNull("Municipal reviewCount must be null", spot.reviewCount)
-            assertEquals("City Open Data", spot.badgeLabel)
+            assertEquals("Lisbon Dataset", spot.badgeLabel)
+            assertEquals("Curated Municipal Spot", spot.statusBadge)
+            assertTrue("Description must attribute Lisboa Aberta dataset", spot.description.contains("Lisboa Aberta"))
         }
+
+        // 3. Small radius filter (50m radius centered at 38.7112, -9.1423 far from Alfama 38.7125) -> Excluded
+        val smallRadiusSpots = service.fetchMunicipalDataSpots("Lisbon", 38.7112, -9.1423, radiusMeters = 50)
+        assertTrue("Small 50m radius must filter out spots > 50m away", smallRadiusSpots.isEmpty())
+
+        // 4. Invalid input coordinates (NaN or 0.0/0.0) -> Empty List
+        val nanSpots = service.fetchMunicipalDataSpots("Lisbon", Double.NaN, -9.1423)
+        assertTrue("NaN coordinates must return empty list", nanSpots.isEmpty())
     }
 
     @Test
