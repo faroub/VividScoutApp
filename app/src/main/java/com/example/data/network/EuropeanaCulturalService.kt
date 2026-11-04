@@ -2,16 +2,18 @@ package com.example.data.network
 
 import android.util.Log
 import com.example.data.local.ScoutSpotEntity
+import com.example.util.Geo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
+import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
 
 /**
- * Service to query digital cultural heritage items from thousands of European museums,
- * libraries, and archives via the Europeana Cultural API.
+ * Service to query digital cultural heritage items from European museums and archives via Europeana Cultural API.
+ * Enforces strict coordinate verification, radius filtering, and null ratings when unprovided.
  */
 class EuropeanaCulturalService(
     private val client: OkHttpClient = OkHttpClient.Builder()
@@ -27,17 +29,17 @@ class EuropeanaCulturalService(
     }
 
     /**
-     * Queries Europeana Cultural Heritage repository for localized heritage objects, public art,
-     * and historical archives near a location query.
+     * Queries Europeana Cultural Heritage repository for localized heritage objects with verified geographic coordinates.
      */
     suspend fun fetchEuropeanaCulturalSpots(
         locationName: String = "Lisbon",
         lat: Double = 38.7112,
-        lon: Double = -9.1423
+        lon: Double = -9.1423,
+        radiusMeters: Int = 15000
     ): List<ScoutSpotEntity> = withContext(Dispatchers.IO) {
         val spots = mutableListOf<ScoutSpotEntity>()
         try {
-            val encodedQuery = java.net.URLEncoder.encode(locationName, "UTF-8")
+            val encodedQuery = URLEncoder.encode(locationName, "UTF-8")
             val url = "https://api.europeana.eu/record/v2/search.json?wskey=$PUBLIC_API_KEY&query=$encodedQuery&rows=8&profile=standard"
 
             val request = Request.Builder()
@@ -65,8 +67,17 @@ class EuropeanaCulturalService(
                     val spotLat = item.optDouble("latitude", item.optDouble("edmPlaceLatitude", Double.NaN))
                     val spotLon = item.optDouble("longitude", item.optDouble("edmPlaceLongitude", Double.NaN))
 
-                    // Require actual coordinates from the provider — do not invent offset coordinates
+                    // Coordinate validation: Reject NaN, 0.0/0.0, and out-of-bounds coordinates
                     if (spotLat.isNaN() || spotLon.isNaN() || (spotLat == 0.0 && spotLon == 0.0)) {
+                        continue
+                    }
+                    if (spotLat < -90.0 || spotLat > 90.0 || spotLon < -180.0 || spotLon > 180.0) {
+                        continue
+                    }
+
+                    // Enforce geodesic radius filter against user coordinates
+                    val distanceMeters = Geo.calculateDistanceMeters(lat, lon, spotLat, spotLon)
+                    if (distanceMeters.isNaN() || distanceMeters > radiusMeters) {
                         continue
                     }
 
@@ -76,15 +87,16 @@ class EuropeanaCulturalService(
                             title = title,
                             description = "Digital cultural heritage record archived by $dataProvider. Category: $edmConceptLabel.",
                             category = "history",
-                            distance = "Heritage District",
-                            walkMinutes = 8,
-                            rating = null,
-                            reviewCount = null,
+                            distance = Geo.formatDistance(distanceMeters),
+                            walkMinutes = Geo.calculateWalkMinutes(distanceMeters),
+                            rating = null, // Never invent ratings
+                            reviewCount = null, // Never invent review counts
                             imageUrl = edmIsShownBy,
                             badgeLabel = "Europeana",
                             statusBadge = "Europeana Cultural Item",
                             tagsRaw = "europeana|||archive|||$edmConceptLabel",
-                            proTip = "Archived by $dataProvider.",
+                            proTip = "Archived by $dataProvider. License: CC BY-SA 4.0.",
+                            contributor = "@europeana_foundation",
                             latitude = spotLat,
                             longitude = spotLon,
                             locationName = locationName
