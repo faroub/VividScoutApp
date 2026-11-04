@@ -2,6 +2,8 @@ package com.example.data.offline
 
 import com.example.data.local.ScoutSpotEntity
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -31,6 +33,30 @@ class GuidedWalkPlannerEngineTest {
     }
 
     @Test
+    fun planGuidedWalk_returnsCircularLoopWithReturnLegAndDuration() {
+        val originLat = 38.7112
+        val originLng = -9.1423
+
+        val spots = listOf(
+            createSpot("s1", "Miradouro 500m", "sights", 38.7150, -9.1423),
+            createSpot("s2", "Miradouro 1000m", "sights", 38.7200, -9.1423)
+        )
+
+        val plan = GuidedWalkPlannerEngine.planGuidedWalk(
+            originLat = originLat,
+            originLng = originLng,
+            startTitle = "Rossio Square",
+            targetDurationMinutes = 60,
+            mood = GuidedWalkMood.SCENIC,
+            availableSpots = spots
+        )
+
+        assertTrue("Generated plan must be marked as circular loop", plan.isCircularLoop)
+        assertTrue("Return leg distance must be > 0.0 meters", plan.returnLegDistanceMeters > 0.0)
+        assertTrue("Total walking time must include return leg to origin", plan.totalWalkingMinutes > 0)
+    }
+
+    @Test
     fun planGuidedWalk_durationLimitRespected_doesNotExceedSelectedDuration() {
         val originLat = 38.7112
         val originLng = -9.1423
@@ -55,7 +81,7 @@ class GuidedWalkPlannerEngineTest {
 
         val maxAllowedWalkTime = (targetDurationMinutes * 1.10).toInt()
         assertTrue(
-            "Total walking time (${plan.totalWalkingMinutes} min) must respect 30-min duration limit",
+            "Total walking time (${plan.totalWalkingMinutes} min) must respect 30-min duration limit including return leg",
             plan.totalWalkingMinutes <= maxAllowedWalkTime
         )
     }
@@ -89,7 +115,7 @@ class GuidedWalkPlannerEngineTest {
     }
 
     @Test
-    fun planGuidedWalk_noMatchingSpots_returnsEmptyStatePlan() {
+    fun planGuidedWalk_noMatchingSpots_returnsEmptyStatePlanWithoutFakeLoop() {
         val originLat = 38.7112
         val originLng = -9.1423
 
@@ -107,7 +133,9 @@ class GuidedWalkPlannerEngineTest {
         )
 
         assertTrue("Plan with no matching spots must return empty waypoints", plan.waypoints.isEmpty())
+        assertFalse("Empty plan cannot be marked as circular loop", plan.isCircularLoop)
         assertEquals(0, plan.totalWalkingMinutes)
         assertEquals(0.0, plan.totalDistanceMeters, 0.01)
+        assertNull("Empty plan must not produce fake elevation chart", plan.elevationProfile)
     }
 }

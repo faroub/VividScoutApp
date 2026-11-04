@@ -1,6 +1,8 @@
 package com.example.data.offline
 
 import com.example.data.local.ScoutSpotEntity
+import com.example.engine.LisbonElevationModel
+import com.example.engine.RouteElevationProfile
 import com.example.util.Geo
 
 enum class GuidedWalkMood(val title: String, val categories: List<String>) {
@@ -15,19 +17,21 @@ data class GuidedWalkPlan(
     val mood: GuidedWalkMood,
     val waypoints: List<ScoutSpotEntity>,
     val totalDistanceMeters: Double,
+    val returnLegDistanceMeters: Double,
     val totalWalkingMinutes: Int,
-    val elevationProfile: List<Int>
+    val isCircularLoop: Boolean,
+    val elevationProfile: RouteElevationProfile? = null
 )
 
 /**
- * Guided Walk Planner Engine: Generates optimized walking loops limited to user-selected duration
- * and mood preferences without external AI network dependency.
+ * Guided Walk Planner Engine: Generates genuine circular walking loops including the return leg to the origin,
+ * enforcing walking duration budgets and honest terrain elevation profiles.
  */
 object GuidedWalkPlannerEngine {
 
     /**
-     * Filters available spots by mood category and accumulates waypoints along trajectory corridor,
-     * ensuring total walking time does not exceed the target duration limit.
+     * Filters spots by mood category and accumulates waypoints forming a complete circular loop back to origin,
+     * including return leg in total distance and duration. Uses honest terrain elevation data or null when unavailable.
      */
     fun planGuidedWalk(
         originLat: Double,
@@ -38,15 +42,7 @@ object GuidedWalkPlannerEngine {
         availableSpots: List<ScoutSpotEntity>
     ): GuidedWalkPlan {
         if (availableSpots.isEmpty()) {
-            return GuidedWalkPlan(
-                startTitle = startTitle,
-                targetDurationMinutes = targetDurationMinutes,
-                mood = mood,
-                waypoints = emptyList(),
-                totalDistanceMeters = 0.0,
-                totalWalkingMinutes = 0,
-                elevationProfile = emptyList()
-            )
+            return emptyPlan(startTitle, targetDurationMinutes, mood)
         }
 
         // 1. Filter candidates by mood category
@@ -57,15 +53,7 @@ object GuidedWalkPlannerEngine {
         }
 
         if (moodFiltered.isEmpty()) {
-            return GuidedWalkPlan(
-                startTitle = startTitle,
-                targetDurationMinutes = targetDurationMinutes,
-                mood = mood,
-                waypoints = emptyList(),
-                totalDistanceMeters = 0.0,
-                totalWalkingMinutes = 0,
-                elevationProfile = emptyList()
-            )
+            return emptyPlan(startTitle, targetDurationMinutes, mood)
         }
 
         // 2. Order candidates by proximity / trajectory corridor from origin
@@ -73,49 +61,86 @@ object GuidedWalkPlannerEngine {
             Geo.calculateDistanceMeters(originLat, originLng, spot.latitude, spot.longitude)
         }
 
-        // 3. Accumulate waypoints up to target duration limit
+        // 3. Accumulate waypoints up to target duration budget, accounting for return leg W_k -> Origin
         val selectedWaypoints = mutableListOf<ScoutSpotEntity>()
-        var accumulatedDistanceMeters = 0.0
+        var outboundDistanceMeters = 0.0
         var currentLat = originLat
         var currentLng = originLng
 
         for (candidate in sortedCandidates) {
             val legDistance = Geo.calculateDistanceMeters(currentLat, currentLng, candidate.latitude, candidate.longitude)
-            val potentialTotalDistance = accumulatedDistanceMeters + legDistance
-            val potentialWalkMinutes = Geo.calculateWalkMinutes(potentialTotalDistance)
+            val potentialOutbound = outboundDistanceMeters + legDistance
+            val returnLegToOrigin = Geo.calculateDistanceMeters(candidate.latitude, candidate.longitude, originLat, originLng)
+            val potentialLoopDistance = potentialOutbound + returnLegToOrigin
+            val potentialLoopWalkMinutes = Geo.calculateWalkMinutes(potentialLoopDistance)
 
-            // Duration limit constraint: stop if adding waypoint exceeds target duration (with 10% margin)
-            if (selectedWaypoints.isNotEmpty() && potentialWalkMinutes > (targetDurationMinutes * 1.10)) {
+            // Duration budget constraint: stop if loop (outbound + return leg) exceeds target duration (+10% margin)
+            if (selectedWaypoints.isNotEmpty() && potentialLoopWalkMinutes > (targetDurationMinutes * 1.10)) {
                 break
             }
 
             selectedWaypoints.add(candidate)
-            accumulatedDistanceMeters = potentialTotalDistance
+            outboundDistanceMeters = potentialOutbound
             currentLat = candidate.latitude
             currentLng = candidate.longitude
         }
 
-        val totalWalkMinutes = Geo.calculateWalkMinutes(accumulatedDistanceMeters)
+        if (selectedWaypoints.isEmpty()) {
+            return emptyPlan(startTitle, targetDurationMinutes, mood)
+        }
 
-        // Generate synthetic elevation profile sparkline (e.g., hill climb/descent profile)
-        val elevationProfile = generateElevationSparkline(selectedWaypoints.size)
+        // Return leg distance from last waypoint back to origin
+        val lastWaypoint = selectedWaypoints.last()
+        val returnLegMeters = Geo.calculateDistanceMeters(lastWaypoint.latitude, lastWaypoint.longitude, originLat, originLng)
+        val totalLoopDistanceMeters = outboundDistanceMeters + returnLegMeters
+        val totalLoopWalkingMinutes = Geo.calculateWalkMinutes(totalLoopDistanceMeters)
+
+        // Calculate honest elevation profile along loop path points (Origin -> W1 -> W2 ... -> Wn -> Origin)
+        val pathPoints = mutableListOf<Pair<Double, Double>>()
+        pathPoints.add(Pair(originLat, originLng))
+        for (wp in selectedWaypoints) {
+            pathPoints.add(Pair(wp.latitude, wp.longitude))
+        }
+        pathPoints.add(Pair(originLat, originLng)) // Complete loop back to origin
+
+        val realElevation = try {
+            if (pathPoints.size >= 2) {
+                LisbonElevationModel.buildElevationProfile(pathPoints)
+            } else {
+                null
+            }
+        } catch (_: Exception) {
+            null
+        }
 
         return GuidedWalkPlan(
             startTitle = startTitle,
             targetDurationMinutes = targetDurationMinutes,
             mood = mood,
             waypoints = selectedWaypoints,
-            totalDistanceMeters = accumulatedDistanceMeters,
-            totalWalkingMinutes = totalWalkMinutes,
-            elevationProfile = elevationProfile
+            totalDistanceMeters = totalLoopDistanceMeters,
+            returnLegDistanceMeters = returnLegMeters,
+            totalWalkingMinutes = totalLoopWalkingMinutes,
+            isCircularLoop = true,
+            elevationProfile = realElevation
         )
     }
 
-    private fun generateElevationSparkline(waypointCount: Int): List<Int> {
-        if (waypointCount == 0) return emptyList()
-        val baseElevation = 45
-        return (0..waypointCount + 2).map { i ->
-            baseElevation + ((i * 12) % 35) + (if (i % 2 == 0) 8 else -5)
-        }
+    private fun emptyPlan(
+        startTitle: String,
+        targetDurationMinutes: Int,
+        mood: GuidedWalkMood
+    ): GuidedWalkPlan {
+        return GuidedWalkPlan(
+            startTitle = startTitle,
+            targetDurationMinutes = targetDurationMinutes,
+            mood = mood,
+            waypoints = emptyList(),
+            totalDistanceMeters = 0.0,
+            returnLegDistanceMeters = 0.0,
+            totalWalkingMinutes = 0,
+            isCircularLoop = false,
+            elevationProfile = null
+        )
     }
 }
