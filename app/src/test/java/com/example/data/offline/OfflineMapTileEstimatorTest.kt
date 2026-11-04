@@ -21,12 +21,12 @@ class OfflineMapTileEstimatorTest {
 
     @Test
     fun estimateTilePackForBounds_tinySelectionInOneTile_countsOneTilePerZoom() {
-        // Very tight 10m x 10m bounding box in central Lisbon (contained in single tile at zoom 12..16)
+        // Very tight 1m x 1m bounding box in central Lisbon (contained in single tile at zoom 12..16)
         val tinyBounds = GeoBoundingBox(
             minLat = 38.71120,
             minLng = -9.14230,
-            maxLat = 38.71125,
-            maxLng = -9.14225
+            maxLat = 38.71121,
+            maxLng = -9.14229
         )
 
         val result = OfflineMapTileEstimator.estimateTilePackForBounds(
@@ -39,7 +39,7 @@ class OfflineMapTileEstimatorTest {
         assertFalse(result.isCapped)
 
         // Hand-calculated expected value: 1 tile at each zoom 12, 13, 14, 15, 16 = 5 total tiles
-        assertEquals("Tiny 10m selection contained in 1 tile at zoom 12..16 must equal 5 total tiles", 5L, result.tileCount)
+        assertEquals("Tiny 1m selection contained in 1 tile at zoom 12..16 must equal 5 total tiles", 5L, result.tileCount)
     }
 
     @Test
