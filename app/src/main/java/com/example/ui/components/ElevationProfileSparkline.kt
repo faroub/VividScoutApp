@@ -115,7 +115,7 @@ fun ElevationProfileSparkline(
                             color = Color.White
                         )
                         Text(
-                            text = "Incline & decline across Lisbon's hills",
+                            text = "Topographic Estimate (Offline Model)",
                             style = MaterialTheme.typography.bodySmall,
                             color = Color(0xFF94A3B8),
                             fontSize = 11.sp

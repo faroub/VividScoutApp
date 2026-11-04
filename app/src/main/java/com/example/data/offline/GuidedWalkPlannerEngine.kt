@@ -1,6 +1,8 @@
 package com.example.data.offline
 
 import com.example.data.local.ScoutSpotEntity
+import com.example.engine.CityElevationResolver
+import com.example.engine.ElevationModel
 import com.example.engine.LisbonElevationModel
 import com.example.engine.RouteElevationProfile
 import com.example.util.Geo
@@ -39,7 +41,9 @@ object GuidedWalkPlannerEngine {
         startTitle: String,
         targetDurationMinutes: Int,
         mood: GuidedWalkMood,
-        availableSpots: List<ScoutSpotEntity>
+        availableSpots: List<ScoutSpotEntity>,
+        cityName: String? = null,
+        elevationModel: ElevationModel? = CityElevationResolver.resolveModelForCity(cityName, originLat, originLng)
     ): GuidedWalkPlan {
         // Validate duration budget & origin coordinates
         if (targetDurationMinutes <= 0) {
@@ -128,8 +132,8 @@ object GuidedWalkPlannerEngine {
         pathPoints.add(Pair(originLat, originLng)) // Complete loop back to origin
 
         val realElevation = try {
-            if (pathPoints.size >= 2) {
-                LisbonElevationModel.buildElevationProfile(pathPoints)
+            if (elevationModel != null && elevationModel.isSupported && pathPoints.size >= 2) {
+                elevationModel.buildElevationProfile(pathPoints)
             } else {
                 null
             }

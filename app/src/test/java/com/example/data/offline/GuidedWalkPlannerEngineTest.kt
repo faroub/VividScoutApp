@@ -3,6 +3,7 @@ package com.example.data.offline
 import com.example.data.local.ScoutSpotEntity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -30,6 +31,61 @@ class GuidedWalkPlannerEngineTest {
             latitude = lat,
             longitude = lng
         )
+    }
+
+    @Test
+    fun planGuidedWalk_lisbon_receivesLisbonElevationModel() {
+        val lisbonSpot = createSpot("s1", "Miradouro 500m", "sights", 38.7150, -9.1423)
+
+        val plan = GuidedWalkPlannerEngine.planGuidedWalk(
+            originLat = 38.7112,
+            originLng = -9.1423,
+            startTitle = "Rossio Square",
+            targetDurationMinutes = 60,
+            mood = GuidedWalkMood.SCENIC,
+            availableSpots = listOf(lisbonSpot),
+            cityName = "Lisbon, Portugal"
+        )
+
+        assertNotNull("Lisbon routes MUST receive Lisbon elevation profile", plan.elevationProfile)
+        assertTrue(plan.elevationProfile!!.points.size >= 2)
+    }
+
+    @Test
+    fun planGuidedWalk_unsupportedCity_doesNotReceiveLisbonElevationData() {
+        // Dresden, Germany coordinates and city name
+        val dresdenSpot = createSpot("d1", "Frauenkirche 500m", "sights", 51.0530, 13.7373)
+
+        val plan = GuidedWalkPlannerEngine.planGuidedWalk(
+            originLat = 51.0504,
+            originLng = 13.7373,
+            startTitle = "Neumarkt",
+            targetDurationMinutes = 60,
+            mood = GuidedWalkMood.SCENIC,
+            availableSpots = listOf(dresdenSpot),
+            cityName = "Dresden, Germany"
+        )
+
+        assertNull("Unsupported cities MUST NOT receive Lisbon elevation data", plan.elevationProfile)
+    }
+
+    @Test
+    fun planGuidedWalk_validElevationProfile_includesCompleteRouteWithReturnLeg() {
+        val lisbonSpot = createSpot("s1", "Miradouro 500m", "sights", 38.7150, -9.1423)
+
+        val plan = GuidedWalkPlannerEngine.planGuidedWalk(
+            originLat = 38.7112,
+            originLng = -9.1423,
+            startTitle = "Rossio Square",
+            targetDurationMinutes = 60,
+            mood = GuidedWalkMood.SCENIC,
+            availableSpots = listOf(lisbonSpot),
+            cityName = "Lisbon, Portugal"
+        )
+
+        assertNotNull(plan.elevationProfile)
+        val lastPoint = plan.elevationProfile!!.points.last()
+        assertEquals(plan.totalDistanceMeters, lastPoint.distanceMeters, 50.0)
     }
 
     @Test
