@@ -87,11 +87,12 @@ service cloud.firestore {
                     && isValidTipData(request.resource.data)
                     && request.resource.data.upvotes == 0;
 
-      // Allow +1 upvote increment when unique per-account vote doc is created in same request,
-      // OR owner-only tip retries (which CANNOT modify upvotes or legacyUpvotes)
+      // Atomic upvote increment: requires vote doc NOT to exist before operation, and TO exist after operation.
+      // Pre-write (!exists) + Post-write (existsAfter) prevents re-using pre-existing vote docs for replay increments.
       allow update: if isAuthenticated() && (
         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['upvotes'])
          && request.resource.data.upvotes == resource.data.upvotes + 1
+         && !exists(/databases/$(database)/documents/community_tips/$(tipId)/votes/$(request.auth.uid))
          && existsAfter(/databases/$(database)/documents/community_tips/$(tipId)/votes/$(request.auth.uid))) ||
         (isOwner(resource.data.ownerUid)
          && request.resource.data.ownerUid == resource.data.ownerUid
@@ -121,10 +122,12 @@ service cloud.firestore {
                     && request.resource.data.ownerUid == request.auth.uid
                     && request.resource.data.reportsCount == 0;
 
-      // Allow +1 reportsCount increment ONLY when a corresponding unique report document is created in the same request
+      // Atomic photo report increment: requires report doc NOT to exist before operation, and TO exist after operation.
+      // Pre-write (!exists) + Post-write (existsAfter) prevents re-using pre-existing report docs for replay increments.
       allow update: if isAuthenticated()
                     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reportsCount'])
                     && request.resource.data.reportsCount == resource.data.reportsCount + 1
+                    && !exists(/databases/$(database)/documents/spot_photos/$(photoId)/reports/$(request.auth.uid))
                     && existsAfter(/databases/$(database)/documents/spot_photos/$(photoId)/reports/$(request.auth.uid));
 
       allow delete: if false;

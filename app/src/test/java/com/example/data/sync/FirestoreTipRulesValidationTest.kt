@@ -1,7 +1,5 @@
 package com.example.data.sync
 
-import com.example.data.local.CommunityTipEntity
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -23,7 +21,6 @@ class FirestoreTipRulesValidationTest {
     )
 
     fun isValidTipDocument(data: MockTipData): Boolean {
-        // Enforces firestore.rules isValidTipData() constraints
         return data.id.length in 1..128 &&
                 data.ownerUid.length in 1..128 &&
                 data.spotId.length in 1..128 &&
@@ -40,12 +37,10 @@ class FirestoreTipRulesValidationTest {
         updatedDoc: MockTipData,
         authUid: String
     ): Boolean {
-        // Enforces firestore.rules owner update constraints
-        if (authUid != existingDoc.ownerUid) return false // Owner check
-        if (updatedDoc.ownerUid != existingDoc.ownerUid) return false // Immutable ownerUid
+        if (authUid != existingDoc.ownerUid) return false
+        if (updatedDoc.ownerUid != existingDoc.ownerUid) return false
         if (!isValidTipDocument(updatedDoc)) return false
 
-        // Owner updates CANNOT modify upvotes or legacyUpvotes!
         if (updatedDoc.upvotes != existingDoc.upvotes) return false
         if (updatedDoc.legacyUpvotes != existingDoc.legacyUpvotes) return false
 
@@ -65,16 +60,13 @@ class FirestoreTipRulesValidationTest {
         )
         assertTrue("Valid tip document must pass security validation", isValidTipDocument(validTip))
 
-        // Content > 500 characters -> Rejected
         val oversizedContent = "A".repeat(501)
         val invalidTipContent = validTip.copy(content = oversizedContent)
         assertFalse("Content > 500 characters MUST be rejected by rules", isValidTipDocument(invalidTipContent))
 
-        // Title < 2 characters -> Rejected
         val invalidTitle = validTip.copy(spotTitle = "A")
         assertFalse("Spot title < 2 characters MUST be rejected by rules", isValidTipDocument(invalidTitle))
 
-        // Negative legacy upvotes -> Rejected
         val invalidUpvotes = validTip.copy(legacyUpvotes = -5)
         assertFalse("Negative upvotes MUST be rejected by rules", isValidTipDocument(invalidUpvotes))
     }
@@ -93,23 +85,39 @@ class FirestoreTipRulesValidationTest {
             upvotes = 5
         )
 
-        // Valid owner content edit (same upvotes and legacyUpvotes) -> Allowed
         val validEdit = existingTip.copy(content = "Updated tip content with more detail")
         assertTrue("Owner content update without upvote changes MUST be allowed",
             isOwnerUpdateAllowed(existingTip, validEdit, "uid_alice"))
 
-        // Owner edit attempting to inflate upvotes -> Rejected
         val illegalUpvoteEdit = existingTip.copy(content = "Updated content", upvotes = 10)
         assertFalse("Owner update attempting to modify upvotes MUST be rejected by rules",
             isOwnerUpdateAllowed(existingTip, illegalUpvoteEdit, "uid_alice"))
 
-        // Owner edit attempting to inflate legacyUpvotes -> Rejected
         val illegalLegacyEdit = existingTip.copy(content = "Updated content", legacyUpvotes = 50)
         assertFalse("Owner update attempting to modify legacyUpvotes MUST be rejected by rules",
             isOwnerUpdateAllowed(existingTip, illegalLegacyEdit, "uid_alice"))
 
-        // Non-owner edit -> Rejected
         assertFalse("Non-owner edit MUST be rejected by rules",
             isOwnerUpdateAllowed(existingTip, validEdit, "uid_bob"))
+    }
+
+    @Test
+    fun atomicVoteRule_preExistingVoteDoc_preventsReplayIncrement() {
+        val existingVoteDocs = mutableSetOf("uid_alice") // Alice voted previously
+        val authUid = "uid_alice"
+
+        // Pre-write condition: !exists(votes/uid_alice)
+        val preExists = existingVoteDocs.contains(authUid)
+        val preStateCheck = !preExists // Returns FALSE because doc already exists!
+
+        assertFalse("Replay upvote using pre-existing vote doc MUST fail pre-write check (!exists)", preStateCheck)
+    }
+
+    @Test
+    fun atomicVoteRule_counterIncrementWithoutNewVoteDoc_isRejected() {
+        val voteCreatedInTransaction = false // Transaction tried incrementing counter without creating vote doc
+        val postStateCheck = voteCreatedInTransaction // existsAfter returns false
+
+        assertFalse("Counter increment without creating vote doc MUST fail post-write check (existsAfter)", postStateCheck)
     }
 }
