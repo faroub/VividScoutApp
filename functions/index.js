@@ -62,7 +62,12 @@ async function checkRateLimit(uid) {
  * Fetches OpenTripMap candidates
  */
 async function fetchOpenTripMap(lat, lon, radiusMeters) {
-  const apiKey = process.env.OPENTRIPMAP_API_KEY || "5ae2e3f221c38a28845f05b6a76081e285be256e07fbef1803734e5f";
+  const apiKey = process.env.OPENTRIPMAP_API_KEY;
+  if (!apiKey) {
+    console.warn("[OpenTripMap] OPENTRIPMAP_API_KEY secret not configured in environment/Secret Manager. Skipping fetch.");
+    return [];
+  }
+
   const url = `https://api.opentripmap.com/0.1/en/places/radius?radius=${radiusMeters}&lon=${lon}&lat=${lat}&kinds=historic,cultural,architecture,natural,tourist_object&rate=2&format=json&limit=15&apikey=${apiKey}`;
 
   try {

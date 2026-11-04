@@ -2,12 +2,13 @@ package com.example.data.network
 
 import android.util.Log
 import com.example.data.local.ScoutSpotEntity
+import com.example.data.places.OpenTripMapSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import org.json.JSONArray
 import org.json.JSONObject
+import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
 
 /**
@@ -15,6 +16,7 @@ import java.util.concurrent.TimeUnit
  * from OpenTripMap and Wikidata open tourist databases.
  */
 class OpenTripMapService(
+    private val openTripMapSource: OpenTripMapSource = OpenTripMapSource(),
     private val client: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(8, TimeUnit.SECONDS)
         .readTimeout(10, TimeUnit.SECONDS)
@@ -27,69 +29,36 @@ class OpenTripMapService(
     }
 
     /**
-     * Fetches touristic POIs near given coordinates from OpenTripMap open data API.
+     * Fetches touristic POIs near given coordinates from OpenTripMap via secure authenticated backend function.
      */
     suspend fun fetchTouristicPlaces(
         lat: Double,
         lon: Double,
         radiusMeters: Int = 3000
     ): List<ScoutSpotEntity> = withContext(Dispatchers.IO) {
-        val spots = mutableListOf<ScoutSpotEntity>()
-        try {
-            // OpenTripMap free radius POI endpoint using open amenity & tourist kinds
-            val url = "https://api.opentripmap.com/0.1/en/places/radius?radius=$radiusMeters&lon=$lon&lat=$lat&kinds=historic,cultural,architecture,natural,tourist_object&rate=2&format=json&limit=12"
-            val request = Request.Builder()
-                .url(url)
-                .header("User-Agent", USER_AGENT)
-                .header("Accept", "application/json")
-                .build()
+        val candidatesResult = openTripMapSource.fetchNear(lat, lon, radiusMeters)
+        val candidates = candidatesResult.getOrNull().orEmpty()
 
-            client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    Log.w(TAG, "OpenTripMap HTTP request failed with code ${response.code}")
-                    return@use
-                }
-                val body = response.body?.string() ?: return@use
-                val jsonArr = JSONArray(body)
-
-                for (i in 0 until jsonArr.length()) {
-                    val item = jsonArr.getJSONObject(i)
-                    val name = item.optString("name").ifEmpty { null } ?: continue
-                    val xid = item.optString("xid", "otm_$i")
-                    val point = item.optJSONObject("point") ?: continue
-                    val spotLat = point.optDouble("lat", lat)
-                    val spotLon = point.optDouble("lon", lon)
-                    val kinds = item.optString("kinds", "tourist_object")
-
-                    val category = parseCategoryFromKinds(kinds)
-                    val description = formatKindsDescription(kinds)
-
-                    spots.add(
-                        ScoutSpotEntity(
-                            id = "otm_$xid",
-                            title = name,
-                            description = description,
-                            category = category,
-                            distance = "Nearby",
-                            walkMinutes = 8,
-                            rating = null,
-                            reviewCount = null,
-                            imageUrl = "",
-                            badgeLabel = "OpenTripMap",
-                            statusBadge = "OpenTripMap POI",
-                            tagsRaw = kinds.replace(",", "|||"),
-                            proTip = "Discovered via OpenTripMap global POI database ($kinds).",
-                            latitude = spotLat,
-                            longitude = spotLon,
-                            locationName = "OpenTripMap Landmark"
-                        )
-                    )
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to fetch OpenTripMap touristic places", e)
+        candidates.map { candidate ->
+            ScoutSpotEntity(
+                id = candidate.sourceId,
+                title = candidate.name,
+                description = candidate.description.ifBlank { "Touristic place documented via OpenTripMap API." },
+                category = candidate.category,
+                distance = "Nearby",
+                walkMinutes = 8,
+                rating = null,
+                reviewCount = null,
+                imageUrl = candidate.imageUrl.orEmpty(),
+                badgeLabel = "OpenTripMap",
+                statusBadge = "OpenTripMap POI",
+                tagsRaw = "opentripmap|||${candidate.category}",
+                proTip = "Discovered via OpenTripMap global POI database.",
+                latitude = candidate.latitude,
+                longitude = candidate.longitude,
+                locationName = "OpenTripMap Landmark"
+            )
         }
-        spots
     }
 
     /**
@@ -116,7 +85,7 @@ class OpenTripMapService(
                 } LIMIT 8
             """.trimIndent()
 
-            val encodedSparql = java.net.URLEncoder.encode(sparql, "UTF-8")
+            val encodedSparql = URLEncoder.encode(sparql, "UTF-8")
             val url = "https://query.wikidata.org/sparql?query=$encodedSparql&format=json"
 
             val request = Request.Builder()
@@ -135,7 +104,7 @@ class OpenTripMapService(
                     val binding = bindings.getJSONObject(i)
                     val label = binding.optJSONObject("itemLabel")?.optString("value") ?: continue
                     if (label.startsWith("Q") && label.substring(1).all { it.isDigit() }) continue
-                    
+
                     val image = binding.optJSONObject("image")?.optString("value") ?: ""
                     val coordStr = binding.optJSONObject("coord")?.optString("value") ?: ""
 
@@ -157,8 +126,8 @@ class OpenTripMapService(
                             category = "history",
                             distance = "Nearby",
                             walkMinutes = 10,
-                            rating = 4.8,
-                            reviewCount = 120,
+                            rating = null,
+                            reviewCount = null,
                             imageUrl = image,
                             badgeLabel = "Wikidata",
                             statusBadge = "UNESCO / Wikidata",
@@ -176,22 +145,4 @@ class OpenTripMapService(
         }
         spots
     }
-
-    private fun parseCategoryFromKinds(kinds: String): String {
-        return when {
-            kinds.contains("food") || kinds.contains("bakeries") || kinds.contains("cafes") -> "eats"
-            kinds.contains("historic") || kinds.contains("architecture") || kinds.contains("museums") -> "history"
-            kinds.contains("natural") || kinds.contains("view_points") || kinds.contains("parks") -> "sights"
-            else -> "sights"
-        }
-    }
-
-    private fun formatKindsDescription(kinds: String): String {
-        val readable = kinds.split(",")
-            .take(3)
-            .joinToString(", ") { it.replace("_", " ").capitalize() }
-        return "Touristic place documented via OpenTripMap API. Highlights: $readable."
-    }
-
-    private fun String.capitalize(): String = replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
 }
