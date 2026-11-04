@@ -1,6 +1,7 @@
 package com.example
 
 import android.Manifest
+import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -42,6 +43,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.data.model.GlobalCityCatalog
+import com.example.data.sync.SharedTrip
+import com.example.data.sync.SharedTripManager
 import com.example.ui.components.OfflineSyncStatus
 import com.example.engine.ScoutVectorEngine
 import com.example.ui.components.ARNavigationOverlay
@@ -58,6 +61,7 @@ import com.example.ui.dialogs.OfflineQueueDialog
 import com.example.ui.dialogs.OfflineTrailBottomSheet
 import com.example.ui.dialogs.OverpassDiagnosticDialog
 import com.example.ui.dialogs.RegionDownloadDialog
+import com.example.ui.dialogs.SharedTripDialog
 import com.example.ui.dialogs.SpotDetailBottomSheet
 import com.example.ui.screens.CommunityFeedScreen
 import com.example.ui.screens.ExploreScreen
@@ -205,6 +209,33 @@ fun VividScoutApp(
 
     var isArModeActive by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
+
+    var activeSharedTrip by remember { mutableStateOf<SharedTrip?>(null) }
+    var activeSharedTripError by remember { mutableStateOf<String?>(null) }
+    var showSharedTripDialog by remember { mutableStateOf(false) }
+
+    val handleDeepLinkIntent: (Intent?) -> Unit = { deepIntent ->
+        val dataUri = deepIntent?.dataString
+        val tripId = SharedTripManager.parseTripIdFromUri(dataUri)
+        if (!tripId.isNullOrBlank()) {
+            coroutineScope.launch {
+                val fetchResult = SharedTripManager.fetchSharedTripFromFirestore(context, tripId)
+                if (fetchResult.isSuccess) {
+                    activeSharedTrip = fetchResult.getOrNull()
+                    activeSharedTripError = null
+                } else {
+                    activeSharedTrip = null
+                    activeSharedTripError = fetchResult.exceptionOrNull()?.message ?: "Shared itinerary not found or expired."
+                }
+                showSharedTripDialog = true
+            }
+        }
+    }
+
+    val currentActivity = context as? Activity
+    LaunchedEffect(currentActivity?.intent) {
+        handleDeepLinkIntent(currentActivity?.intent)
+    }
 
     CompositionLocalProvider(
         LocalLayoutDirection provides (if (profileState.appLanguage.isRtl) LayoutDirection.Rtl else LayoutDirection.Ltr),
@@ -680,6 +711,19 @@ fun VividScoutApp(
                     }
                 },
                 onDismiss = { exploreViewModel.dismissGlobalCityDialog() }
+            )
+        }
+
+        // Shared Read-Only Itinerary Dialog
+        if (showSharedTripDialog) {
+            SharedTripDialog(
+                trip = activeSharedTrip,
+                errorMessage = activeSharedTripError,
+                onDismiss = { showSharedTripDialog = false },
+                onNavigateToSpot = { lat, lng ->
+                    showSharedTripDialog = false
+                    locationViewModel.setManualCoordinates(lat, lng)
+                }
             )
         }
     }

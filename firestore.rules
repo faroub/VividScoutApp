@@ -142,8 +142,8 @@ service cloud.firestore {
     }
 
     match /shared_trips/{tripId} {
-      // Public read ONLY by exact document ID (get rule only; list/query prohibited)
-      allow get: if true;
+      // Public read ONLY by exact document ID when not expired (get rule only; list/query prohibited)
+      allow get: if resource.data.expireAt > request.time.toMillis();
       allow list: if false;
 
       // Create allowed for authenticated users without user tracking fields

@@ -6,7 +6,12 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [33])
 class SharedTripManagerTest {
 
     private fun createSpot(id: String, title: String): ScoutSpotEntity {
@@ -65,5 +70,17 @@ class SharedTripManagerTest {
         assertEquals("Alfama Secret Corner", spotItem.title)
         assertEquals(38.7112, spotItem.latitude, 0.0001)
         assertEquals(-9.1423, spotItem.longitude, 0.0001)
+    }
+
+    @Test
+    fun parseTripIdFromUri_parsesAppLinksAndCustomSchemes() {
+        val appLink = "https://vividscout.app/trip/abcd-1234-efgh-5678"
+        assertEquals("abcd-1234-efgh-5678", SharedTripManager.parseTripIdFromUri(appLink))
+
+        val customScheme = "vividscout://trip/abcd-1234-efgh-5678"
+        assertEquals("abcd-1234-efgh-5678", SharedTripManager.parseTripIdFromUri(customScheme))
+
+        val queryScheme = "vividscout://trip?id=abcd-1234-efgh-5678"
+        assertEquals("abcd-1234-efgh-5678", SharedTripManager.parseTripIdFromUri(queryScheme))
     }
 }
