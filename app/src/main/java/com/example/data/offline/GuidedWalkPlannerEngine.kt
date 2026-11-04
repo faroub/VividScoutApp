@@ -41,6 +41,17 @@ object GuidedWalkPlannerEngine {
         mood: GuidedWalkMood,
         availableSpots: List<ScoutSpotEntity>
     ): GuidedWalkPlan {
+        // Validate duration budget & origin coordinates
+        if (targetDurationMinutes <= 0) {
+            return emptyPlan(startTitle, targetDurationMinutes, mood)
+        }
+        if (originLat.isNaN() || originLng.isNaN() ||
+            originLat < -90.0 || originLat > 90.0 ||
+            originLng < -180.0 || originLng > 180.0 ||
+            (originLat == 0.0 && originLng == 0.0)) {
+            return emptyPlan(startTitle, targetDurationMinutes, mood)
+        }
+
         if (availableSpots.isEmpty()) {
             return emptyPlan(startTitle, targetDurationMinutes, mood)
         }
@@ -68,15 +79,28 @@ object GuidedWalkPlannerEngine {
         var currentLng = originLng
 
         for (candidate in sortedCandidates) {
+            // Validate candidate coordinates
+            if (candidate.latitude.isNaN() || candidate.longitude.isNaN() ||
+                candidate.latitude < -90.0 || candidate.latitude > 90.0 ||
+                candidate.longitude < -180.0 || candidate.longitude > 180.0 ||
+                (candidate.latitude == 0.0 && candidate.longitude == 0.0)) {
+                continue
+            }
+
             val legDistance = Geo.calculateDistanceMeters(currentLat, currentLng, candidate.latitude, candidate.longitude)
+            if (legDistance.isNaN()) continue
+
             val potentialOutbound = outboundDistanceMeters + legDistance
             val returnLegToOrigin = Geo.calculateDistanceMeters(candidate.latitude, candidate.longitude, originLat, originLng)
+            if (returnLegToOrigin.isNaN()) continue
+
             val potentialLoopDistance = potentialOutbound + returnLegToOrigin
             val potentialLoopWalkMinutes = Geo.calculateWalkMinutes(potentialLoopDistance)
 
-            // Duration budget constraint: stop if loop (outbound + return leg) exceeds target duration (+10% margin)
-            if (selectedWaypoints.isNotEmpty() && potentialLoopWalkMinutes > (targetDurationMinutes * 1.10)) {
-                break
+            // Duration budget constraint applied to ALL waypoints (first and subsequent).
+            // Skip infeasible candidates without stopping search so later feasible candidates can still be included.
+            if (potentialLoopWalkMinutes > (targetDurationMinutes * 1.10)) {
+                continue
             }
 
             selectedWaypoints.add(candidate)

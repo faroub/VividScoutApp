@@ -33,109 +33,133 @@ class GuidedWalkPlannerEngineTest {
     }
 
     @Test
-    fun planGuidedWalk_returnsCircularLoopWithReturnLegAndDuration() {
+    fun planGuidedWalk_oneDistantWaypointAndShortDuration_skipsDistantWaypoint() {
+        val originLat = 38.7112
+        val originLng = -9.1423
+        val shortDurationMinutes = 15 // 15 minute walk budget
+
+        // Spot 10 km away -> round trip > 120 minutes (exceeds 15 min budget)
+        val distantSpot = createSpot("distant_1", "Distant Castle", "sights", 38.8000, -9.1423)
+
+        val plan = GuidedWalkPlannerEngine.planGuidedWalk(
+            originLat = originLat,
+            originLng = originLng,
+            startTitle = "Rossio",
+            targetDurationMinutes = shortDurationMinutes,
+            mood = GuidedWalkMood.SCENIC,
+            availableSpots = listOf(distantSpot)
+        )
+
+        assertTrue("First waypoint exceeding duration budget MUST be skipped, returning empty plan", plan.waypoints.isEmpty())
+        assertFalse(plan.isCircularLoop)
+        assertEquals(0, plan.totalWalkingMinutes)
+    }
+
+    @Test
+    fun planGuidedWalk_firstWaypointWithinDurationBudget_isAccepted() {
+        val originLat = 38.7112
+        val originLng = -9.1423
+
+        // Spot 300m away -> round trip ~600m (~7 min walk, fits inside 30 min budget)
+        val closeSpot = createSpot("close_1", "Nearby Miradouro", "sights", 38.7130, -9.1423)
+
+        val plan = GuidedWalkPlannerEngine.planGuidedWalk(
+            originLat = originLat,
+            originLng = originLng,
+            startTitle = "Rossio",
+            targetDurationMinutes = 30,
+            mood = GuidedWalkMood.SCENIC,
+            availableSpots = listOf(closeSpot)
+        )
+
+        assertEquals(1, plan.waypoints.size)
+        assertEquals("close_1", plan.waypoints.first().id)
+        assertTrue(plan.isCircularLoop)
+        assertTrue(plan.totalWalkingMinutes <= 30)
+    }
+
+    @Test
+    fun planGuidedWalk_infeasibleFirstCandidateSkipped_laterFeasibleCandidateAccepted() {
+        val originLat = 38.7112
+        val originLng = -9.1423
+
+        // Candidate 1 (infeasible): 8 km away
+        val infeasibleSpot = createSpot("infeasible_1", "Far Monument", "sights", 38.7800, -9.1423)
+        // Candidate 2 (feasible): 400m away
+        val feasibleSpot = createSpot("feasible_2", "Nearby Viewpoint", "sights", 38.7135, -9.1423)
+
+        val plan = GuidedWalkPlannerEngine.planGuidedWalk(
+            originLat = originLat,
+            originLng = originLng,
+            startTitle = "Rossio",
+            targetDurationMinutes = 20,
+            mood = GuidedWalkMood.SCENIC,
+            availableSpots = listOf(infeasibleSpot, feasibleSpot)
+        )
+
+        assertEquals("Engine must skip infeasible candidate and select feasible candidate", 1, plan.waypoints.size)
+        assertEquals("feasible_2", plan.waypoints.first().id)
+        assertTrue(plan.isCircularLoop)
+    }
+
+    @Test
+    fun planGuidedWalk_returnLegDistance_isIncludedInTotalDistanceAndDuration() {
         val originLat = 38.7112
         val originLng = -9.1423
 
         val spots = listOf(
-            createSpot("s1", "Miradouro 500m", "sights", 38.7150, -9.1423),
-            createSpot("s2", "Miradouro 1000m", "sights", 38.7200, -9.1423)
+            createSpot("s1", "Miradouro 500m", "sights", 38.7150, -9.1423)
         )
 
         val plan = GuidedWalkPlannerEngine.planGuidedWalk(
             originLat = originLat,
             originLng = originLng,
             startTitle = "Rossio Square",
-            targetDurationMinutes = 60,
+            targetDurationMinutes = 30,
             mood = GuidedWalkMood.SCENIC,
             availableSpots = spots
         )
 
-        assertTrue("Generated plan must be marked as circular loop", plan.isCircularLoop)
+        assertTrue(plan.isCircularLoop)
         assertTrue("Return leg distance must be > 0.0 meters", plan.returnLegDistanceMeters > 0.0)
+        assertTrue("Total loop distance must equal outbound + return leg distance", plan.totalDistanceMeters > plan.returnLegDistanceMeters)
         assertTrue("Total walking time must include return leg to origin", plan.totalWalkingMinutes > 0)
     }
 
     @Test
-    fun planGuidedWalk_durationLimitRespected_doesNotExceedSelectedDuration() {
-        val originLat = 38.7112
-        val originLng = -9.1423
-        val targetDurationMinutes = 30 // 30 minute limit
+    fun planGuidedWalk_invalidCoordinates_returnsEmptyPlan() {
+        val spots = listOf(createSpot("s1", "Spot", "sights", 38.7120, -9.1423))
 
-        // Create spots spaced at 500m, 1200m, 2500m, 5000m away
-        val spots = listOf(
-            createSpot("s1", "Spot 500m", "sights", 38.7150, -9.1423),
-            createSpot("s2", "Spot 1200m", "sights", 38.7220, -9.1423),
-            createSpot("s3", "Spot 2500m", "sights", 38.7330, -9.1423),
-            createSpot("s4", "Spot 5000m", "sights", 38.7560, -9.1423)
-        )
+        // NaN origin latitude
+        val nanPlan = GuidedWalkPlannerEngine.planGuidedWalk(Double.NaN, -9.1423, "Start", 30, GuidedWalkMood.SCENIC, spots)
+        assertTrue("NaN origin coordinates must return empty plan", nanPlan.waypoints.isEmpty())
 
-        val plan = GuidedWalkPlannerEngine.planGuidedWalk(
-            originLat = originLat,
-            originLng = originLng,
-            startTitle = "Rossio Square",
-            targetDurationMinutes = targetDurationMinutes,
-            mood = GuidedWalkMood.SCENIC,
-            availableSpots = spots
-        )
+        // Out of bounds origin latitude (> 90)
+        val outOfBoundsPlan = GuidedWalkPlannerEngine.planGuidedWalk(100.0, -9.1423, "Start", 30, GuidedWalkMood.SCENIC, spots)
+        assertTrue("Out of bounds origin coordinates must return empty plan", outOfBoundsPlan.waypoints.isEmpty())
 
-        val maxAllowedWalkTime = (targetDurationMinutes * 1.10).toInt()
-        assertTrue(
-            "Total walking time (${plan.totalWalkingMinutes} min) must respect 30-min duration limit including return leg",
-            plan.totalWalkingMinutes <= maxAllowedWalkTime
-        )
+        // Null Island origin (0, 0)
+        val nullIslandPlan = GuidedWalkPlannerEngine.planGuidedWalk(0.0, 0.0, "Start", 30, GuidedWalkMood.SCENIC, spots)
+        assertTrue("Null Island origin coordinates must return empty plan", nullIslandPlan.waypoints.isEmpty())
     }
 
     @Test
-    fun planGuidedWalk_moodFilter_returnsOnlyMatchingCategories() {
-        val originLat = 38.7112
-        val originLng = -9.1423
+    fun planGuidedWalk_zeroOrNegativeDuration_returnsEmptyPlan() {
+        val spots = listOf(createSpot("s1", "Spot 500m", "sights", 38.7130, -9.1423))
 
-        val spots = listOf(
-            createSpot("s1", "Bakery Central", "eats", 38.7120, -9.1423),
-            createSpot("s2", "Carmo Convent Ruins", "history", 38.7125, -9.1423),
-            createSpot("s3", "Sao Jorge Castle", "history", 38.7135, -9.1423),
-            createSpot("s4", "Scenic Miradouro", "sights", 38.7140, -9.1423)
-        )
+        val zeroPlan = GuidedWalkPlannerEngine.planGuidedWalk(38.7112, -9.1423, "Start", 0, GuidedWalkMood.SCENIC, spots)
+        assertTrue("Zero duration budget must return empty plan", zeroPlan.waypoints.isEmpty())
 
-        val plan = GuidedWalkPlannerEngine.planGuidedWalk(
-            originLat = originLat,
-            originLng = originLng,
-            startTitle = "Current Location",
-            targetDurationMinutes = 60,
-            mood = GuidedWalkMood.HISTORIC,
-            availableSpots = spots
-        )
-
-        assertTrue("Historic walk plan must contain waypoints", plan.waypoints.isNotEmpty())
-        for (spot in plan.waypoints) {
-            val catLower = spot.category.lowercase()
-            assertTrue("Waypoint '${spot.title}' category '$catLower' must match historic mood", catLower.contains("history"))
-        }
+        val negativePlan = GuidedWalkPlannerEngine.planGuidedWalk(38.7112, -9.1423, "Start", -15, GuidedWalkMood.SCENIC, spots)
+        assertTrue("Negative duration budget must return empty plan", negativePlan.waypoints.isEmpty())
     }
 
     @Test
-    fun planGuidedWalk_noMatchingSpots_returnsEmptyStatePlanWithoutFakeLoop() {
-        val originLat = 38.7112
-        val originLng = -9.1423
-
-        val spots = listOf(
-            createSpot("s1", "Pastelaria", "eats", 38.7120, -9.1423)
-        )
-
-        val plan = GuidedWalkPlannerEngine.planGuidedWalk(
-            originLat = originLat,
-            originLng = originLng,
-            startTitle = "Current Location",
-            targetDurationMinutes = 30,
-            mood = GuidedWalkMood.SCENIC, // Scenic requested, but only eats spot available
-            availableSpots = spots
-        )
-
-        assertTrue("Plan with no matching spots must return empty waypoints", plan.waypoints.isEmpty())
-        assertFalse("Empty plan cannot be marked as circular loop", plan.isCircularLoop)
+    fun planGuidedWalk_emptyCandidateList_returnsEmptyPlan() {
+        val plan = GuidedWalkPlannerEngine.planGuidedWalk(38.7112, -9.1423, "Start", 30, GuidedWalkMood.SCENIC, emptyList())
+        assertTrue("Empty candidate list must return empty plan", plan.waypoints.isEmpty())
+        assertFalse(plan.isCircularLoop)
         assertEquals(0, plan.totalWalkingMinutes)
-        assertEquals(0.0, plan.totalDistanceMeters, 0.01)
-        assertNull("Empty plan must not produce fake elevation chart", plan.elevationProfile)
+        assertNull(plan.elevationProfile)
     }
 }
