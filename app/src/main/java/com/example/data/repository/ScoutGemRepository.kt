@@ -11,7 +11,9 @@ import com.example.data.model.ScoutGem
 import com.example.data.model.toScoutGem
 import com.example.data.network.GeminiSpotService
 import com.example.data.network.OverpassRetrofitClient
+import com.example.data.places.MergedPlace
 import com.example.data.places.PlaceRepository
+import com.example.util.Geo
 import com.example.util.LocationPhotoResolver
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -417,8 +419,42 @@ open class ScoutGemRepository(
         Result.success(spots.size)
     }
 
+    fun mergedPlaceToEntity(merged: MergedPlace, userLat: Double, userLng: Double): ScoutSpotEntity {
+        val primarySource = merged.sources.firstOrNull()
+        val providerBadge = primarySource?.sourceName ?: "Multi-Source"
+        val sourceId = primarySource?.sourceId ?: "merged_${merged.latitude}_${merged.longitude}"
+        val spotId = "place_${sourceId.hashCode()}"
+
+        val distanceMeters = Geo.calculateDistanceMeters(userLat, userLng, merged.latitude, merged.longitude)
+        val walkMins = Geo.calculateWalkMinutes(distanceMeters)
+        val formattedDist = Geo.formatDistance(distanceMeters)
+
+        val licenseText = merged.license ?: "Open Data Commons / CC BY-SA"
+        val tagsString = merged.sources.joinToString("|||") { "${it.sourceName}:${it.sourceId}" }
+
+        return ScoutSpotEntity(
+            id = spotId,
+            title = merged.primaryName,
+            description = merged.primaryDescription.ifBlank { "Multi-source tourist attraction." },
+            category = merged.category,
+            distance = formattedDist,
+            walkMinutes = walkMins,
+            rating = null, // Never invent ratings
+            reviewCount = null, // Never invent review counts
+            imageUrl = merged.imageUrl ?: "",
+            badgeLabel = providerBadge,
+            statusBadge = "Aggregated Place",
+            tagsRaw = tagsString,
+            proTip = "Multi-source place ($providerBadge). License: $licenseText.",
+            contributor = "@$providerBadge",
+            latitude = merged.latitude,
+            longitude = merged.longitude,
+            locationName = "Nearby Landmark"
+        )
+    }
+
     /**
-     * Queries all active touristic place sources simultaneously (OpenTripMap, Wikidata, Overpass, GeoNames, UNESCO, Europeana, Municipal Open Data, Gemini AI).
+     * Queries all active touristic place sources simultaneously via PlaceRepository or direct source services.
      */
     suspend fun syncMultiSourceGems(
         userLat: Double = DefaultLocationConfig.DEFAULT_LAT,
@@ -426,6 +462,18 @@ open class ScoutGemRepository(
         cityName: String = "Lisbon",
         sourceIds: List<String> = listOf("open_trip_map", "wikivoyage_wikidata", "overpass_osm", "geonames_gazetteer", "unesco_world_heritage", "europeana_cultural", "municipal_open_data", "firebase_gemini_ai")
     ): Result<Int> = withContext(Dispatchers.IO) {
+        if (placeRepository != null) {
+            val placeResult = placeRepository.getNearbyPlaces(userLat, userLng, radiusMeters = 3000)
+            val mergedEntities = placeResult.places.map { mergedPlaceToEntity(it, userLat, userLng) }
+            if (mergedEntities.isNotEmpty()) {
+                deduplicateAndInsert(mergedEntities)
+                CoroutineScope(Dispatchers.IO).launch {
+                    enrichSpotsPhotosInBackground(mergedEntities)
+                }
+                return@withContext Result.success(mergedEntities.size)
+            }
+        }
+
         var totalFetched = 0
 
         if (sourceIds.contains("open_trip_map")) {
