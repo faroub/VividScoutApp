@@ -32,23 +32,68 @@ data class ProcessedPhoto(
 /**
  * Image processing utility for resizing photos to 1600px long edge, stripping EXIF location metadata,
  * re-encoding to JPEG bytes, and enforcing the 3-report privacy hiding rule.
+ * Includes memory-efficient bounded stream reading, dimension subsampling, and decompression bomb protection.
  */
 object PhotoProcessor {
 
     const val MAX_LONG_EDGE_PX = 1600
-    const val MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024 // 5 MB
+    const val MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024 // 5 MB max output
+    const val MAX_INPUT_STREAM_BYTES = 15 * 1024 * 1024 // 15 MB max input
+    const val MAX_DIMENSION_PX = 12000 // 12,000px max width or height
+    const val MAX_TOTAL_PIXELS = 50_000_000L // 50 Megapixels max
     const val REPORT_HIDE_THRESHOLD = 3
 
     /**
-     * Safely decodes input image bytes, resizes bitmap to max 1600px long edge,
-     * strips EXIF metadata, validates output dimensions & size (< 5MB), and recycles bitmaps.
+     * Bounded stream reader reading up to maxBytes + 1.
+     * Throws IllegalArgumentException if stream length exceeds maxBytes.
+     */
+    fun readBoundedStream(inputStream: InputStream, maxBytes: Int = MAX_INPUT_STREAM_BYTES): ByteArray {
+        val buffer = ByteArrayOutputStream()
+        val chunk = ByteArray(8192)
+        var totalRead = 0
+
+        while (true) {
+            val read = inputStream.read(chunk)
+            if (read == -1) break
+            totalRead += read
+            if (totalRead > maxBytes) {
+                throw IllegalArgumentException("Input stream exceeds maximum allowed ${maxBytes / (1024 * 1024)} MB size limit.")
+            }
+            buffer.write(chunk, 0, read)
+        }
+        return buffer.toByteArray()
+    }
+
+    /**
+     * Calculates inSampleSize power-of-two factor for memory-efficient subsampled decoding.
+     */
+    fun calculateInSampleSize(rawWidth: Int, rawHeight: Int, reqMaxEdge: Int = MAX_LONG_EDGE_PX): Int {
+        var inSampleSize = 1
+        val maxEdge = max(rawWidth, rawHeight)
+        if (maxEdge > reqMaxEdge) {
+            val halfMaxEdge = maxEdge / 2
+            while ((halfMaxEdge / inSampleSize) >= reqMaxEdge) {
+                inSampleSize *= 2
+            }
+        }
+        return inSampleSize
+    }
+
+    /**
+     * Safely decodes input image bytes with bounded reading, dimension subsampling, EXIF stripping,
+     * and output size validation (< 5MB).
      */
     fun processImageStream(
         inputStream: InputStream,
         quality: Int = 85
     ): Result<ProcessedPhoto> {
         return try {
-            val bytes = inputStream.readBytes()
+            val bytes = try {
+                readBoundedStream(inputStream, MAX_INPUT_STREAM_BYTES)
+            } catch (e: Exception) {
+                return Result.failure(e)
+            }
+
             if (bytes.size < 10) {
                 return Result.failure(IllegalArgumentException("Image data too small or truncated."))
             }
@@ -61,10 +106,38 @@ object PhotoProcessor {
                 return Result.failure(IllegalArgumentException("Unsupported or malformed image format. Only JPEG and PNG are supported."))
             }
 
-            val originalBitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+            // 1. Inspect image dimensions first without decoding full pixel array
+            val boundsOptions = BitmapFactory.Options().apply {
+                inJustDecodeBounds = true
+            }
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, boundsOptions)
+
+            val rawWidth = boundsOptions.outWidth
+            val rawHeight = boundsOptions.outHeight
+
+            if (rawWidth <= 0 || rawHeight <= 0) {
+                return Result.failure(IllegalArgumentException("Corrupt image header or invalid dimensions ($rawWidth x $rawHeight)."))
+            }
+
+            // 2. Decompression bomb protection
+            if (rawWidth > MAX_DIMENSION_PX || rawHeight > MAX_DIMENSION_PX || (rawWidth.toLong() * rawHeight.toLong()) > MAX_TOTAL_PIXELS) {
+                return Result.failure(IllegalArgumentException("Image dimensions ($rawWidth x $rawHeight) exceed maximum allowed safety bounds."))
+            }
+
+            // 3. Subsampled memory-efficient decoding
+            val decodeOptions = BitmapFactory.Options().apply {
+                inSampleSize = calculateInSampleSize(rawWidth, rawHeight, MAX_LONG_EDGE_PX)
+            }
+
+            val decodedBitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, decodeOptions)
                 ?: return Result.failure(IllegalArgumentException("Failed to decode image stream."))
 
-            processBitmap(originalBitmap, quality)
+            val result = processBitmap(decodedBitmap, quality)
+
+            // Recycle internal decoded bitmap created from byte stream
+            decodedBitmap.recycle()
+
+            result
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -72,15 +145,15 @@ object PhotoProcessor {
 
     /**
      * Resizes bitmap to max 1600px on long edge, strips EXIF headers by re-compressing to JPEG,
-     * validates output size (< 5MB), and recycles temporary bitmaps.
+     * validates output size (< 5MB), and manages temporary bitmap lifecycles.
      */
     fun processBitmap(
         bitmap: Bitmap,
         quality: Int = 85
     ): Result<ProcessedPhoto> {
         return try {
-            if (bitmap.width <= 0 || bitmap.height <= 0) {
-                return Result.failure(IllegalArgumentException("Invalid bitmap dimensions: ${bitmap.width}x${bitmap.height}"))
+            if (bitmap.isRecycled || bitmap.width <= 0 || bitmap.height <= 0) {
+                return Result.failure(IllegalArgumentException("Invalid or recycled bitmap dimensions."))
             }
 
             val width = bitmap.width
@@ -99,7 +172,8 @@ object PhotoProcessor {
             val outputStream = ByteArrayOutputStream()
             val compressed = resizedBitmap.compress(Bitmap.CompressFormat.JPEG, quality, outputStream)
 
-            if (resizedBitmap != bitmap) {
+            // Safely recycle internal temporary scaled bitmap (do NOT recycle caller-owned bitmap)
+            if (resizedBitmap != bitmap && !resizedBitmap.isRecycled) {
                 resizedBitmap.recycle()
             }
 
@@ -113,10 +187,13 @@ object PhotoProcessor {
                 return Result.failure(IllegalStateException("Processed image size (${jpegBytes.size / (1024 * 1024)} MB) exceeds 5 MB limit."))
             }
 
+            val resultWidth = if (maxEdge > MAX_LONG_EDGE_PX) (width * (MAX_LONG_EDGE_PX.toFloat() / maxEdge)).toInt() else width
+            val resultHeight = if (maxEdge > MAX_LONG_EDGE_PX) (height * (MAX_LONG_EDGE_PX.toFloat() / maxEdge)).toInt() else height
+
             val resultPhoto = ProcessedPhoto(
                 jpegBytes = jpegBytes,
-                width = if (maxEdge > MAX_LONG_EDGE_PX) (width * (MAX_LONG_EDGE_PX.toFloat() / maxEdge)).toInt() else width,
-                height = if (maxEdge > MAX_LONG_EDGE_PX) (height * (MAX_LONG_EDGE_PX.toFloat() / maxEdge)).toInt() else height,
+                width = max(1, resultWidth),
+                height = max(1, resultHeight),
                 mimeType = "image/jpeg"
             )
 

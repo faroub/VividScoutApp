@@ -11,7 +11,9 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.io.ByteArrayInputStream
+import java.io.InputStream
 import kotlin.math.max
+import kotlin.math.min
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [33])
@@ -33,6 +35,41 @@ class PhotoProcessorIntegrationTest {
 
         val maxLongEdge = max(decoded.width, decoded.height)
         assertEquals("Long edge must be capped at 1600px", 1600, maxLongEdge)
+
+        // Caller-owned bitmap must NOT be recycled
+        assertFalse("Caller-owned bitmap must not be recycled by PhotoProcessor", largeBitmap.isRecycled)
+    }
+
+    @Test
+    fun calculateInSampleSize_calculatesPowerOfTwoSubsamplingFactor() {
+        val sampleSize = PhotoProcessor.calculateInSampleSize(4000, 3000, reqMaxEdge = 1600)
+        assertEquals("4000px raw width subsampled for 1600px max edge yields sample size = 2", 2, sampleSize)
+    }
+
+    @Test
+    fun readBoundedStream_oversizedStreamExceedingFifteenMegabytes_throwsException() {
+        // Stream that produces more than 15 MB
+        val oversizedStream = object : InputStream() {
+            var count = 0
+            override fun read(): Int {
+                count++
+                return if (count <= 16 * 1024 * 1024) 'A'.code else -1
+            }
+
+            override fun read(b: ByteArray, off: Int, len: Int): Int {
+                if (count >= 16 * 1024 * 1024) return -1
+                val toRead = min(len, 16 * 1024 * 1024 - count)
+                count += toRead
+                return toRead
+            }
+        }
+
+        try {
+            PhotoProcessor.readBoundedStream(oversizedStream, maxBytes = 15 * 1024 * 1024)
+            assertTrue("Reading stream > 15 MB must throw IllegalArgumentException", false)
+        } catch (e: IllegalArgumentException) {
+            assertTrue("Exception message must reference size limit", e.message!!.contains("exceeds maximum allowed"))
+        }
     }
 
     @Test
