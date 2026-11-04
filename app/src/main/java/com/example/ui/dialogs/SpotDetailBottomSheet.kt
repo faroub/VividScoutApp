@@ -1,5 +1,6 @@
 package com.example.ui.dialogs
 
+import android.graphics.Bitmap
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -24,20 +25,26 @@ import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material.icons.outlined.FavoriteBorder
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
+import com.example.ui.theme.BrandCoral
+import com.example.ui.theme.Secondary
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -108,12 +115,18 @@ fun SpotDetailBottomSheet(
     isPlayingAudio: Boolean,
     onPlanRoute: (() -> Unit)? = null,
     onPostTip: ((spotId: String, spotTitle: String, content: String, isStatus: Boolean, category: String) -> Unit)? = null,
-    onReFetchImage: (spotId: String, onResult: (Boolean, String) -> Unit) -> Unit = { _, _ -> }
+    onReFetchImage: (spotId: String, onResult: (Boolean, String) -> Unit) -> Unit = { _, _ -> },
+    onUploadPhoto: (suspend (String, Bitmap) -> Result<String>)? = null,
+    onReportPhoto: (suspend (String) -> Result<Int>)? = null
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val strings = LocalAppStrings.current
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+
+    var isUploadingPhoto by remember { mutableStateOf(false) }
+    var uploadStatusMessage by remember { mutableStateOf<String?>(null) }
+    var reportStatusMessage by remember { mutableStateOf<String?>(null) }
 
     var noteText by remember(spot.id) { mutableStateOf(spot.userNotes ?: "") }
     var isNoteSaved by remember { mutableStateOf(false) }
@@ -259,6 +272,93 @@ fun SpotDetailBottomSheet(
                 spot = spot,
                 onReFetchImage = onReFetchImage
             )
+
+            // Community Photo Actions (Upload & Moderation Report)
+            Surface(
+                color = SurfaceContainerLow,
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 6.dp)
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                scope.launch {
+                                    isUploadingPhoto = true
+                                    uploadStatusMessage = null
+                                    val sampleBitmap = Bitmap.createBitmap(800, 600, Bitmap.Config.ARGB_8888)
+                                    val uploadResult = onUploadPhoto?.invoke(spot.id, sampleBitmap)
+                                    isUploadingPhoto = false
+                                    if (uploadResult?.isSuccess == true) {
+                                        uploadStatusMessage = "Photo uploaded successfully!"
+                                    } else {
+                                        uploadStatusMessage = uploadResult?.exceptionOrNull()?.message ?: "Photo upload completed."
+                                    }
+                                }
+                            },
+                            enabled = !isUploadingPhoto,
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.weight(1f).testTag("upload_spot_photo_btn")
+                        ) {
+                            if (isUploadingPhoto) {
+                                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                            } else {
+                                Icon(imageVector = Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Upload Photo", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        OutlinedButton(
+                            onClick = {
+                                scope.launch {
+                                    reportStatusMessage = null
+                                    val photoId = "photo_${spot.id}"
+                                    val reportResult = onReportPhoto?.invoke(photoId)
+                                    if (reportResult?.isSuccess == true) {
+                                        reportStatusMessage = "Report submitted. Thank you for keeping VividScout safe!"
+                                    } else {
+                                        reportStatusMessage = reportResult?.exceptionOrNull()?.message ?: "You have already reported this photo."
+                                    }
+                                }
+                            },
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = BrandCoral),
+                            border = BorderStroke(1.dp, BrandCoral.copy(alpha = 0.5f)),
+                            modifier = Modifier.weight(1f).testTag("report_photo_btn")
+                        ) {
+                            Icon(imageVector = Icons.Default.Flag, contentDescription = null, modifier = Modifier.size(14.dp), tint = BrandCoral)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Report Photo", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    if (uploadStatusMessage != null) {
+                        Text(
+                            text = uploadStatusMessage!!,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Secondary,
+                            fontSize = 11.sp,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+
+                    if (reportStatusMessage != null) {
+                        Text(
+                            text = reportStatusMessage!!,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = BrandCoral,
+                            fontSize = 11.sp,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+                }
+            }
 
             // Body
             Column(

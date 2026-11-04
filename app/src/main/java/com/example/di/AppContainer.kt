@@ -11,6 +11,8 @@ import com.example.data.places.GeonamesSource
 import com.example.data.places.OpenTripMapSource
 import com.example.data.places.PlaceRepository
 import com.example.data.repository.CommunityTipRepository
+import com.example.data.repository.FirebasePhotoStorageService
+import com.example.data.repository.PhotoModerationRepository
 import com.example.data.repository.ScoutGemRepository
 import com.example.data.repository.ScoutRepository
 import com.example.engine.PreScoutEngine
@@ -25,6 +27,8 @@ interface AppContainer {
     val offlineMapManager: OfflineMapManager
     val regionStorage: OfflineRegionStorage
     val communityTipRepository: CommunityTipRepository
+    val photoStorageService: FirebasePhotoStorageService
+    val photoModerationRepository: PhotoModerationRepository
     val preScoutEngine: PreScoutEngine
     val compassSensorManager: CompassSensorManager
     val networkMonitor: com.example.util.NetworkMonitor
@@ -83,6 +87,14 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
             tipVoteDao = database.tipVoteDao(),
             context = context
         )
+    }
+
+    override val photoStorageService: FirebasePhotoStorageService by lazy {
+        FirebasePhotoStorageService()
+    }
+
+    override val photoModerationRepository: PhotoModerationRepository by lazy {
+        PhotoModerationRepository()
     }
 
     override val preScoutEngine: PreScoutEngine by lazy {
