@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
@@ -35,7 +36,9 @@ import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.NearMe
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Route
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.SwapVert
+import kotlinx.coroutines.launch
 import androidx.compose.material.icons.filled.Terrain
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.Button
@@ -61,6 +64,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -71,6 +75,7 @@ import androidx.compose.ui.window.Dialog
 import com.example.data.local.ScoutSpotEntity
 import com.example.data.offline.GuidedWalkMood
 import com.example.data.offline.GuidedWalkPlannerEngine
+import com.example.data.sync.SharedTripManager
 import com.example.engine.OfflineWalkingTrail
 import com.example.engine.RouteStep
 import com.example.ui.theme.BrandCoral
@@ -98,6 +103,10 @@ fun RoutePlannerSheet(
     var isSelectingOrigin by remember { mutableStateOf(false) }
     var isSelectingDest by remember { mutableStateOf(false) }
     var areStepsExpanded by remember { mutableStateOf(true) }
+    var isPublishingSharedTrip by remember { mutableStateOf(false) }
+    var sharePublishError by remember { mutableStateOf<String?>(null) }
+    val coroutineScope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -393,6 +402,80 @@ fun RoutePlannerSheet(
                     mood = selectedMood,
                     availableSpots = allSpots
                 )
+            }
+
+            if (guidedWalkPlan.waypoints.isNotEmpty() && plannedRoute == null) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = Color(0xFF1E293B),
+                    border = BorderStroke(1.dp, BrandTeal.copy(alpha = 0.5f)),
+                    modifier = Modifier.fillMaxWidth().testTag("guided_walk_plan_card")
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Guided Walk Loop (${guidedWalkPlan.waypoints.size} waypoints)",
+                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                color = Color.White
+                            )
+                            Text(
+                                text = "${guidedWalkPlan.totalWalkingMinutes} min walk",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                color = BrandTeal
+                            )
+                        }
+
+                        if (sharePublishError != null) {
+                            Text(
+                                text = sharePublishError!!,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = BrandCoral,
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Button(
+                            onClick = {
+                                coroutineScope.launch {
+                                    isPublishingSharedTrip = true
+                                    sharePublishError = null
+                                    val createdTrip = SharedTripManager.createSharedTrip(
+                                        title = "${guidedWalkPlan.startTitle} ${guidedWalkPlan.mood.title} Walk",
+                                        spots = guidedWalkPlan.waypoints
+                                    )
+                                    val publishResult = SharedTripManager.publishSharedTripToFirestore(context, createdTrip)
+                                    isPublishingSharedTrip = false
+                                    if (publishResult.isSuccess) {
+                                        SharedTripManager.shareTripNativeIntent(context, createdTrip)
+                                    } else {
+                                        sharePublishError = "Failed to publish trip: ${publishResult.exceptionOrNull()?.message ?: "Check network connection."}"
+                                    }
+                                }
+                            },
+                            enabled = !isPublishingSharedTrip,
+                            colors = ButtonDefaults.buttonColors(containerColor = BrandTeal, contentColor = Color.White),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth().height(42.dp).testTag("publish_share_itinerary_btn")
+                        ) {
+                            if (isPublishingSharedTrip) {
+                                CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Publishing to Cloud...", fontWeight = FontWeight.Bold)
+                            } else {
+                                Icon(imageVector = Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Publish & Share Itinerary Link", fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
             }
 
             // Step 3: Show Empty State if guidedWalkPlan is empty and no custom destination selected

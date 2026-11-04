@@ -3,14 +3,17 @@ package com.example.data.sync
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import com.example.R
 import com.example.data.local.ScoutSpotEntity
 import com.example.util.SafeLog
 import com.google.firebase.FirebaseApp
+import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
+import java.util.Date
 import java.util.UUID
 
 data class SharedSpotItem(
@@ -41,19 +44,55 @@ object SharedTripManager {
     private const val TAG = "SharedTripManager"
     const val TTL_DURATION_MS = 30L * 24 * 3600 * 1000L // 30 days
 
+    private fun getFirestore(context: Context): FirebaseFirestore? {
+        return try {
+            val app = if (FirebaseApp.getApps(context).isNotEmpty()) {
+                FirebaseApp.getInstance()
+            } else {
+                FirebaseApp.initializeApp(context)
+            } ?: return null
+
+            val databaseId = try {
+                context.getString(R.string.firestore_database_id)
+            } catch (_: Exception) {
+                ""
+            }
+
+            if (databaseId.isNotBlank()) {
+                FirebaseFirestore.getInstance(app, databaseId)
+            } else {
+                FirebaseFirestore.getInstance(app)
+            }
+        } catch (e: Exception) {
+            SafeLog.w(TAG, "Failed to initialize Firestore instance for shared trips: ${e.message}")
+            null
+        }
+    }
+
+    /**
+     * Creates a validated SharedTrip instance containing up to 50 valid spot items,
+     * filtering out invalid coordinates or malformed spots, and assigning a 30-day TTL expiration.
+     */
     fun createSharedTrip(
         title: String,
         spots: List<ScoutSpotEntity>,
         currentTimeMs: Long = System.currentTimeMillis()
     ): SharedTrip {
-        val spotItems = spots.take(50).map { spot ->
+        val validSpots = spots.filter { spot ->
+            !spot.latitude.isNaN() && !spot.longitude.isNaN() &&
+            spot.latitude in -90.0..90.0 && spot.longitude in -180.0..180.0 &&
+            !(spot.latitude == 0.0 && spot.longitude == 0.0) &&
+            spot.title.isNotBlank()
+        }.take(50)
+
+        val spotItems = validSpots.map { spot ->
             SharedSpotItem(
-                spotId = spot.id,
-                title = spot.title,
-                category = spot.category,
+                spotId = spot.id.take(128),
+                title = spot.title.trim().take(120),
+                category = spot.category.take(32),
                 latitude = spot.latitude,
                 longitude = spot.longitude,
-                imageUrl = spot.imageUrl
+                imageUrl = spot.imageUrl?.take(2048)
             )
         }
 
@@ -61,7 +100,7 @@ object SharedTripManager {
 
         return SharedTrip(
             id = randomId,
-            title = title.trim().take(120),
+            title = title.trim().ifBlank { "Shared Scout Itinerary" }.take(120),
             spots = spotItems,
             createdAt = currentTimeMs,
             expireAt = currentTimeMs + TTL_DURATION_MS
@@ -82,7 +121,7 @@ object SharedTripManager {
             val queryId = uri.getQueryParameter("id")
 
             when {
-                !queryId.isNullOrBlank() -> queryId
+                !queryId.isNullOrBlank() -> queryId.trim()
                 path.startsWith("/trip/") -> path.removePrefix("/trip/").trim()
                 path.startsWith("/") -> path.removePrefix("/").trim()
                 else -> null
@@ -93,7 +132,8 @@ object SharedTripManager {
     }
 
     /**
-     * Persists shared trip document to Firestore under shared_trips/{tripId}.
+     * Persists shared trip document to Firestore under shared_trips/{tripId}
+     * using the configured named Firestore database and Firestore Timestamps for TTL compatibility.
      */
     suspend fun publishSharedTripToFirestore(
         context: Context,
@@ -108,7 +148,9 @@ object SharedTripManager {
                 auth.signInAnonymously().await()
             }
 
-            val firestore = FirebaseFirestore.getInstance(app)
+            val firestore = getFirestore(context)
+                ?: return@withContext Result.failure(IllegalStateException("Firestore instance unavailable."))
+
             val spotMaps = trip.spots.map { spot ->
                 mapOf(
                     "spotId" to spot.spotId,
@@ -120,12 +162,15 @@ object SharedTripManager {
                 )
             }
 
+            val createdAtTs = Timestamp(Date(trip.createdAt))
+            val expireAtTs = Timestamp(Date(trip.expireAt))
+
             val tripDoc = mapOf(
                 "id" to trip.id,
                 "title" to trip.title,
                 "spots" to spotMaps,
-                "createdAt" to trip.createdAt,
-                "expireAt" to trip.expireAt
+                "createdAt" to createdAtTs,
+                "expireAt" to expireAtTs
             )
 
             firestore.collection("shared_trips").document(trip.id).set(tripDoc).await()
@@ -147,23 +192,31 @@ object SharedTripManager {
         currentTimeMs: Long = System.currentTimeMillis()
     ): Result<SharedTrip> = withContext(Dispatchers.IO) {
         try {
-            val app = if (FirebaseApp.getApps(context).isNotEmpty()) FirebaseApp.getInstance() else FirebaseApp.initializeApp(context)
-            if (app == null) return@withContext Result.failure(IllegalStateException("FirebaseApp uninitialized."))
+            val firestore = getFirestore(context)
+                ?: return@withContext Result.failure(IllegalStateException("Firestore instance unavailable."))
 
-            val firestore = FirebaseFirestore.getInstance(app)
             val docSnap = firestore.collection("shared_trips").document(tripId).get().await()
 
             if (!docSnap.exists()) {
                 return@withContext Result.failure(IllegalStateException("Shared trip not found or expired."))
             }
 
-            val expireAt = docSnap.getLong("expireAt") ?: 0L
+            val expireAt = when (val expireVal = docSnap.get("expireAt")) {
+                is Timestamp -> expireVal.toDate().time
+                is Number -> expireVal.toLong()
+                else -> 0L
+            }
+
             if (currentTimeMs >= expireAt) {
                 return@withContext Result.failure(IllegalStateException("This shared trip link has expired (30-day limit)."))
             }
 
             val title = docSnap.getString("title") ?: "Shared Scout Trip"
-            val createdAt = docSnap.getLong("createdAt") ?: currentTimeMs
+            val createdAt = when (val createdVal = docSnap.get("createdAt")) {
+                is Timestamp -> createdVal.toDate().time
+                is Number -> createdVal.toLong()
+                else -> currentTimeMs
+            }
 
             @Suppress("UNCHECKED_CAST")
             val rawSpots = docSnap.get("spots") as? List<Map<String, Any?>> ?: emptyList()
@@ -171,6 +224,10 @@ object SharedTripManager {
                 val name = item["title"] as? String ?: return@mapNotNull null
                 val lat = (item["latitude"] as? Number)?.toDouble() ?: return@mapNotNull null
                 val lng = (item["longitude"] as? Number)?.toDouble() ?: return@mapNotNull null
+
+                if (lat.isNaN() || lng.isNaN() || lat !in -90.0..90.0 || lng !in -180.0..180.0 || (lat == 0.0 && lng == 0.0)) {
+                    return@mapNotNull null
+                }
 
                 SharedSpotItem(
                     spotId = item["spotId"] as? String ?: "",
