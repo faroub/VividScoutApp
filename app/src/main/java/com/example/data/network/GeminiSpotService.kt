@@ -464,7 +464,7 @@ class GeminiSpotService {
                 reviewCount = null,
                 imageUrl = spot.imageUrl,
                 badgeLabel = spot.badgeLabel,
-                statusBadge = "VERIFIED SPOT",
+                statusBadge = "CURATED FALLBACK",
                 tagsRaw = spot.tags,
                 proTip = spot.audioLore,
                 upvotes = null,

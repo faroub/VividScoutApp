@@ -35,4 +35,7 @@
    - Firestore security rules configured in `firestore.rules` (reported).
 
 8. **Automated Verification**:
-   - `./gradlew :app:testDebugUnitTest`: 157 unit and integration tests passing, 0 skipped, 0 failed.
+   - `./gradlew :app:testDebugUnitTest`: 285 unit and integration tests passing, 0 skipped, 0 failed.
+   - `./gradlew lintDebug`: 0 errors (9 warnings; 182 filtered by `lint-baseline.xml`).
+   - `./gradlew assembleDebug`: debug APK builds successfully.
+   - Room migration tests resolve exported schemas through the app's merged assets (`app/schemas/` wired via `main.assets.srcDirs` in `app/build.gradle.kts`).

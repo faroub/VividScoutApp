@@ -72,7 +72,7 @@ class MunicipalOpenDataService {
         if (userLat.isNaN() || !userLat.isFinite() || userLng.isNaN() || !userLng.isFinite() ||
             userLat < -90.0 || userLat > 90.0 || userLng < -180.0 || userLng > 180.0 ||
             (userLat == 0.0 && userLng == 0.0)) {
-            SafeLog.w(TAG, "Invalid coordinates provided: lat=$userLat, lng=$userLng")
+            SafeLog.w(TAG, "Invalid coordinates provided: lat=${SafeLog.sanitizeCoordinate(userLat)}, lng=${SafeLog.sanitizeCoordinate(userLng)}")
             return@withContext emptyList()
         }
 

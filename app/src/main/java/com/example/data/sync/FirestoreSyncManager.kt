@@ -443,7 +443,7 @@ object FirestoreSyncManager {
 
                     // Validate coordinates are geographically plausible
                     if (lat.isNaN() || lng.isNaN() || (lat == 0.0 && lng == 0.0) || lat < -90.0 || lat > 90.0 || lng < -180.0 || lng > 180.0) {
-                        SafeLog.w(TAG, "Skipping remote submission '$id': invalid coordinates ($lat, $lng)")
+                        SafeLog.w(TAG, "Skipping remote submission '$id': invalid coordinates (${SafeLog.sanitizeCoordinate(lat)}, ${SafeLog.sanitizeCoordinate(lng)})")
                         continue
                     }
 

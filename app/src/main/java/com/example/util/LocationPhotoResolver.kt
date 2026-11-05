@@ -175,7 +175,7 @@ object LocationPhotoResolver {
             val geoResults = wikiService.fetchWikipediaPhotosByLocation(latitude, longitude, radiusMeters = 1500, primaryLang = "pt", targetWidth = 1200)
             if (geoResults.isNotEmpty()) {
                 val bestGeo = geoResults.first()
-                SafeLog.d(TAG, "Resolved photo via Wikipedia Geosearch at ($latitude, $longitude): ${bestGeo.photoUrl}")
+                SafeLog.d(TAG, "Resolved photo via Wikipedia Geosearch at (${SafeLog.sanitizeCoordinate(latitude)}, ${SafeLog.sanitizeCoordinate(longitude)}): ${bestGeo.photoUrl}")
                 return@withContext EnrichedPhoto(bestGeo.photoUrl, bestGeo.attribution, true)
             }
         }

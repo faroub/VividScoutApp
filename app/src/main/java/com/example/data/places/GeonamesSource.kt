@@ -26,7 +26,7 @@ class GeonamesSource(
         radiusMeters: Int
     ): Result<List<PlaceCandidate>> = withContext(Dispatchers.IO) {
         if (lat.isNaN() || !lat.isFinite() || lon.isNaN() || !lon.isFinite() || lat < -90.0 || lat > 90.0 || lon < -180.0 || lon > 180.0) {
-            SafeLog.w(TAG, "Invalid coordinates provided: lat=$lat, lon=$lon")
+            SafeLog.w(TAG, "Invalid coordinates provided: lat=${SafeLog.sanitizeCoordinate(lat)}, lon=${SafeLog.sanitizeCoordinate(lon)}")
             return@withContext Result.success(emptyList())
         }
 

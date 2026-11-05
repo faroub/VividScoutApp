@@ -16,6 +16,8 @@ import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import com.example.util.SafeLog
 
+private const val TAG = "VividScoutApplication"
+
 class VividScoutApplication : Application(), ImageLoaderFactory {
     lateinit var container: AppContainer
         private set
@@ -41,7 +43,8 @@ class VividScoutApplication : Application(), ImageLoaderFactory {
                     }
                 }
             } catch (e: Exception) {
-                // Background auth initialization handled gracefully
+                // Cloud sync stays disabled until sign-in succeeds on a later attempt
+                SafeLog.w(TAG, "Background Firebase auth initialization failed: ${e.message}", e)
             }
         }
 

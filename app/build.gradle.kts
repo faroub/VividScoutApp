@@ -78,7 +78,9 @@ android {
   }
   testOptions { unitTests { isIncludeAndroidResources = true } }
   sourceSets {
-    getByName("test").assets.srcDirs("$projectDir/schemas")
+    // Room migration tests (Robolectric) resolve exported schemas through the app's merged
+    // assets, so the KSP-exported schema directory is wired into the main source set.
+    getByName("main").assets.srcDirs("$projectDir/schemas")
   }
   dependenciesInfo {
     includeInApk = false

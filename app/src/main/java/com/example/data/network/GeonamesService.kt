@@ -31,7 +31,7 @@ class GeonamesService(
         // Validate input coordinates
         if (lat.isNaN() || !lat.isFinite() || lon.isNaN() || !lon.isFinite() ||
             lat < -90.0 || lat > 90.0 || lon < -180.0 || lon > 180.0) {
-            SafeLog.w(TAG, "Invalid coordinates provided to GeonamesService: lat=$lat, lon=$lon")
+            SafeLog.w(TAG, "Invalid coordinates provided to GeonamesService: lat=${SafeLog.sanitizeCoordinate(lat)}, lon=${SafeLog.sanitizeCoordinate(lon)}")
             return@withContext emptyList()
         }
 
