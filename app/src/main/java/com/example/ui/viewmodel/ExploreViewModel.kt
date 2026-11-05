@@ -50,6 +50,41 @@ data class ExploreUiState(
     val isSyncingTouristicSources: Boolean = false
 )
 
+private data class ExploreSpotsState(
+    val filteredSpots: List<ScoutSpotEntity> = emptyList(),
+    val allSpots: List<ScoutSpotEntity> = emptyList(),
+    val savedSpots: List<ScoutSpotEntity> = emptyList(),
+    val discoveredSpots: List<ScoutSpotEntity> = emptyList(),
+    val recentSearches: List<RecentSearchEntity> = emptyList()
+)
+
+private data class ExploreFilterState(
+    val selectedCategory: String = "all",
+    val searchQuery: String = "",
+    val selectedGlobalCity: String = "Detecting Location...",
+    val cityProfile: com.example.data.model.CityProfile = CityProfileRegistry.LISBON_PROFILE
+)
+
+private data class ExplorePresentationState(
+    val exploreHeaderStyle: Int = 0,
+    val activeMapLayers: Set<ExploreMapLayer> = ExploreMapLayer.ALL_LAYERS,
+    val playingAudioId: String? = null
+)
+
+private data class ExploreStatusState(
+    val isScrapingOsm: Boolean = false,
+    val osmScrapeMessage: String? = null,
+    val isAwaitingLocation: Boolean = true,
+    val isDiscoveringGems: Boolean = false
+)
+
+private data class ExploreModalState(
+    val showGlobalCityDialog: Boolean = false,
+    val preScoutBannerState: PreScoutBannerState = PreScoutBannerState(),
+    val showTouristicSourcesModal: Boolean = false,
+    val isSyncingTouristicSources: Boolean = false
+)
+
 class ExploreViewModel(
     private val repository: ScoutRepository,
     private val gemRepository: ScoutGemRepository,
@@ -151,42 +186,63 @@ class ExploreViewModel(
     val isSyncingTouristicSources: StateFlow<Boolean> = _isSyncingTouristicSources.asStateFlow()
 
     val uiState: StateFlow<ExploreUiState> = combine(
-        filteredSpots,
-        allSpots,
-        savedSpots,
-        discoveredSpots,
-        _selectedCategory,
-        _searchQuery,
-        recentSearches,
-        _selectedGlobalCity,
-        _showGlobalCityDialog,
-        _preScoutBannerState,
-        _activeMapLayers,
-        _showTouristicSourcesModal,
-        _isSyncingTouristicSources
-    ) { vals: Array<Any?> ->
-        @Suppress("UNCHECKED_CAST")
+        combine(
+            filteredSpots,
+            allSpots,
+            savedSpots,
+            discoveredSpots,
+            recentSearches,
+            ::ExploreSpotsState
+        ),
+        combine(
+            _selectedCategory,
+            _searchQuery,
+            _selectedGlobalCity,
+            _cityProfile,
+            ::ExploreFilterState
+        ),
+        combine(
+            _exploreHeaderStyle,
+            _activeMapLayers,
+            _playingAudioId,
+            ::ExplorePresentationState
+        ),
+        combine(
+            _isScrapingOsm,
+            _osmScrapeMessage,
+            _isAwaitingLocation,
+            _isDiscoveringGems,
+            ::ExploreStatusState
+        ),
+        combine(
+            _showGlobalCityDialog,
+            _preScoutBannerState,
+            _showTouristicSourcesModal,
+            _isSyncingTouristicSources,
+            ::ExploreModalState
+        )
+    ) { spots, filter, presentation, status, modals ->
         ExploreUiState(
-            filteredSpots = vals[0] as List<ScoutSpotEntity>,
-            allSpots = vals[1] as List<ScoutSpotEntity>,
-            savedSpots = vals[2] as List<ScoutSpotEntity>,
-            discoveredSpots = vals[3] as List<ScoutSpotEntity>,
-            selectedCategory = vals[4] as String,
-            searchQuery = vals[5] as String,
-            recentSearches = vals[6] as List<RecentSearchEntity>,
-            selectedGlobalCity = vals[7] as String,
-            cityProfile = _cityProfile.value,
-            showGlobalCityDialog = vals[8] as Boolean,
-            preScoutBannerState = vals[9] as PreScoutBannerState,
-            exploreHeaderStyle = _exploreHeaderStyle.value,
-            isScrapingOsm = _isScrapingOsm.value,
-            osmScrapeMessage = _osmScrapeMessage.value,
-            playingAudioId = _playingAudioId.value,
-            isAwaitingLocation = _isAwaitingLocation.value,
-            isDiscoveringGems = _isDiscoveringGems.value,
-            activeMapLayers = vals[10] as Set<ExploreMapLayer>,
-            showTouristicSourcesModal = vals[11] as Boolean,
-            isSyncingTouristicSources = vals[12] as Boolean
+            filteredSpots = spots.filteredSpots,
+            allSpots = spots.allSpots,
+            savedSpots = spots.savedSpots,
+            discoveredSpots = spots.discoveredSpots,
+            selectedCategory = filter.selectedCategory,
+            searchQuery = filter.searchQuery,
+            recentSearches = spots.recentSearches,
+            selectedGlobalCity = filter.selectedGlobalCity,
+            cityProfile = filter.cityProfile,
+            showGlobalCityDialog = modals.showGlobalCityDialog,
+            preScoutBannerState = modals.preScoutBannerState,
+            exploreHeaderStyle = presentation.exploreHeaderStyle,
+            isScrapingOsm = status.isScrapingOsm,
+            osmScrapeMessage = status.osmScrapeMessage,
+            playingAudioId = presentation.playingAudioId,
+            isAwaitingLocation = status.isAwaitingLocation,
+            isDiscoveringGems = status.isDiscoveringGems,
+            activeMapLayers = presentation.activeMapLayers,
+            showTouristicSourcesModal = modals.showTouristicSourcesModal,
+            isSyncingTouristicSources = modals.isSyncingTouristicSources
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ExploreUiState())
 

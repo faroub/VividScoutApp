@@ -358,86 +358,10 @@ class GeminiSpotService {
                 )
             )
         } else {
-            listOf(
-                CuratedSpotBlueprint(
-                    title = "Historic Old Town Square",
-                    district = "City Center",
-                    category = "touristic",
-                    description = "Vibrant historic square featuring grand architecture, open-air cafes, and century-old monuments.",
-                    audioLore = "A central meeting place for locals and travelers alike, surrounded by historic facades and scenic streetscapes.",
-                    badgeLabel = "ICONIC LANDMARK",
-                    rating = null,
-                    latOffset = 0.0015,
-                    lngOffset = 0.0020,
-                    imageUrl = "https://images.unsplash.com/photo-1513688275127-1be5a8359473?auto=format&fit=crop&w=800&q=80",
-                    tags = "landmark,square,historic,center"
-                ),
-                CuratedSpotBlueprint(
-                    title = "Artisan Bakery & Cafe",
-                    district = "Old Town District",
-                    category = "restaurant",
-                    description = "Cozy local bakery specializing in fresh regional pastries, hand-brewed espresso, and artisan breads.",
-                    audioLore = "Sample fresh traditional pastries baked in small batches daily by local pastry chefs.",
-                    badgeLabel = "MUST-TRY FOOD GEM",
-                    rating = null,
-                    latOffset = -0.0012,
-                    lngOffset = -0.0015,
-                    imageUrl = "https://images.unsplash.com/photo-1509440159596-0249088772ff?auto=format&fit=crop&w=800&q=80",
-                    tags = "bakery,pastry,cafe,local_favorite"
-                ),
-                CuratedSpotBlueprint(
-                    title = "Historic Citadel & Castle Ramparts",
-                    district = "Castle Quarter",
-                    category = "historical",
-                    description = "Centuries-old stone fortress and elevated ramparts offering 360-degree views over the surrounding city skyline.",
-                    audioLore = "Explore stone battlements and historic arches that have stood through centuries of regional history.",
-                    badgeLabel = "HISTORIC FORTRESS",
-                    rating = null,
-                    latOffset = 0.0031,
-                    lngOffset = 0.0008,
-                    imageUrl = "https://images.unsplash.com/photo-1548707309-dcebeab9ea9b?auto=format&fit=crop&w=800&q=80",
-                    tags = "castle,fortress,history,panoramic"
-                ),
-                CuratedSpotBlueprint(
-                    title = "Riverfront Promenade & Viewpoint",
-                    district = "Riverside Promenade",
-                    category = "touristic",
-                    description = "Scenic waterside walking path with benches, street musicians, and sweeping waterfront vistas.",
-                    audioLore = "A peaceful pedestrian boulevard popular for evening strolls and sunset views over the water.",
-                    badgeLabel = "SCENIC WALKWAY",
-                    rating = null,
-                    latOffset = -0.0025,
-                    lngOffset = -0.0031,
-                    imageUrl = "https://images.unsplash.com/photo-1588668214407-6ea9a6d8c272?auto=format&fit=crop&w=800&q=80",
-                    tags = "promenade,riverfront,viewpoint,walk"
-                ),
-                CuratedSpotBlueprint(
-                    title = "Gothic Cathedral & Monuments",
-                    district = "Cathedral Quarter",
-                    category = "historical",
-                    description = "Majestic Gothic cathedral featuring ornate stone carvings, stained glass windows, and quiet inner courtyards.",
-                    audioLore = "Marvel at intricate architectural details and quiet sacred spaces in the heart of the historic center.",
-                    badgeLabel = "GOTHIC MONUMENT",
-                    rating = null,
-                    latOffset = 0.0009,
-                    lngOffset = -0.0019,
-                    imageUrl = "https://images.unsplash.com/photo-1513688275127-1be5a8359473?auto=format&fit=crop&w=800&q=80",
-                    tags = "monument,gothic,history,cathedral"
-                ),
-                CuratedSpotBlueprint(
-                    title = "Local Market & Culinary Taverna",
-                    district = "Market District",
-                    category = "restaurant",
-                    description = "Bustling local market hall and cozy tavern serving seasonal specialties and regional delicacies.",
-                    audioLore = "Gather under wooden timber beams to taste traditional dishes prepared with local ingredients.",
-                    badgeLabel = "LOCAL TAVERN",
-                    rating = null,
-                    latOffset = -0.0008,
-                    lngOffset = -0.0011,
-                    imageUrl = "https://images.unsplash.com/photo-1554118811-1e0d58224f24?auto=format&fit=crop&w=800&q=80",
-                    tags = "dining,market,local,food"
-                )
-            )
+            // No invented fallback catalog for other cities: an empty result lets
+            // ScoutGemRepository fall back to real Overpass OSM data instead of
+            // fabricated spots. Only the Lisbon catalog (real, named places) is curated.
+            emptyList()
         }
 
         val filtered = if (category.equals("all", ignoreCase = true)) {

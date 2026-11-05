@@ -288,49 +288,9 @@ class GeminiQueryService {
                 )
             )
         } else {
-            val simpleCity = detectedCityName.split(",").first().trim()
-            listOf(
-                CorridorBlueprint(
-                    title = "$simpleCity Panoramic Viewpoint",
-                    district = "$simpleCity Heights",
-                    category = "sights",
-                    description = "Elevated vantage point offering panoramic views over the historic rooftops and surrounding landscape of $simpleCity.",
-                    audioLore = "A celebrated scenic terrace providing sweeping vistas over $simpleCity's architectural landmarks.",
-                    fraction = 0.2
-                ),
-                CorridorBlueprint(
-                    title = "Old Town Artisan Bakery & Cafe",
-                    district = "$simpleCity Historic Center",
-                    category = "eats",
-                    description = "Charming neighborhood bakery specializing in handcrafted regional pastries, fresh breads, and espresso.",
-                    audioLore = "Family-owned artisan establishment renowned among local residents for morning delicacies.",
-                    fraction = 0.35
-                ),
-                CorridorBlueprint(
-                    title = "Cobblestone Passage & Historic Steps",
-                    district = "Old Quarter",
-                    category = "shortcut",
-                    description = "Picturesque pedestrian walkway offering a quiet detour away from main roads along historic masonry walls.",
-                    audioLore = "Historic pathway preserved through urban renovations, connecting ancient quarters.",
-                    fraction = 0.5
-                ),
-                CorridorBlueprint(
-                    title = "$simpleCity Heritage Monument",
-                    district = "Central Square",
-                    category = "history",
-                    description = "Centuries-old stone landmark and commemorative monument witnessing centuries of cultural transformation.",
-                    audioLore = "One of the most storied architectural monuments defining the heritage of $simpleCity.",
-                    fraction = 0.7
-                ),
-                CorridorBlueprint(
-                    title = "Local Culinary Taverna",
-                    district = "Market District",
-                    category = "eats",
-                    description = "Cozy local tavern serving regional specialties prepared daily with ingredients from nearby markets.",
-                    audioLore = "Beloved gathering place celebrating traditional regional recipes and hospitality.",
-                    fraction = 0.85
-                )
-            )
+            // No invented corridor fallback for other cities: an empty result lets the
+            // prefetch path report zero gems instead of fabricated spots.
+            emptyList()
         }
 
         return blueprints.mapIndexed { index, bp ->
@@ -355,11 +315,11 @@ class GeminiQueryService {
                     districtOrLocation = bp.district,
                     spotId = curatedSpotId
                 ).url,
-                badgeLabel = "PREFETCHED 5KM VECTOR",
-                statusBadge = "Prefetched AI Cache",
-                tagsRaw = "${bp.category}|||5km Vector Corridor|||Prefetched|||${vector.cardinalDirection} Heading",
+                badgeLabel = "CORRIDOR FALLBACK",
+                statusBadge = "Curated Fallback",
+                tagsRaw = "${bp.category}|||5km Vector Corridor|||Curated Fallback|||${vector.cardinalDirection} Heading",
                 proTip = bp.audioLore,
-                contributor = "@GeminiAI (Vector Corridor)",
+                contributor = "@VectorCorridor (Curated Fallback)",
                 upvotes = null,
                 isSaved = false,
                 isOfflineDraft = false,
