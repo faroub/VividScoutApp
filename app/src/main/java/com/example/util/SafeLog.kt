@@ -1,6 +1,6 @@
 package com.example.util
 
-import android.util.Log
+import com.example.util.SafeLog
 import com.example.BuildConfig
 import java.util.Locale
 
@@ -32,22 +32,22 @@ object SafeLog {
 
     fun d(tag: String, message: String) {
         if (BuildConfig.DEBUG) {
-            Log.d(tag, message)
+            SafeLog.d(tag, message)
         }
     }
 
     fun i(tag: String, message: String) {
         if (BuildConfig.DEBUG) {
-            Log.i(tag, message)
+            SafeLog.i(tag, message)
         }
     }
 
     fun w(tag: String, message: String, throwable: Throwable? = null) {
         if (BuildConfig.DEBUG) {
             if (throwable != null) {
-                Log.w(tag, message, throwable)
+                SafeLog.w(tag, message, throwable)
             } else {
-                Log.w(tag, message)
+                SafeLog.w(tag, message)
             }
         }
     }
@@ -55,9 +55,9 @@ object SafeLog {
     fun e(tag: String, message: String, throwable: Throwable? = null) {
         if (BuildConfig.DEBUG) {
             if (throwable != null) {
-                Log.e(tag, message, throwable)
+                SafeLog.e(tag, message, throwable)
             } else {
-                Log.e(tag, message)
+                SafeLog.e(tag, message)
             }
         }
     }

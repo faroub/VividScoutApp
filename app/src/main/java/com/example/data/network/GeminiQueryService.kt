@@ -1,6 +1,5 @@
 package com.example.data.network
 
-import android.util.Log
 import com.example.data.local.ScoutSpotEntity
 import com.example.util.LocationPhotoResolver
 import com.example.util.MovementVector
@@ -87,7 +86,7 @@ class GeminiQueryService {
                 Provide engaging 2-sentence audio lore for each spot.
             """.trimIndent()
 
-            Log.i(TAG, "Executing Proximity Prefetch query for $cityName along 5km vector: ${vector.cardinalDirection} (${vector.bearingDegrees.toInt()}°)")
+            SafeLog.i(TAG, "Executing Proximity Prefetch query for $cityName along 5km vector: ${vector.cardinalDirection} (${vector.bearingDegrees.toInt()}°)")
 
             val jsonText = try {
                 val response = withTimeout(15_000L) {
@@ -96,7 +95,7 @@ class GeminiQueryService {
                 response.text ?: throw IllegalStateException("Gemini returned empty prefetch text")
             } catch (t: Exception) {
                 if (t is CancellationException && t !is TimeoutCancellationException) throw t
-                Log.w(TAG, "Primary Gemini attempt delayed (${t.message}), falling back to secondary...")
+                SafeLog.w(TAG, "Primary Gemini attempt delayed (${t.message}), falling back to secondary...")
                 val fallbackResponse = withTimeout(10_000L) {
                     secondaryModel.generateContent(prompt)
                 }
@@ -107,16 +106,16 @@ class GeminiQueryService {
             if (parsed.isNotEmpty()) {
                 Result.success(parsed)
             } else {
-                Log.w(TAG, "Parsed 0 corridor spots from Gemini, utilizing curated corridor fallback")
+                SafeLog.w(TAG, "Parsed 0 corridor spots from Gemini, utilizing curated corridor fallback")
                 Result.success(generateCuratedCorridorGems(vector))
             }
         } catch (e: TimeoutCancellationException) {
-            Log.w(TAG, "Gemini prefetch timed out, serving curated vector corridor gems")
+            SafeLog.w(TAG, "Gemini prefetch timed out, serving curated vector corridor gems")
             Result.success(generateCuratedCorridorGems(vector))
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Log.w(TAG, "Gemini prefetch error (${e.message}), serving curated vector corridor gems")
+            SafeLog.w(TAG, "Gemini prefetch error (${e.message}), serving curated vector corridor gems")
             Result.success(generateCuratedCorridorGems(vector))
         }
     }
@@ -143,7 +142,7 @@ class GeminiQueryService {
 
             // Actual route corridor validation: candidate must fall within the defined movement vector corridor
             if (!com.example.util.MovementVectorUtils.isPointInCorridor(spotLat, spotLng, vector)) {
-                Log.d(TAG, "Rejecting AI spot '${item.optString("title")}' at (${SafeLog.sanitizeCoordinate(spotLat)}, ${SafeLog.sanitizeCoordinate(spotLng)}): outside 5km route corridor")
+                SafeLog.d(TAG, "Rejecting AI spot '${item.optString("title")}' at (${SafeLog.sanitizeCoordinate(spotLat)}, ${SafeLog.sanitizeCoordinate(spotLng)}): outside 5km route corridor")
                 continue
             }
 

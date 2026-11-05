@@ -1,7 +1,7 @@
 package com.example.data.repository
 
 import android.content.Context
-import android.util.Log
+import com.example.util.SafeLog
 import com.example.data.local.AppDatabase
 import com.example.data.local.CommunityTipDao
 import com.example.data.local.CommunityTipEntity
@@ -105,7 +105,7 @@ class CommunityTipRepository(
         val cloudSuccess = try {
             cloudService.incrementTipUpvote(tipId)
         } catch (e: Exception) {
-            runCatching { Log.w("CommunityTipRepo", "Cloud upvote threw exception: ${e.message}") }
+            runCatching { SafeLog.w("CommunityTipRepo", "Cloud upvote threw exception: ${e.message}") }
             false
         }
 

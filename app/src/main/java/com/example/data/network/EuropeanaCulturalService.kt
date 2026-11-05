@@ -1,6 +1,6 @@
 package com.example.data.network
 
-import android.util.Log
+import com.example.util.SafeLog
 import com.example.data.local.ScoutSpotEntity
 import com.example.util.Geo
 import kotlinx.coroutines.Dispatchers
@@ -105,7 +105,7 @@ class EuropeanaCulturalService(
                 }
             }
         } catch (e: Exception) {
-            Log.d(TAG, "Europeana API query handled: ${e.message}")
+            SafeLog.d(TAG, "Europeana API query handled: ${e.message}")
         }
         spots
     }

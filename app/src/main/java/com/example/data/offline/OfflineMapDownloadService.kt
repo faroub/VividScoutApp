@@ -9,7 +9,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
-import android.util.Log
+import com.example.util.SafeLog
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -68,7 +68,7 @@ class OfflineMapDownloadService : Service() {
                         ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
                     )
                 } catch (e: Exception) {
-                    Log.e(TAG, "Failed to start foreground with type DATA_SYNC: ${e.message}")
+                    SafeLog.e(TAG, "Failed to start foreground with type DATA_SYNC: ${e.message}")
                     startForeground(NOTIFICATION_ID, notification)
                 }
             } else {
@@ -93,10 +93,10 @@ class OfflineMapDownloadService : Service() {
                 try {
                     processDownload(task)
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error downloading ${task.cityName}", e)
+                    SafeLog.e(TAG, "Error downloading ${task.cityName}", e)
                 } finally {
                     if (isProcessing.decrementAndGet() == 0 && downloadChannel.isEmpty) {
-                        Log.i(TAG, "All downloads finished. Stopping foreground service.")
+                        SafeLog.i(TAG, "All downloads finished. Stopping foreground service.")
                         stopForeground(STOP_FOREGROUND_REMOVE)
                         stopSelf()
                     }
@@ -166,7 +166,7 @@ class OfflineMapDownloadService : Service() {
         try {
             notificationManager.notify(COMPLETION_NOTIFICATION_ID_BASE + cityName.hashCode(), completionNotification)
         } catch (e: SecurityException) {
-            Log.w(TAG, "Notification permission missing for completion notification: ${e.message}")
+            SafeLog.w(TAG, "Notification permission missing for completion notification: ${e.message}")
         }
     }
 
@@ -225,7 +225,7 @@ class OfflineMapDownloadService : Service() {
             try {
                 ContextCompat.startForegroundService(context, intent)
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to start foreground download service: ${e.message}")
+                SafeLog.e(TAG, "Failed to start foreground download service: ${e.message}")
             }
         }
     }

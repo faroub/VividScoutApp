@@ -5,7 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
-import android.util.Log
+import com.example.util.SafeLog
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationManagerCompat
 import com.example.data.repository.ScoutGemRepository
@@ -194,9 +194,9 @@ class OfflineMapManager(
 
             // Refresh state
             refreshPacksState(currentGpsLat, currentGpsLng)
-            Log.i(TAG, "Successfully downloaded offline map pack ${pack.id} (${file.length()} bytes) to internal storage.")
+            SafeLog.i(TAG, "Successfully downloaded offline map pack ${pack.id} (${file.length()} bytes) to internal storage.")
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to download map pack $packId", e)
+            SafeLog.e(TAG, "Failed to download map pack $packId", e)
             _packsState.value = _packsState.value.map {
                 if (it.id == packId) it.copy(isDownloading = false, downloadProgress = 0) else it
             }
@@ -210,7 +210,7 @@ class OfflineMapManager(
         val file = File(offlineDir, "${packId}.json")
         if (file.exists()) {
             val deleted = file.delete()
-            Log.i(TAG, "Deleted offline map pack $packId file: $deleted")
+            SafeLog.i(TAG, "Deleted offline map pack $packId file: $deleted")
         }
         refreshPacksState(currentGpsLat, currentGpsLng)
     }
@@ -256,7 +256,7 @@ class OfflineMapManager(
             }
         } catch (e: Exception) {
             // Safe recovery: Notification posting failed (e.g. permission missing), log telemetry without breaking background download
-            android.util.Log.w("OfflineMapManager", "Failed to post download status notification", e)
+            SafeLog.w("OfflineMapManager", "Failed to post download status notification", e)
         }
     }
 }

@@ -1,6 +1,6 @@
 package com.example.data.repository
 
-import android.util.Log
+import com.example.util.SafeLog
 import com.example.data.local.DiscoveredGemDao
 import com.example.data.local.RecentSearchDao
 import com.example.data.local.RecentSearchEntity
@@ -160,13 +160,13 @@ open class ScoutGemRepository(
             lastResult = block()
             if (lastResult.isSuccess) {
                 if (attempt > 1) {
-                    android.util.Log.i("ScoutGemRepository", "Spot discovery succeeded on retry attempt #$attempt")
+                    SafeLog.i("ScoutGemRepository", "Spot discovery succeeded on retry attempt #$attempt")
                 }
                 return lastResult
             }
 
             if (attempt < maxAttempts) {
-                android.util.Log.w(
+                SafeLog.w(
                     "ScoutGemRepository",
                     "Spot discovery attempt #$attempt failed. Retrying in ${currentDelay}ms... Error: ${lastResult.exceptionOrNull()?.message}"
                 )
@@ -175,7 +175,7 @@ open class ScoutGemRepository(
             }
         }
 
-        android.util.Log.e(
+        SafeLog.e(
             "ScoutGemRepository",
             "All $maxAttempts attempts failed for spot discovery: ${lastResult.exceptionOrNull()?.message}"
         )
@@ -232,7 +232,7 @@ open class ScoutGemRepository(
         )
 
         _lastCleanupReport.value = report
-        android.util.Log.i(
+        SafeLog.i(
             "ScoutGemRepository",
             "Auto-cleanup completed: removed $expiredRemoved expired spots (> ${maxAgeDays}d) and $distantRemoved distant spots (> ${maxRadiusKm.toInt()}km). Total pruned: $totalRemoved."
         )
@@ -246,7 +246,7 @@ open class ScoutGemRepository(
      */
     suspend fun clearTransientCache(): Int = withContext(Dispatchers.IO) {
         val purged = scoutDao.clearAllTransientSpots()
-        android.util.Log.i("ScoutGemRepository", "Manual cache clear purged $purged transient spots from Room DB.")
+        SafeLog.i("ScoutGemRepository", "Manual cache clear purged $purged transient spots from Room DB.")
         purged
     }
 
@@ -572,7 +572,7 @@ open class ScoutGemRepository(
                 }
             } catch (e: Exception) {
                 // Safe recovery: JSON parsing of raw Overpass telemetry failed, log warning telemetry and return raw log
-                android.util.Log.w("ScoutGemRepository", "Failed to parse Overpass diagnostic JSON response", e)
+                SafeLog.w("ScoutGemRepository", "Failed to parse Overpass diagnostic JSON response", e)
             }
         }
         log
@@ -657,7 +657,7 @@ open class ScoutGemRepository(
                             scoutDao.updateImageUrl(spot.id, resolved.url)
                             completedPhotoIds.add(spot.id)
                             failedPhotoAttempts.remove(spot.id)
-                            Log.i(
+                            SafeLog.i(
                                 "ScoutGemRepository",
                                 "Wikimedia Commons Resolution SUCCESS: Validated photo for '${spot.title}' (isSaved=${spot.isSaved}): ${resolved.url}"
                             )
@@ -669,7 +669,7 @@ open class ScoutGemRepository(
                     } catch (e: Exception) {
                         val currentFailed = failedPhotoAttempts[spot.id]?.failedCount ?: 0
                         failedPhotoAttempts[spot.id] = PhotoAttemptInfo(currentFailed + 1, System.currentTimeMillis())
-                        Log.w("ScoutGemRepository", "Background photo enrichment error for ${spot.id} ('${spot.title}'): ${e.message}")
+                        SafeLog.w("ScoutGemRepository", "Background photo enrichment error for ${spot.id} ('${spot.title}'): ${e.message}")
                     } finally {
                         inProgressPhotoIds.remove(spot.id)
                     }
@@ -691,7 +691,7 @@ open class ScoutGemRepository(
         val unEnriched = allSpots.filter { com.example.util.LocationPhotoResolver.isGenericOrStockPhoto(it.imageUrl) }
         if (unEnriched.isNotEmpty()) {
             val (savedSpots, feedSpots) = unEnriched.partition { it.isSaved }
-            android.util.Log.i(
+            SafeLog.i(
                 "ScoutGemRepository",
                 "Automatic Network Reconnection Re-Sync: Found ${unEnriched.size} spots needing photos (${savedSpots.size} saved/bookmarked, ${feedSpots.size} feed)."
             )
@@ -718,7 +718,7 @@ open class ScoutGemRepository(
                 return@withContext true
             }
         } catch (e: Exception) {
-            android.util.Log.w("ScoutGemRepository", "Failed on-demand photo refresh for $spotId: ${e.message}")
+            SafeLog.w("ScoutGemRepository", "Failed on-demand photo refresh for $spotId: ${e.message}")
         }
         false
     }

@@ -4,11 +4,14 @@
  */
 
 const fs = require('fs');
+const path = require('path');
 const assert = require('assert');
 
-// 1. Load actual deployment security rules from disk
-const firestoreRules = fs.readFileSync('./firestore.rules', 'utf8');
-const storageRules = fs.readFileSync('./storage.rules', 'utf8');
+// 1. Load actual deployment security rules from disk (resolved relative to repo root
+//    so the suite runs identically from the repository root or the functions directory)
+const repoRoot = path.resolve(__dirname, '..');
+const firestoreRules = fs.readFileSync(path.join(repoRoot, 'firestore.rules'), 'utf8');
+const storageRules = fs.readFileSync(path.join(repoRoot, 'storage.rules'), 'utf8');
 
 console.log('====================================================');
 console.log('REAL FIREBASE SECURITY RULES SUITE VALIDATION');

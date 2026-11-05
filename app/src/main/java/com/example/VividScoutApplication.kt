@@ -14,6 +14,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
+import com.example.util.SafeLog
 
 class VividScoutApplication : Application(), ImageLoaderFactory {
     lateinit var container: AppContainer
@@ -46,7 +47,7 @@ class VividScoutApplication : Application(), ImageLoaderFactory {
 
         applicationScope.launch {
             container.networkMonitor.onReconnected.collect {
-                android.util.Log.i("VividScoutApplication", "Network reconnection detected! Triggering background photo re-sync...")
+                SafeLog.i("VividScoutApplication", "Network reconnection detected! Triggering background photo re-sync...")
                 container.gemRepository.triggerPhotoMetadataReSync()
             }
         }

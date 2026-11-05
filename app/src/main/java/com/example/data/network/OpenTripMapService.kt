@@ -1,6 +1,6 @@
 package com.example.data.network
 
-import android.util.Log
+import com.example.util.SafeLog
 import com.example.data.local.ScoutSpotEntity
 import com.example.data.places.OpenTripMapSource
 import kotlinx.coroutines.Dispatchers
@@ -141,7 +141,7 @@ class OpenTripMapService(
                 }
             }
         } catch (e: Exception) {
-            Log.d(TAG, "Wikidata SPARQL query handled: ${e.message}")
+            SafeLog.d(TAG, "Wikidata SPARQL query handled: ${e.message}")
         }
         spots
     }

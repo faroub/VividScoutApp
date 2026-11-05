@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.util.Locale
+import com.example.util.SafeLog
 
 /**
  * Manages real-time user coordinates tracking using Google Play Services Location API
@@ -146,7 +147,7 @@ open class LocationTracker(private val context: Context) {
             _isTracking.value = true
         } catch (e: Exception) {
             // Safe recovery: Failed to request location updates (e.g. missing permission), log warning and mark tracking false
-            runCatching { android.util.Log.w("LocationTracker", "Failed to start location updates", e) }
+            runCatching { SafeLog.w("LocationTracker", "Failed to start location updates", e) }
             _isTracking.value = false
         }
     }
@@ -156,7 +157,7 @@ open class LocationTracker(private val context: Context) {
             fusedLocationClient.removeLocationUpdates(locationCallback)
         } catch (e: Exception) {
             // Safe recovery: Removing updates failed, log telemetry and reset tracking flag
-            runCatching { android.util.Log.w("LocationTracker", "Failed to remove location updates", e) }
+            runCatching { SafeLog.w("LocationTracker", "Failed to remove location updates", e) }
         } finally {
             _isTracking.value = false
         }
@@ -178,7 +179,7 @@ open class LocationTracker(private val context: Context) {
                 results[0]
             } catch (e: Throwable) {
                 // Safe recovery: Fallback Haversine geodesic calculation for local JVM unit tests or unmocked Android Location
-                runCatching { android.util.Log.w("LocationTracker", "Location.distanceBetween failed, using Haversine fallback", e) }
+                runCatching { SafeLog.w("LocationTracker", "Location.distanceBetween failed, using Haversine fallback", e) }
                 val r = 6371000.0 // Earth radius in meters
                 val dLat = Math.toRadians(endLat - startLat)
                 val dLng = Math.toRadians(endLng - startLng)

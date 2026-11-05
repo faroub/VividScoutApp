@@ -3,6 +3,7 @@ package com.example.util
 import android.content.Context
 import java.io.File
 import java.util.Locale
+import com.example.util.SafeLog
 
 /**
  * Utility to calculate physical file sizes of SQLite / Room databases and format storage metrics.
@@ -30,7 +31,7 @@ object StorageSizeCalculator {
             if (totalBytes < 1024L && dbFile.exists()) 64 * 1024L else totalBytes
         } catch (e: Exception) {
             // Safe recovery: Return estimated default size (128 KB) on I/O error
-            android.util.Log.w("StorageSizeCalculator", "Error measuring database file size", e)
+            SafeLog.w("StorageSizeCalculator", "Error measuring database file size", e)
             128 * 1024L
         }
     }

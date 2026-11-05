@@ -111,7 +111,8 @@ VividScout enforces privacy-first logging using `com.example.util.SafeLog`:
 ## Continuous Integration & Local Regression Suite
 
 VividScout includes an automated GitHub Actions CI workflow in `.github/workflows/ci.yml` that triggers on `push` to `main` and on pull requests:
-- **JDK 17 & Node.js 20 Setup**: Environment configured with Gradle dependency caching.
+- **JDK 25 & Node.js 20 Setup**: Environment configured with Gradle dependency caching. JDK 25 is required to run the Gradle daemon (see `gradle/gradle-daemon-jvm.properties`).
+- **Cloud Function Syntax Guard**: Runs `node --check functions/index.js` to catch entry-point syntax regressions.
 - **Node Cloud Function & Security Rules Tests**: Runs `node functions/nearbyPlaces.test.js` and `node functions/firebase-security-rules.test.js`.
 - **Android Unit Tests**: Runs `./gradlew testDebugUnitTest --stacktrace`.
 - **Android Lint**: Runs `./gradlew lintDebug --stacktrace`.

@@ -1,6 +1,5 @@
 package com.example.data.network
 
-import android.util.Log
 import com.example.data.local.ScoutSpotEntity
 import com.example.data.location.LocationTracker
 import com.example.data.model.ScoutCategory
@@ -107,7 +106,7 @@ class GeminiSpotService {
                 5. Return the result strictly matching the JSON schema.
             """.trimIndent()
 
-            Log.d(TAG, "Discovering gems with ${GeminiModelConstants.PRIMARY_DISPLAY_NAME} (${GeminiModelConstants.PRIMARY_MODEL_ID}) near (${SafeLog.sanitizeCoordinate(userLat)}, ${SafeLog.sanitizeCoordinate(userLng)}), query: '$customQuery', category: $category")
+            SafeLog.d(TAG, "Discovering gems with ${GeminiModelConstants.PRIMARY_DISPLAY_NAME} (${GeminiModelConstants.PRIMARY_MODEL_ID}) near (${SafeLog.sanitizeCoordinate(userLat)}, ${SafeLog.sanitizeCoordinate(userLng)}), query: '$customQuery', category: $category")
 
             val jsonText = try {
                 val response = withTimeout(15_000L) {
@@ -116,28 +115,28 @@ class GeminiSpotService {
                 response.text ?: throw IllegalStateException("Gemini returned empty response text.")
             } catch (t: Exception) {
                 if (t is CancellationException && t !is TimeoutCancellationException) throw t
-                Log.w(TAG, "${GeminiModelConstants.PRIMARY_DISPLAY_NAME} attempt delayed (${t.message}), trying secondary model (${GeminiModelConstants.SECONDARY_DISPLAY_NAME})...")
+                SafeLog.w(TAG, "${GeminiModelConstants.PRIMARY_DISPLAY_NAME} attempt delayed (${t.message}), trying secondary model (${GeminiModelConstants.SECONDARY_DISPLAY_NAME})...")
                 val fallbackResponse = withTimeout(10_000L) {
                     secondaryModel.generateContent(prompt)
                 }
                 fallbackResponse.text ?: throw IllegalStateException("Secondary model returned empty response text.")
             }
 
-            Log.d(TAG, "Gemini response received: ${jsonText.take(200)}...")
+            SafeLog.d(TAG, "Gemini response received: ${jsonText.take(200)}...")
             val parsedSpots = parseSpotsJson(jsonText, userLat, userLng, radiusMeters)
             if (parsedSpots.isNotEmpty()) {
                 Result.success(parsedSpots)
             } else {
-                Log.w(TAG, "Parsed 0 spots from response, generating curated vicinity spots")
+                SafeLog.w(TAG, "Parsed 0 spots from response, generating curated vicinity spots")
                 Result.success(generateCuratedVicinitySpots(userLat, userLng, category))
             }
         } catch (e: TimeoutCancellationException) {
-            Log.w(TAG, "Gemini spot discovery timed out gracefully, returning curated verified spots")
+            SafeLog.w(TAG, "Gemini spot discovery timed out gracefully, returning curated verified spots")
             Result.success(generateCuratedVicinitySpots(userLat, userLng, category))
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Log.w(TAG, "Gemini spot discovery encountered connection issue (${e.message}), returning curated verified spots")
+            SafeLog.w(TAG, "Gemini spot discovery encountered connection issue (${e.message}), returning curated verified spots")
             Result.success(generateCuratedVicinitySpots(userLat, userLng, category))
         }
     }
@@ -173,7 +172,7 @@ class GeminiSpotService {
             // Validate actual geodesic distance against active radius
             val distMeters = LocationTracker.distanceBetween(userLat, userLng, spotLat, spotLng)
             if (distMeters > maxAllowedDistance) {
-                Log.w(
+                SafeLog.w(
                     TAG,
                     "Rejecting AI spot '${item.optString("title")}' at ($spotLat, $spotLng): " +
                     "distance ${distMeters.toInt()}m exceeds radius threshold ${maxAllowedDistance.toInt()}m"

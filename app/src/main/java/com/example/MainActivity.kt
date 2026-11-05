@@ -85,6 +85,7 @@ import com.example.ui.viewmodel.MainViewModel
 import com.example.ui.viewmodel.OfflineMapsViewModel
 import com.example.ui.viewmodel.ProfileViewModel
 import com.example.util.configureAppCheck
+import com.example.util.SafeLog
 
 class MainActivity : ComponentActivity() {
 
@@ -193,7 +194,7 @@ fun VividScoutApp(
             context.startActivity(intent)
         } catch (e: Exception) {
             // Safe recovery: System Settings activity launch failed, log telemetry
-            android.util.Log.w("MainActivity", "Failed to launch application details settings intent", e)
+            SafeLog.w("MainActivity", "Failed to launch application details settings intent", e)
         }
     }
 

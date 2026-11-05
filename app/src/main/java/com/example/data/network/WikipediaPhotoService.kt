@@ -1,6 +1,5 @@
 package com.example.data.network
 
-import android.util.Log
 import com.example.util.SafeLog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -44,7 +43,7 @@ class WikipediaPhotoService(
                 .replace("+", "%20")
         } catch (e: Exception) {
             // Safe recovery: Encoding failed, fall back to simple string underscore replacement
-            android.util.Log.w("WikipediaPhotoService", "URL encoding failed for tag: $commonsTag", e)
+            SafeLog.w("WikipediaPhotoService", "URL encoding failed for tag: $commonsTag", e)
             cleaned.replace(" ", "_")
         }
         return "https://commons.wikimedia.org/wiki/Special:FilePath/$encoded?width=$targetWidth"
@@ -80,7 +79,7 @@ class WikipediaPhotoService(
                         val photoUrl = infoObj.optString("thumburl").ifEmpty { infoObj.optString("url") }
                         val fileTitle = pageObj.optString("title", cleaned)
                         if (photoUrl.isNotBlank()) {
-                            Log.i(TAG, "Wikimedia Commons API returned 1200px HD photo for '$query': $photoUrl")
+                            SafeLog.i(TAG, "Wikimedia Commons API returned 1200px HD photo for '$query': $photoUrl")
                             return@withContext WikipediaPhotoResult(
                                 photoUrl = photoUrl,
                                 attribution = "Wikimedia Commons / $fileTitle",
@@ -92,7 +91,7 @@ class WikipediaPhotoService(
                 }
             }
         } catch (e: Exception) {
-            Log.d(TAG, "Wikimedia Commons high-res lookup failed for '$query': ${e.message}")
+            SafeLog.d(TAG, "Wikimedia Commons high-res lookup failed for '$query': ${e.message}")
         }
         null
     }
@@ -190,7 +189,7 @@ class WikipediaPhotoService(
                 }
                 if (results.isNotEmpty()) break
             } catch (e: Exception) {
-                Log.d(TAG, "Failed Wikipedia geosearch for coordinates (${SafeLog.sanitizeCoordinate(lat)}, ${SafeLog.sanitizeCoordinate(lon)}) on $lang: ${e.message}")
+                SafeLog.d(TAG, "Failed Wikipedia geosearch for coordinates (${SafeLog.sanitizeCoordinate(lat)}, ${SafeLog.sanitizeCoordinate(lon)}) on $lang: ${e.message}")
             }
         }
         results
@@ -225,7 +224,7 @@ class WikipediaPhotoService(
                 }
             }
         } catch (e: Exception) {
-            Log.d(TAG, "Wikipedia search query failed for '$query': ${e.message}")
+            SafeLog.d(TAG, "Wikipedia search query failed for '$query': ${e.message}")
         }
         null
     }
@@ -265,7 +264,7 @@ class WikipediaPhotoService(
                 parseSummaryJson(body, title, lang, targetWidth)
             }
         } catch (e: Exception) {
-            Log.d(TAG, "Failed to fetch summary for $title ($lang): ${e.message}")
+            SafeLog.d(TAG, "Failed to fetch summary for $title ($lang): ${e.message}")
             null
         }
     }
@@ -299,7 +298,7 @@ class WikipediaPhotoService(
                 description = root.optString("description", "")
             )
         } catch (e: Exception) {
-            Log.e(TAG, "Error parsing Wikipedia summary JSON", e)
+            SafeLog.e(TAG, "Error parsing Wikipedia summary JSON", e)
             null
         }
     }

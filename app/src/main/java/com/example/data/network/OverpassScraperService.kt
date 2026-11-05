@@ -1,6 +1,5 @@
 package com.example.data.network
 
-import android.util.Log
 import com.example.data.local.ScoutSpotEntity
 import com.example.data.places.PlaceCandidate
 import com.example.data.places.PlaceSource
@@ -125,20 +124,20 @@ class OverpassScraperService : PlaceSource {
                         if (!body.isNullOrBlank()) {
                             val spots = parseOverpassJson(body, lat, lng)
                             if (spots.isNotEmpty()) {
-                                Log.i("OverpassScraper", "Successfully scraped ${spots.size} spots from $endpoint")
+                                SafeLog.i("OverpassScraper", "Successfully scraped ${spots.size} spots from $endpoint")
                                 return@withContext Result.success(spots)
                             }
                         }
                     }
                 }
             } catch (e: Exception) {
-                Log.w("OverpassScraper", "Mirror $endpoint failed: ${e.message}")
+                SafeLog.w("OverpassScraper", "Mirror $endpoint failed: ${e.message}")
             }
         }
 
         val retrofitClient = com.example.data.network.OverpassRetrofitClient()
         val fallback = retrofitClient.generateNearbyFallbackSpots(lat, lng, 6)
-        Log.i("OverpassScraper", "Scraper generated ${fallback.size} fallback spots around GPS (${SafeLog.sanitizeCoordinate(lat)}, ${SafeLog.sanitizeCoordinate(lng)})")
+        SafeLog.i("OverpassScraper", "Scraper generated ${fallback.size} fallback spots around GPS (${SafeLog.sanitizeCoordinate(lat)}, ${SafeLog.sanitizeCoordinate(lng)})")
         Result.success(fallback)
     }
 
@@ -279,7 +278,7 @@ class OverpassScraperService : PlaceSource {
                 spots.add(spot)
             }
         } catch (e: Exception) {
-            Log.e("OverpassScraper", "Error parsing Overpass JSON", e)
+            SafeLog.e("OverpassScraper", "Error parsing Overpass JSON", e)
         }
         return spots
     }

@@ -11,6 +11,7 @@ import org.json.JSONArray
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.TimeUnit
+import com.example.util.SafeLog
 
 /**
  * Data model representing a global city or region destination anywhere in the world.
@@ -69,7 +70,7 @@ object GlobalCityCatalog {
             }
         } catch (e: Exception) {
             // Safe recovery: Asset reading/parsing failed, log warning telemetry and return static fallback cities list
-            android.util.Log.w("GlobalCityCatalog", "Failed to load global cities from raw asset", e)
+            SafeLog.w("GlobalCityCatalog", "Failed to load global cities from raw asset", e)
             fallbackCities
         }
     }
@@ -94,7 +95,7 @@ object GlobalCityCatalog {
             }
         } catch (e: Exception) {
             // Safe recovery: Log warning and return whatever cities were successfully parsed
-            android.util.Log.w("GlobalCityCatalog", "Error parsing cities JSON array", e)
+            SafeLog.w("GlobalCityCatalog", "Error parsing cities JSON array", e)
         }
         return list
     }
@@ -155,7 +156,7 @@ object GlobalCityCatalog {
             }
         } catch (e: Exception) {
             // Safe recovery: Geocoding network call failed, log warning telemetry and return empty list
-            android.util.Log.w("GlobalCityCatalog", "Nominatim geocoding network error for query: $query", e)
+            SafeLog.w("GlobalCityCatalog", "Nominatim geocoding network error for query: $query", e)
             emptyList()
         }
     }
@@ -191,7 +192,7 @@ object GlobalCityCatalog {
             }
         } catch (e: Exception) {
             // Safe recovery: Return parsed results on malformed item
-            android.util.Log.w("GlobalCityCatalog", "Error parsing Nominatim JSON response", e)
+            SafeLog.w("GlobalCityCatalog", "Error parsing Nominatim JSON response", e)
         }
         return results
     }

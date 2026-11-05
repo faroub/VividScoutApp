@@ -1,6 +1,6 @@
 package com.example.data.network
 
-import android.util.Log
+import com.example.util.SafeLog
 import com.google.firebase.remoteconfig.FirebaseRemoteConfig
 
 /**
@@ -33,7 +33,7 @@ object GeminiModelConstants {
             val remoteValue = remoteConfig.getString(REMOTE_CONFIG_PRIMARY_KEY)
             if (remoteValue.isNotBlank()) remoteValue else DEFAULT_PRIMARY_MODEL_ID
         } catch (e: Exception) {
-            Log.d(TAG, "RemoteConfig unavailable, using default primary model ID: ${e.message}")
+            SafeLog.d(TAG, "RemoteConfig unavailable, using default primary model ID: ${e.message}")
             DEFAULT_PRIMARY_MODEL_ID
         }
     }
@@ -48,7 +48,7 @@ object GeminiModelConstants {
             val remoteValue = remoteConfig.getString(REMOTE_CONFIG_SECONDARY_KEY)
             if (remoteValue.isNotBlank()) remoteValue else DEFAULT_SECONDARY_MODEL_ID
         } catch (e: Exception) {
-            Log.d(TAG, "RemoteConfig unavailable, using default secondary model ID: ${e.message}")
+            SafeLog.d(TAG, "RemoteConfig unavailable, using default secondary model ID: ${e.message}")
             DEFAULT_SECONDARY_MODEL_ID
         }
     }

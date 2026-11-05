@@ -1,7 +1,7 @@
 package com.example.util
 
 import android.content.Context
-import android.util.Log
+import com.example.util.SafeLog
 import com.example.BuildConfig
 import com.google.firebase.FirebaseApp
 import com.google.firebase.appcheck.FirebaseAppCheck
@@ -24,7 +24,7 @@ fun configureAppCheck(context: Context) {
         }
 
         if (app == null) {
-            Log.d(TAG, "FirebaseApp is not configured; skipping App Check initialization.")
+            SafeLog.d(TAG, "FirebaseApp is not configured; skipping App Check initialization.")
             return
         }
 
@@ -33,14 +33,14 @@ fun configureAppCheck(context: Context) {
             appCheck.installAppCheckProviderFactory(
                 DebugAppCheckProviderFactory.getInstance()
             )
-            Log.d(TAG, "DebugAppCheckProviderFactory installed.")
+            SafeLog.d(TAG, "DebugAppCheckProviderFactory installed.")
         } else {
             appCheck.installAppCheckProviderFactory(
                 PlayIntegrityAppCheckProviderFactory.getInstance()
             )
-            Log.d(TAG, "PlayIntegrityAppCheckProviderFactory installed for Release build.")
+            SafeLog.d(TAG, "PlayIntegrityAppCheckProviderFactory installed for Release build.")
         }
     } catch (e: Exception) {
-        Log.d(TAG, "Firebase App Check initialization skipped: ${e.message}")
+        SafeLog.d(TAG, "Firebase App Check initialization skipped: ${e.message}")
     }
 }

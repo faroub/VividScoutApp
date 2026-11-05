@@ -1,6 +1,6 @@
 package com.example.util
 
-import android.util.Log
+import com.example.util.SafeLog
 import com.example.data.network.WikipediaPhotoService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -130,7 +130,7 @@ object LocationPhotoResolver {
         // 3. Query Wikimedia Commons API directly using gem name for 1200px HD resolution metadata
         val commonsDirect = wikiService.fetchWikimediaCommonsHighResUrl(title, targetWidth = 1200)
         if (commonsDirect != null && commonsDirect.photoUrl.isNotBlank()) {
-            Log.i(TAG, "Resolved 1200px HD photo from Wikimedia Commons API for '$title': ${commonsDirect.photoUrl}")
+            SafeLog.i(TAG, "Resolved 1200px HD photo from Wikimedia Commons API for '$title': ${commonsDirect.photoUrl}")
             return@withContext EnrichedPhoto(commonsDirect.photoUrl, commonsDirect.attribution, true)
         }
 
@@ -150,7 +150,7 @@ object LocationPhotoResolver {
         if (!wikiTag.isNullOrBlank()) {
             val wikiResult = wikiService.fetchWikipediaPhotoFromTag(wikiTag, targetWidth = 1200)
             if (wikiResult != null && wikiResult.photoUrl.isNotBlank()) {
-                Log.d(TAG, "Resolved photo via OSM wikipedia tag: ${wikiResult.photoUrl}")
+                SafeLog.d(TAG, "Resolved photo via OSM wikipedia tag: ${wikiResult.photoUrl}")
                 return@withContext EnrichedPhoto(wikiResult.photoUrl, wikiResult.attribution, true)
             }
         }
@@ -158,7 +158,7 @@ object LocationPhotoResolver {
         // 6. Query Wikipedia REST API by title
         val titleWikiResult = wikiService.fetchWikipediaPhotoByTitle(title, targetWidth = 1200)
         if (titleWikiResult != null && titleWikiResult.photoUrl.isNotBlank()) {
-            Log.d(TAG, "Resolved photo via Wikipedia title lookup for '$title': ${titleWikiResult.photoUrl}")
+            SafeLog.d(TAG, "Resolved photo via Wikipedia title lookup for '$title': ${titleWikiResult.photoUrl}")
             return@withContext EnrichedPhoto(titleWikiResult.photoUrl, titleWikiResult.attribution, true)
         }
 
@@ -166,7 +166,7 @@ object LocationPhotoResolver {
         val searchResult = wikiService.searchWikipediaPhoto(title, "pt", targetWidth = 1200)
             ?: wikiService.searchWikipediaPhoto(title, "en", targetWidth = 1200)
         if (searchResult != null && searchResult.photoUrl.isNotBlank()) {
-            Log.d(TAG, "Resolved photo via Wikipedia search API for '$title': ${searchResult.photoUrl}")
+            SafeLog.d(TAG, "Resolved photo via Wikipedia search API for '$title': ${searchResult.photoUrl}")
             return@withContext EnrichedPhoto(searchResult.photoUrl, searchResult.attribution, true)
         }
 
@@ -175,7 +175,7 @@ object LocationPhotoResolver {
             val geoResults = wikiService.fetchWikipediaPhotosByLocation(latitude, longitude, radiusMeters = 1500, primaryLang = "pt", targetWidth = 1200)
             if (geoResults.isNotEmpty()) {
                 val bestGeo = geoResults.first()
-                Log.d(TAG, "Resolved photo via Wikipedia Geosearch at ($latitude, $longitude): ${bestGeo.photoUrl}")
+                SafeLog.d(TAG, "Resolved photo via Wikipedia Geosearch at ($latitude, $longitude): ${bestGeo.photoUrl}")
                 return@withContext EnrichedPhoto(bestGeo.photoUrl, bestGeo.attribution, true)
             }
         }
@@ -187,7 +187,7 @@ object LocationPhotoResolver {
             districtOrLocation = districtOrLocation
         )
         if (!lisbonAttr.endsWith("Lisbon Street Exploration")) {
-            Log.i(TAG, "Wikimedia Commons resolution status: Retaining curated Lisbon photo for '$title' ($lisbonUrl)")
+            SafeLog.i(TAG, "Wikimedia Commons resolution status: Retaining curated Lisbon photo for '$title' ($lisbonUrl)")
             return@withContext EnrichedPhoto(lisbonUrl, lisbonAttr, isVerifiedLandmark = false)
         }
 
@@ -198,7 +198,7 @@ object LocationPhotoResolver {
             districtOrLocation = districtOrLocation,
             seedKey = spotId ?: title
         )
-        Log.i(TAG, "Wikimedia Commons resolution status: No direct match found for '$title', retaining fallback photo ($contextualUrl)")
+        SafeLog.i(TAG, "Wikimedia Commons resolution status: No direct match found for '$title', retaining fallback photo ($contextualUrl)")
         EnrichedPhoto(contextualUrl, attribution, false)
     }
 }

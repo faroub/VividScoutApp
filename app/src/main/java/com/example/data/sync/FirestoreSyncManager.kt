@@ -1,7 +1,7 @@
 package com.example.data.sync
 
 import android.content.Context
-import android.util.Log
+
 import com.example.R
 import com.example.data.local.CommunityTipDao
 import com.example.data.local.CommunityTipEntity
@@ -58,7 +58,7 @@ object FirestoreSyncManager {
                 FirebaseFirestore.getInstance(app)
             }
         } catch (e: Exception) {
-            Log.d(TAG, "Failed to initialize Firestore instance: ${e.message}")
+            SafeLog.d(TAG, "Failed to initialize Firestore instance: ${e.message}")
             null
         }
     }
@@ -78,7 +78,7 @@ object FirestoreSyncManager {
             }
             auth.currentUser != null
         } catch (e: Exception) {
-            Log.d(TAG, "Firebase Auth sign-in skipped: ${e.message}")
+            SafeLog.d(TAG, "Firebase Auth sign-in skipped: ${e.message}")
             false
         }
     }
@@ -93,7 +93,7 @@ object FirestoreSyncManager {
         discoveredGemDao: DiscoveredGemDao?
     ): Boolean = withContext(Dispatchers.IO) {
         if (!ensureFirebaseAuth(context)) {
-            Log.w(TAG, "Cannot sync draft '${spot.id}': Firebase Auth required for Firestore writes")
+            SafeLog.w(TAG, "Cannot sync draft '${spot.id}': Firebase Auth required for Firestore writes")
             return@withContext false
         }
         val firestore = getFirestore(context) ?: return@withContext false
@@ -125,10 +125,10 @@ object FirestoreSyncManager {
             )
             scoutDao.updateSpot(syncedSpot)
             discoveredGemDao?.markAsSynced(spot.id)
-            Log.i(TAG, "Successfully synced spot '${spot.title}' to cloud Firestore")
+            SafeLog.i(TAG, "Successfully synced spot '${spot.title}' to cloud Firestore")
             true
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to sync draft spot '${spot.id}' to Firestore: ${e.message}", e)
+            SafeLog.e(TAG, "Failed to sync draft spot '${spot.id}' to Firestore: ${e.message}", e)
             false
         }
     }
@@ -161,7 +161,7 @@ object FirestoreSyncManager {
         tipDao: CommunityTipDao? = null
     ): Boolean = withContext(Dispatchers.IO) {
         if (!ensureFirebaseAuth(context)) {
-            Log.w(TAG, "Cannot post tip '${tip.id}': Firebase Auth required for Firestore writes")
+            SafeLog.w(TAG, "Cannot post tip '${tip.id}': Firebase Auth required for Firestore writes")
             return@withContext false
         }
         val firestore = getFirestore(context) ?: return@withContext false
@@ -203,10 +203,10 @@ object FirestoreSyncManager {
             }
 
             tipDao?.markTipAsSynced(tip.id)
-            Log.i(TAG, "Posted community tip '${tip.id}' to cloud Firestore")
+            SafeLog.i(TAG, "Posted community tip '${tip.id}' to cloud Firestore")
             true
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to post community tip to Firestore: ${e.message}", e)
+            SafeLog.e(TAG, "Failed to post community tip to Firestore: ${e.message}", e)
             false
         }
     }
@@ -224,7 +224,7 @@ object FirestoreSyncManager {
         val firestore = getFirestore(context) ?: return@withContext false
         val currentUid = FirebaseAuth.getInstance().currentUser?.uid
         if (currentUid.isNullOrBlank()) {
-            Log.w(TAG, "Cannot upvote tip '$tipId': No authenticated user UID found")
+            SafeLog.w(TAG, "Cannot upvote tip '$tipId': No authenticated user UID found")
             return@withContext false
         }
 
@@ -235,13 +235,13 @@ object FirestoreSyncManager {
             val voteSuccess = firestore.runTransaction { transaction ->
                 val tipSnap = transaction.get(tipRef)
                 if (!tipSnap.exists() || !tipSnap.contains("legacyUpvotes")) {
-                    Log.w(TAG, "Cannot upvote tip '$tipId': Document is missing 'legacyUpvotes' field. Aborting transaction.")
+                    SafeLog.w(TAG, "Cannot upvote tip '$tipId': Document is missing 'legacyUpvotes' field. Aborting transaction.")
                     return@runTransaction false
                 }
 
                 val voteSnap = transaction.get(voteRef)
                 if (voteSnap.exists()) {
-                    Log.w(TAG, "User '${SafeLog.sanitizeUid(currentUid)}' has already voted on tip '$tipId'. Rejecting second vote.")
+                    SafeLog.w(TAG, "User '${SafeLog.sanitizeUid(currentUid)}' has already voted on tip '$tipId'. Rejecting second vote.")
                     return@runTransaction false
                 }
 
@@ -259,11 +259,11 @@ object FirestoreSyncManager {
             }.await()
 
             if (voteSuccess) {
-                Log.i(TAG, "Successfully recorded vote from user '${SafeLog.sanitizeUid(currentUid)}' for tip '$tipId'")
+                SafeLog.i(TAG, "Successfully recorded vote from user '${SafeLog.sanitizeUid(currentUid)}' for tip '$tipId'")
             }
             voteSuccess
         } catch (e: Exception) {
-            Log.w(TAG, "Failed to execute upvote transaction for tip '$tipId': ${e.message}")
+            SafeLog.w(TAG, "Failed to execute upvote transaction for tip '$tipId': ${e.message}")
             false
         }
     }
@@ -293,7 +293,7 @@ object FirestoreSyncManager {
                 return@withContext true
             }
         } catch (e: Exception) {
-            Log.w(TAG, "Reconciliation check failed for tip '$tipId': ${e.message}")
+            SafeLog.w(TAG, "Reconciliation check failed for tip '$tipId': ${e.message}")
         }
         false
     }
@@ -443,7 +443,7 @@ object FirestoreSyncManager {
 
                     // Validate coordinates are geographically plausible
                     if (lat.isNaN() || lng.isNaN() || (lat == 0.0 && lng == 0.0) || lat < -90.0 || lat > 90.0 || lng < -180.0 || lng > 180.0) {
-                        Log.w(TAG, "Skipping remote submission '$id': invalid coordinates ($lat, $lng)")
+                        SafeLog.w(TAG, "Skipping remote submission '$id': invalid coordinates ($lat, $lng)")
                         continue
                     }
 
@@ -500,7 +500,7 @@ object FirestoreSyncManager {
                 newGemsCount = remoteSpots.size
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error synchronizing remote content from Firestore: ${e.message}", e)
+            SafeLog.e(TAG, "Error synchronizing remote content from Firestore: ${e.message}", e)
         }
 
         Pair(newTipsCount, newGemsCount)

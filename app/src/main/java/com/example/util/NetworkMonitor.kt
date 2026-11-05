@@ -5,7 +5,7 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
-import android.util.Log
+import com.example.util.SafeLog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -39,13 +39,13 @@ class NetworkMonitor(context: Context) {
 
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
-            Log.i(TAG, "Network connection restored (onAvailable)")
+            SafeLog.i(TAG, "Network connection restored (onAvailable)")
             val previousState = _isOnline.value
             _isOnline.value = true
 
             if (!previousState || wasOffline) {
                 wasOffline = false
-                Log.i(TAG, "Triggering network reconnected event for background sync...")
+                SafeLog.i(TAG, "Triggering network reconnected event for background sync...")
                 scope.launch {
                     _onReconnected.emit(Unit)
                 }
@@ -53,7 +53,7 @@ class NetworkMonitor(context: Context) {
         }
 
         override fun onLost(network: Network) {
-            Log.w(TAG, "Network connection lost (onLost)")
+            SafeLog.w(TAG, "Network connection lost (onLost)")
             _isOnline.value = false
             wasOffline = true
         }
@@ -61,13 +61,13 @@ class NetworkMonitor(context: Context) {
         override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
             val hasInternet = networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
                     networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
-            Log.d(TAG, "Network capabilities changed: hasInternet=$hasInternet")
+            SafeLog.d(TAG, "Network capabilities changed: hasInternet=$hasInternet")
             val previousState = _isOnline.value
             _isOnline.value = hasInternet
 
             if (hasInternet && (!previousState || wasOffline)) {
                 wasOffline = false
-                Log.i(TAG, "Triggering network reconnected event for background sync (validated capability)...")
+                SafeLog.i(TAG, "Triggering network reconnected event for background sync (validated capability)...")
                 scope.launch {
                     _onReconnected.emit(Unit)
                 }
@@ -87,18 +87,18 @@ class NetworkMonitor(context: Context) {
                 .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
                 .build()
             connectivityManager.registerNetworkCallback(request, networkCallback)
-            Log.i(TAG, "NetworkMonitor callback registered successfully. Initial online state: ${_isOnline.value}")
+            SafeLog.i(TAG, "NetworkMonitor callback registered successfully. Initial online state: ${_isOnline.value}")
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to register network callback: ${e.message}", e)
+            SafeLog.e(TAG, "Failed to register network callback: ${e.message}", e)
         }
     }
 
     fun unregisterCallback() {
         try {
             connectivityManager.unregisterNetworkCallback(networkCallback)
-            Log.i(TAG, "NetworkMonitor callback unregistered.")
+            SafeLog.i(TAG, "NetworkMonitor callback unregistered.")
         } catch (e: Exception) {
-            Log.w(TAG, "Failed to unregister network callback: ${e.message}")
+            SafeLog.w(TAG, "Failed to unregister network callback: ${e.message}")
         }
     }
 

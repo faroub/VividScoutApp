@@ -18,7 +18,7 @@ import android.os.Build
 import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
-import android.util.Log
+import com.example.util.SafeLog
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.example.MainActivity
@@ -184,7 +184,7 @@ class ProximityPrefetchService : Service() {
                     ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION or ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
                 )
             } catch (e: Exception) {
-                Log.e(TAG, "Failed startForeground with type LOCATION|DATA_SYNC: ${e.message}")
+                SafeLog.e(TAG, "Failed startForeground with type LOCATION|DATA_SYNC: ${e.message}")
                 try {
                     startForeground(
                         NOTIFICATION_ID,
@@ -192,7 +192,7 @@ class ProximityPrefetchService : Service() {
                         ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
                     )
                 } catch (e2: Exception) {
-                    Log.e(TAG, "Failed startForeground fallback: ${e2.message}")
+                    SafeLog.e(TAG, "Failed startForeground fallback: ${e2.message}")
                     startForeground(NOTIFICATION_ID, notification)
                 }
             }
@@ -209,7 +209,7 @@ class ProximityPrefetchService : Service() {
             val oldMode = currentPowerMode
             currentPowerMode = newMode
             _activePowerMode.value = newMode
-            Log.i(TAG, "Prefetch power mode transitioned from ${oldMode.title} to ${newMode.title} (Battery: ${currentBatteryStatus.levelPercent}%, Speed: ${speedMps * 3.6f} km/h)")
+            SafeLog.i(TAG, "Prefetch power mode transitioned from ${oldMode.title} to ${newMode.title} (Battery: ${currentBatteryStatus.levelPercent}%, Speed: ${speedMps * 3.6f} km/h)")
 
             reconfigureLocationTracking(newMode)
 
@@ -259,9 +259,9 @@ class ProximityPrefetchService : Service() {
                 locationCallback,
                 Looper.getMainLooper()
             )
-            Log.d(TAG, "Reconfigured location updates for mode: ${mode.title} (Interval: ${mode.locationIntervalMs}ms, MinDistance: ${mode.minUpdateDistanceMeters}m)")
+            SafeLog.d(TAG, "Reconfigured location updates for mode: ${mode.title} (Interval: ${mode.locationIntervalMs}ms, MinDistance: ${mode.minUpdateDistanceMeters}m)")
         } catch (e: SecurityException) {
-            Log.e(TAG, "SecurityException reconfiguring location updates: ${e.message}")
+            SafeLog.e(TAG, "SecurityException reconfiguring location updates: ${e.message}")
         }
     }
 
@@ -350,11 +350,11 @@ class ProximityPrefetchService : Service() {
                 updateNotification(
                     "${totalPrefetched} gems cached 5km along your ${vector.cardinalDirection} trajectory"
                 )
-                Log.i(TAG, "Prefetch complete: inserted ${spots.size} gems along vector. Total prefetched in DB: $totalPrefetched")
+                SafeLog.i(TAG, "Prefetch complete: inserted ${spots.size} gems along vector. Total prefetched in DB: $totalPrefetched")
             },
             onFailure = { err ->
                 _statusMessage.value = "Prefetch standby: ${err.message ?: "Retrying on next movement"}"
-                Log.w(TAG, "Prefetch query failed: ${err.message}")
+                SafeLog.w(TAG, "Prefetch query failed: ${err.message}")
             }
         )
 
@@ -432,7 +432,7 @@ class ProximityPrefetchService : Service() {
         try {
             unregisterReceiver(batteryReceiver)
         } catch (e: Exception) {
-            Log.w(TAG, "Battery receiver unregister error: ${e.message}")
+            SafeLog.w(TAG, "Battery receiver unregister error: ${e.message}")
         }
         serviceScope.cancel()
         _isServiceRunning.value = false

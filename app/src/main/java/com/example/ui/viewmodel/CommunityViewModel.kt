@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import com.example.util.SafeLog
 
 data class CommunityUiState(
     val tips: List<CommunityTipEntity> = emptyList(),
@@ -75,7 +76,7 @@ class CommunityViewModel(
             try {
                 communityRepository.syncWithCloud()
             } catch (e: Exception) {
-                android.util.Log.w("CommunityVM", "Cloud sync delayed: ${e.message}")
+                SafeLog.w("CommunityVM", "Cloud sync delayed: ${e.message}")
             }
         }
     }

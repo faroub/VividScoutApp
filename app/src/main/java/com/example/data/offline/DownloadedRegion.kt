@@ -10,6 +10,7 @@ import org.json.JSONObject
 import java.io.File
 import kotlin.math.cos
 import kotlin.math.roundToInt
+import com.example.util.SafeLog
 
 @Keep
 data class GeoBoundingBox(
@@ -165,7 +166,7 @@ class OfflineRegionStorage(private val context: Context) {
                     )
                 )
             } catch (e: Exception) {
-                android.util.Log.e("OfflineRegionStorage", "Failed to parse region pack: ${file.name}", e)
+                SafeLog.e("OfflineRegionStorage", "Failed to parse region pack: ${file.name}", e)
             }
         }
 

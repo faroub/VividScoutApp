@@ -1,7 +1,7 @@
 package com.example.engine
 
 import android.content.Context
-import android.util.Log
+import com.example.util.SafeLog
 import androidx.compose.ui.geometry.Offset
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -41,12 +41,12 @@ object ScoutVectorEngine {
      */
     fun initialize(context: Context) {
         if (initialized.compareAndSet(false, true)) {
-            Log.i(TAG, "Initializing Scout Vector Map Engine v1.0...")
+            SafeLog.i(TAG, "Initializing Scout Vector Map Engine v1.0...")
             // Pre-heat vector projection parameters and verify context reference
             val appName = context.applicationInfo.loadLabel(context.packageManager).toString()
-            Log.i(TAG, "Scout Vector Engine successfully pre-warmed for $appName.")
+            SafeLog.i(TAG, "Scout Vector Engine successfully pre-warmed for $appName.")
         } else {
-            Log.d(TAG, "Scout Vector Engine is already initialized.")
+            SafeLog.d(TAG, "Scout Vector Engine is already initialized.")
         }
     }
 
@@ -54,21 +54,21 @@ object ScoutVectorEngine {
      * Called when the map canvas lifecycle enters ON_START.
      */
     fun onStart() {
-        Log.i(TAG, "Scout Vector Engine started: telemetry rendering active.")
+        SafeLog.i(TAG, "Scout Vector Engine started: telemetry rendering active.")
     }
 
     /**
      * Called when the map canvas lifecycle enters ON_STOP.
      */
     fun onStop() {
-        Log.i(TAG, "Scout Vector Engine stopped: telemetry rendering paused.")
+        SafeLog.i(TAG, "Scout Vector Engine stopped: telemetry rendering paused.")
     }
 
     /**
      * Called when the map canvas lifecycle enters ON_DESTROY.
      */
     fun onDestroy() {
-        Log.i(TAG, "Scout Vector Engine destroyed: resources released.")
+        SafeLog.i(TAG, "Scout Vector Engine destroyed: resources released.")
     }
 
     /**

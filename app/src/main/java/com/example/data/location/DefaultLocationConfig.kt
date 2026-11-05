@@ -2,7 +2,7 @@ package com.example.data.location
 
 import android.content.Context
 import android.location.Location
-import android.util.Log
+import com.example.util.SafeLog
 import androidx.core.content.edit
 
 /**
@@ -46,7 +46,7 @@ object DefaultLocationConfig {
                         putFloat("key_active_city_lng", lng.toFloat())
                     }
                 } catch (e: Exception) {
-                    Log.w("DefaultLocationConfig", "Failed to persist fallback city preference: ${e.message}")
+                    SafeLog.w("DefaultLocationConfig", "Failed to persist fallback city preference: ${e.message}")
                 }
             }
         }
@@ -67,7 +67,7 @@ object DefaultLocationConfig {
                 activeFallbackCityName = savedCity
             }
         } catch (e: Exception) {
-            Log.w("DefaultLocationConfig", "Failed to restore fallback city preference: ${e.message}")
+            SafeLog.w("DefaultLocationConfig", "Failed to restore fallback city preference: ${e.message}")
         }
     }
 

@@ -13,6 +13,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import org.json.JSONObject
 import kotlin.math.abs
+import com.example.util.SafeLog
 
 class WeatherRepository(private val weatherDao: WeatherDao) {
 
@@ -86,7 +87,7 @@ class WeatherRepository(private val weatherDao: WeatherDao) {
             }
         } catch (e: Exception) {
             // Safe recovery: Open-Meteo network request failed or offline; log warning telemetry and fall back to cache or generator
-            android.util.Log.w("WeatherRepository", "Open-Meteo weather fetch failed for spot: $gemId", e)
+            SafeLog.w("WeatherRepository", "Open-Meteo weather fetch failed for spot: $gemId", e)
         }
 
         if (onlineReport != null) {
@@ -161,7 +162,7 @@ class WeatherRepository(private val weatherDao: WeatherDao) {
             SuitabilityLevel.valueOf(suitability)
         } catch (e: Exception) {
             // Safe recovery: Return default SuitabilityLevel.IDEAL on invalid enum string
-            android.util.Log.w("WeatherRepository", "Failed to parse SuitabilityLevel string: $suitability", e)
+            SafeLog.w("WeatherRepository", "Failed to parse SuitabilityLevel string: $suitability", e)
             SuitabilityLevel.IDEAL
         }
         return WeatherReport(

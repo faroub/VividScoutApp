@@ -1,6 +1,6 @@
 package com.example.data.network
 
-import android.util.Log
+import com.example.util.SafeLog
 import com.example.data.local.ScoutSpotEntity
 import com.example.data.places.PlaceCandidate
 import com.example.data.places.PlaceSource
@@ -168,7 +168,7 @@ class WikidataSearchService(
                 )
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Wikidata SPARQL Phase error", e)
+            SafeLog.e(TAG, "Wikidata SPARQL Phase error", e)
         }
         spots
     }
@@ -247,7 +247,7 @@ class WikidataSearchService(
                     }
                 }
             } catch (e: Exception) {
-                Log.d(TAG, "WikipediaApi secondary summary fetch on $lang handled for '$title': ${e.message}")
+                SafeLog.d(TAG, "WikipediaApi secondary summary fetch on $lang handled for '$title': ${e.message}")
             }
         }
         null

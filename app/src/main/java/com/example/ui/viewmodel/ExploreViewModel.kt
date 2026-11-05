@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 import com.example.data.model.ExploreMapLayer
+import com.example.util.SafeLog
 
 data class ExploreUiState(
     val filteredSpots: List<ScoutSpotEntity> = emptyList(),
@@ -295,7 +296,7 @@ class ExploreViewModel(
                 try {
                     gemRepository.syncLiveOsmGems(lat, lng, 1500, "all")
                 } catch (e: Exception) {
-                    android.util.Log.w("ExploreViewModel", "City selection discovery error: ${e.message}")
+                    SafeLog.w("ExploreViewModel", "City selection discovery error: ${e.message}")
                 } finally {
                     _isDiscoveringGems.value = false
                 }
@@ -330,7 +331,7 @@ class ExploreViewModel(
                         category = "all"
                     )
                 } catch (e: Exception) {
-                    android.util.Log.w("ExploreViewModel", "Gemini vicinity discovery error: ${e.message}")
+                    SafeLog.w("ExploreViewModel", "Gemini vicinity discovery error: ${e.message}")
                 } finally {
                     _isDiscoveringGems.value = false
                 }
@@ -422,7 +423,7 @@ class ExploreViewModel(
                     else -> gemRepository.syncLiveOsmGems(coords.first, coords.second)
                 }
             } catch (e: Exception) {
-                android.util.Log.w("ExploreViewModel", "Failed to sync touristic source $sourceId: ${e.message}")
+                SafeLog.w("ExploreViewModel", "Failed to sync touristic source $sourceId: ${e.message}")
             } finally {
                 _isSyncingTouristicSources.value = false
             }
@@ -437,7 +438,7 @@ class ExploreViewModel(
             try {
                 gemRepository.syncMultiSourceGems(coords.first, coords.second, cityName = city)
             } catch (e: Exception) {
-                android.util.Log.w("ExploreViewModel", "Failed multi-source sync: ${e.message}")
+                SafeLog.w("ExploreViewModel", "Failed multi-source sync: ${e.message}")
             } finally {
                 _isSyncingTouristicSources.value = false
             }
