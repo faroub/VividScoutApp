@@ -41,24 +41,43 @@ class PlaceDataIntegrityTest {
         val dresdenSpots = service.fetchMunicipalDataSpots("Dresden", 51.0504, 13.7373, radiusMeters = 3000)
         assertTrue("Municipal data service must return empty list for non-supported cities", dresdenSpots.isEmpty())
 
-        // 2. Verified city (Lisbon) within 3000m -> Honest provenance
+        // 2. Verified city (Lisbon) within 3000m -> Honest editorial provenance
         val lisbonSpots = service.fetchMunicipalDataSpots("Lisbon", 38.7112, -9.1423, radiusMeters = 3000)
-        assertTrue("Lisbon verified dataset items must be returned", lisbonSpots.isNotEmpty())
+        assertTrue("Lisbon curated places must be returned", lisbonSpots.isNotEmpty())
         for (spot in lisbonSpots) {
             assertNull("Municipal ratings must be null", spot.rating)
             assertNull("Municipal reviewCount must be null", spot.reviewCount)
-            assertEquals("Lisbon Dataset", spot.badgeLabel)
-            assertEquals("Curated Municipal Spot", spot.statusBadge)
-            assertTrue("Description must attribute Lisboa Aberta dataset", spot.description.contains("Lisboa Aberta"))
+            assertEquals("Editorial Curation", spot.badgeLabel)
+            assertEquals("Curated Lisbon Spot", spot.statusBadge)
+            assertTrue("Description must label the entry as editorially curated", spot.description.contains("Editorially curated"))
+            assertFalse("Description must not claim an official municipal dataset", spot.description.contains("Lisboa Aberta"))
+            assertFalse("Tags must not claim an official dataset", spot.tagsRaw.contains("lisboa_aberta"))
+            assertTrue("Image URL must be a real Wikimedia Commons file", spot.imageUrl.startsWith("https://upload.wikimedia.org/wikipedia/commons/thumb/"))
+            assertTrue("Provenance must credit the image license", spot.proTip!!.contains("CC BY-SA"))
         }
 
-        // 3. Small radius filter (50m radius centered at 38.7112, -9.1423 far from Alfama 38.7125) -> Excluded
+        // 2b. Verified OpenStreetMap coordinates must be used exactly
+        val cerca = lisbonSpots.first { it.id == "curated_lisbon_cerca_da_graca" }
+        assertEquals(38.7173184, cerca.latitude, 1e-6)
+        assertEquals(-9.1319531, cerca.longitude, 1e-6)
+
+        // 3. Small radius filter (50m radius centered at 38.7112, -9.1423) -> Excluded
         val smallRadiusSpots = service.fetchMunicipalDataSpots("Lisbon", 38.7112, -9.1423, radiusMeters = 50)
         assertTrue("Small 50m radius must filter out spots > 50m away", smallRadiusSpots.isEmpty())
+
+        // 3b. Exact radius inclusion: standing at the verified park with 100 m radius
+        val atPark = service.fetchMunicipalDataSpots("Lisbon", 38.7173184, -9.1319531, radiusMeters = 100)
+        assertEquals("Exact-distance filtering must include the spot at its own coordinates", 1, atPark.size)
+
+        // 3c. Non-positive radius -> empty
+        val zeroRadius = service.fetchMunicipalDataSpots("Lisbon", 38.7112, -9.1423, radiusMeters = 0)
+        assertTrue("Zero radius must return empty list", zeroRadius.isEmpty())
 
         // 4. Invalid input coordinates (NaN or 0.0/0.0) -> Empty List
         val nanSpots = service.fetchMunicipalDataSpots("Lisbon", Double.NaN, -9.1423)
         assertTrue("NaN coordinates must return empty list", nanSpots.isEmpty())
+        val nullIslandSpots = service.fetchMunicipalDataSpots("Lisbon", 0.0, 0.0)
+        assertTrue("Null Island coordinates must return empty list", nullIslandSpots.isEmpty())
     }
 
     @Test

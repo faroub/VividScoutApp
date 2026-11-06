@@ -103,14 +103,24 @@ service cloud.firestore {
 
       allow delete: if false;
 
-      // Per-account unique vote tracking subcollection: a user may read or create only their own vote document
+      // Per-account unique vote tracking subcollection: a user may read only their own vote
+      // document. A vote document may ONLY be created as part of the atomic transaction that
+      // increments the parent tip's upvotes counter (see the parent update rule): the parent
+      // tip must exist before the operation, its upvotes counter must increase by exactly one
+      // in this transaction, and the user's own vote document must not exist before it must
+      // exist after it (per-user ID restrictions and immutability are preserved below).
       match /votes/{userId} {
         allow read: if isAuthenticated() && userId == request.auth.uid;
         allow create: if isAuthenticated()
                       && userId == request.auth.uid
                       && request.resource.data.keys().hasOnly(['uid', 'timestamp'])
                       && request.resource.data.uid == request.auth.uid
-                      && request.resource.data.timestamp is number;
+                      && request.resource.data.timestamp is number
+                      && get(/databases/$(database)/documents/community_tips/$(tipId)).data.upvotes is number
+                      && getAfter(/databases/$(database)/documents/community_tips/$(tipId)).data.upvotes
+                           == get(/databases/$(database)/documents/community_tips/$(tipId)).data.upvotes + 1
+                      && !exists(/databases/$(database)/documents/community_tips/$(tipId)/votes/$(userId))
+                      && existsAfter(/databases/$(database)/documents/community_tips/$(tipId)/votes/$(userId));
         allow update, delete: if false; // Immutable vote records
       }
     }
@@ -140,29 +150,41 @@ service cloud.firestore {
 
       allow delete: if false;
 
-      // Per-user unique report tracking subcollection: report document ID = user UID
+      // Per-user unique report tracking subcollection: report document ID = user UID.
+      // A report document may ONLY be created as part of the atomic transaction that
+      // increments the parent photo's reportsCount counter (see the parent update rule):
+      // the parent photo must exist before the operation, its reportsCount must increase by
+      // exactly one in this transaction, and the user's own report document must not exist
+      // before it and must exist after it. Reporter UIDs are never exposed to anyone.
       match /reports/{userId} {
         allow read: if false; // Reporter UIDs are never exposed to anyone
         allow create: if isAuthenticated()
                       && userId == request.auth.uid
                       && request.resource.data.keys().hasOnly(['reporterUid', 'timestamp'])
                       && request.resource.data.reporterUid == request.auth.uid
-                      && request.resource.data.timestamp is number;
+                      && request.resource.data.timestamp is number
+                      && get(/databases/$(database)/documents/spot_photos/$(photoId)).data.reportsCount is number
+                      && getAfter(/databases/$(database)/documents/spot_photos/$(photoId)).data.reportsCount
+                           == get(/databases/$(database)/documents/spot_photos/$(photoId)).data.reportsCount + 1
+                      && !exists(/databases/$(database)/documents/spot_photos/$(photoId)/reports/$(userId))
+                      && existsAfter(/databases/$(database)/documents/spot_photos/$(photoId)/reports/$(userId));
         allow update, delete: if false;
       }
     }
 
     match /shared_trips/{tripId} {
-      // Public read ONLY by exact document ID when not expired (get rule only; list/query prohibited)
-      allow get: if resource.data.expireAt > request.time || resource.data.expireAt > request.time.toMillis();
+      // Public read ONLY by exact document ID while not expired (get only; list/query prohibited).
+      allow get: if resource.data.expireAt is timestamp && resource.data.expireAt > request.time;
       allow list: if false;
 
-      // Create allowed for authenticated users without user tracking fields
-      allow create: if isAuthenticated()
-                    && request.resource.data.keys().hasOnly(['id', 'title', 'spots', 'createdAt', 'expireAt'])
-                    && request.resource.data.id == tripId
-                    && request.resource.data.title is string
-                    && request.resource.data.title.size() <= 120;
+      // Creation is only permitted through the trusted publishSharedTrip Cloud Function,
+      // whose Admin SDK writes bypass these rules. Direct client creation is denied
+      // because the rules language cannot validate list/map contents: there is no
+      // iteration (the CEL all() macro is unsupported in this rules version) and the
+      // 1000-expression evaluation cap forbids bounded explicit per-entry validation of
+      // 50 waypoints (both verified empirically against the rules engine). The full
+      // shared-trip schema is therefore enforced server-side in functions/sharedTrips.js.
+      allow create: if false;
 
       // Shared trip links are immutable and read-only once created
       allow update, delete: if false;

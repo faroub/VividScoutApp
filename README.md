@@ -42,9 +42,10 @@ Build the debug APK:
 ```
 
 ### Debug Build Setup
-- **Project-Local Keystore**: The debug build configuration (`debugConfig`) references `${rootDir}/debug.keystore` with default credentials (`storePassword = "android"`, `keyAlias = "androiddebugkey"`, `keyPassword = "android"`).
-- **Fresh Clone Behavior**: On a fresh clone where `${rootDir}/debug.keystore` is absent, the Android Gradle Plugin (AGP) automatically falls back to generating or using the default user-level Android debug keystore at `~/.android/debug.keystore`.
-- **Zero Configuration**: Developers can run `./gradlew :app:assembleDebug` or deploy directly from Android Studio immediately on a fresh clone without setting any environment variables.
+Debug APKs are always signed with a standard Android debug key (well-known credentials: `storePassword = "android"`, `keyAlias = "androiddebugkey"`, `keyPassword = "android"` — not a secret). Two modes are supported:
+- **Project-Local Keystore (AI Studio convention)**: When `debug.keystore` exists in the repository root, the `debugConfig` signing configuration signs debug builds with it. The file is gitignored, so this applies only to machines where it has been provided or generated.
+- **Fresh Clone Behavior**: When no `debug.keystore` is present (fresh clone, CI runner), no custom signing configuration is assigned and AGP falls back to its standard debug signing: the user-level debug keystore at `~/.android/debug.keystore`, which AGP generates automatically on first use. No committed keystore and no environment variables are required.
+- **Zero Configuration**: Developers can run `./gradlew :app:assembleDebug` or deploy directly from Android Studio immediately on a fresh clone without setting any environment variables. CI builds the debug APK the same way.
 
 ### Unit Tests
 Run the local unit test suite (Robolectric & Room tests):
@@ -111,12 +112,10 @@ VividScout enforces privacy-first logging using `com.example.util.SafeLog`:
 ## Continuous Integration & Local Regression Suite
 
 VividScout includes an automated GitHub Actions CI workflow in `.github/workflows/ci.yml` that triggers on `push` to `main` and on pull requests:
-- **JDK 25 & Node.js 20 Setup**: Environment configured with Gradle dependency caching. JDK 25 is required to run the Gradle daemon (see `gradle/gradle-daemon-jvm.properties`).
+- **JDK 25 & Node.js 20 Setup**: Environment configured with Gradle dependency caching. JDK 25 is required to run the Gradle daemon (see `gradle/gradle-daemon-jvm.properties`) and also drives the Firebase Emulators.
 - **Cloud Function Syntax Guard**: Runs `node --check functions/index.js` to catch entry-point syntax regressions.
-- **Node Cloud Function & Security Rules Tests**: Runs `node functions/nearbyPlaces.test.js` and `node functions/firebase-security-rules.test.js`.
-- **Android Unit Tests**: Runs `./gradlew testDebugUnitTest --stacktrace`.
-- **Android Lint**: Runs `./gradlew lintDebug --stacktrace`.
-- **Android Debug APK Assembly**: Runs `./gradlew assembleDebug --stacktrace`.
+- **Cloud Function Validation Tests**: Runs `node functions/nearbyPlaces.test.js`.
+- **Firebase Security Rules Emulator Tests**: Installs `functions/package.json` dev dependencies (`@firebase/rules-unit-testing` + `firebase-tools`), then starts the **real Firestore and Storage emulators** (`firebase emulators:exec --only firestore,storage`) and executes `functions/firebase-security-rules.test.js` against them. The exact production `firestore.rules` and `storage.rules` files are loaded and evaluated by Firebase's own rules engine; the suite aborts if the emulator host environment variables are missing, so it can never touch a production project.
 
 ### Local Regression Test Commands
 
@@ -126,8 +125,10 @@ To execute the complete regression test suite locally in your terminal:
 # 1. Run Node.js Cloud Function Validation Tests
 node functions/nearbyPlaces.test.js
 
-# 2. Run Real Firebase Security Rules Test Suite
-node functions/firebase-security-rules.test.js
+# 2. Run Firebase Security Rules Emulator Tests (requires Java 11+ and one-time
+#    npm install:  npm --prefix functions ci )
+./functions/node_modules/.bin/firebase emulators:exec --only firestore,storage \
+  "npm --prefix functions test"
 
 # 3. Run Android Unit Test Suite
 ./gradlew testDebugUnitTest

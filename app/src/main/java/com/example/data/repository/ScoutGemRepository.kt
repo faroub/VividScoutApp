@@ -58,8 +58,26 @@ open class ScoutGemRepository(
     val unescoService: com.example.data.network.UnescoHeritageService = com.example.data.network.UnescoHeritageService(),
     val europeanaService: com.example.data.network.EuropeanaCulturalService = com.example.data.network.EuropeanaCulturalService(),
     val municipalService: com.example.data.network.MunicipalOpenDataService = com.example.data.network.MunicipalOpenDataService(),
-    val wikidataSearchService: com.example.data.network.WikidataSearchService = com.example.data.network.WikidataSearchService()
+    val wikidataSearchService: com.example.data.network.WikidataSearchService = com.example.data.network.WikidataSearchService(),
+    val photoResolver: com.example.util.PhotoResolver = com.example.util.LocationPhotoResolver
 ) {
+
+    companion object {
+        private const val TAG = "ScoutGemRepository"
+
+        // The four provider ids served by the geohash-tile-cached PlaceRepository
+        // pipeline; every other source id is owned by this repository directly.
+        val PIPELINE_SOURCE_IDS = setOf("open_trip_map", "wikivoyage_wikidata", "overpass_osm", "geonames_gazetteer")
+
+        // Photo-enrichment queue parameters.
+        const val ENRICHMENT_BATCH_SIZE = 30
+        const val MAX_PHOTO_ATTEMPTS = 5
+        // Per-session safety cap: guards against an unbounded stream of fresh Room
+        // inserts keeping the drain alive forever. Remaining candidates are picked
+        // up by the next scheduled drain.
+        const val MAX_ENRICHMENTS_PER_SESSION = 2000
+        const val ENRICHMENT_DELAY_MS = 50L
+    }
 
     open val recentSearches: Flow<List<RecentSearchEntity>> =
         recentSearchDao?.getRecentSearches() ?: flowOf(emptyList())
@@ -105,27 +123,31 @@ open class ScoutGemRepository(
     val lastDiagnosticLog: kotlinx.coroutines.flow.StateFlow<com.example.data.network.OverpassDiagnosticLog?> =
         overpassClient.lastDiagnosticLog
 
-    private val attemptedEnrichmentIds = java.util.Collections.synchronizedSet(HashSet<String>())
     private val repositoryScope = CoroutineScope(Dispatchers.IO)
 
     /**
      * Reactive stream of all ScoutGems directly backed by Room database.
      * Automatically triggers reactive background photo resolution via Wikimedia Commons API
      * whenever new spot entities stream into Room.
+     *
+     * The observer only SCHEDULES enrichment: eligibility is re-derived from Room and the
+     * queue state on every drain, so nothing is permanently excluded merely because it was
+     * scheduled — candidates that a previous drain never reached are picked up again.
      */
     fun observeGems(
         userLat: Double = DefaultLocationConfig.activeFallbackLat,
         userLng: Double = DefaultLocationConfig.activeFallbackLng
     ): Flow<List<ScoutGem>> {
         return scoutDao.getAllSpots().map { spotEntities ->
-            val unEnriched = spotEntities.filter { spot ->
-                !attemptedEnrichmentIds.contains(spot.id) &&
-                        com.example.util.LocationPhotoResolver.isGenericOrStockPhoto(spot.imageUrl)
+            val schedulable = spotEntities.filter { spot ->
+                photoResolver.isGenericOrStockPhoto(spot.imageUrl) &&
+                    !completedPhotoIds.contains(spot.id) &&
+                    !inProgressPhotoIds.contains(spot.id) &&
+                    !isBackingOff(spot.id)
             }
-            if (unEnriched.isNotEmpty()) {
-                unEnriched.forEach { attemptedEnrichmentIds.add(it.id) }
+            if (schedulable.isNotEmpty()) {
                 repositoryScope.launch {
-                    enrichSpotsPhotosInBackground(unEnriched)
+                    enrichSpotsPhotosInBackground(schedulable)
                 }
             }
             spotEntities.map { entity -> entity.toScoutGem(userLat, userLng) }
@@ -462,43 +484,89 @@ open class ScoutGemRepository(
         cityName: String = "Lisbon",
         sourceIds: List<String> = listOf("open_trip_map", "wikivoyage_wikidata", "overpass_osm", "geonames_gazetteer", "unesco_world_heritage", "europeana_cultural", "municipal_open_data", "firebase_gemini_ai")
     ): Result<Int> = withContext(Dispatchers.IO) {
-        if (placeRepository != null) {
-            val placeResult = placeRepository.getNearbyPlaces(userLat, userLng, radiusMeters = 3000)
-            val mergedEntities = placeResult.places.map { mergedPlaceToEntity(it, userLat, userLng) }
-            if (mergedEntities.isNotEmpty()) {
-                deduplicateAndInsert(mergedEntities)
-                CoroutineScope(Dispatchers.IO).launch {
-                    enrichSpotsPhotosInBackground(mergedEntities)
+        val enabledSources = sourceIds.toSet()
+        var totalFetched = 0
+
+        // 1) Cached spatial pipeline: the authoritative implementation for the four
+        //    geohash-tile-cached providers. Issued once (no duplicate per-source
+        //    requests) and only for the subset the caller actually requested.
+        val requestedPipelineIds = enabledSources.intersect(PIPELINE_SOURCE_IDS)
+        if (placeRepository != null && requestedPipelineIds.isNotEmpty()) {
+            try {
+                val placeResult = placeRepository.getNearbyPlaces(
+                    userLat, userLng, radiusMeters = 3000, sourceIds = requestedPipelineIds
+                )
+                val mergedEntities = placeResult.places.map { mergedPlaceToEntity(it, userLat, userLng) }
+                if (mergedEntities.isNotEmpty()) {
+                    deduplicateAndInsert(mergedEntities)
+                    CoroutineScope(Dispatchers.IO).launch {
+                        enrichSpotsPhotosInBackground(mergedEntities)
+                    }
+                } else if (placeResult.isStale) {
+                    SafeLog.w(TAG, "Multi-source pipeline returned no places (offline cache unavailable for $requestedPipelineIds)")
+                } else {
+                    SafeLog.i(TAG, "Multi-source pipeline returned no places for $requestedPipelineIds")
                 }
-                return@withContext Result.success(mergedEntities.size)
+                totalFetched += mergedEntities.size
+            } catch (e: Exception) {
+                // One failing provider must never discard the other providers' results.
+                SafeLog.w(TAG, "Multi-source pipeline failed for $requestedPipelineIds: ${e.message}")
             }
         }
 
-        var totalFetched = 0
+        // 2) Providers owned by this repository, each invoked exactly once and only
+        //    when requested. Failures are logged, not propagated.
+        if ("unesco_world_heritage" in enabledSources) {
+            val result = try { syncUnescoGems(userLat, userLng) } catch (e: Exception) { Result.failure(e) }
+            totalFetched += logProviderSync("unesco_world_heritage", result)
+        }
+        if ("europeana_cultural" in enabledSources) {
+            val result = try { syncEuropeanaGems(cityName, userLat, userLng) } catch (e: Exception) { Result.failure(e) }
+            totalFetched += logProviderSync("europeana_cultural", result)
+        }
+        if ("municipal_open_data" in enabledSources) {
+            val result = try { syncMunicipalGems(cityName, userLat, userLng) } catch (e: Exception) { Result.failure(e) }
+            totalFetched += logProviderSync("municipal_open_data", result)
+        }
 
-        if (sourceIds.contains("open_trip_map")) {
-            totalFetched += syncOpenTripMapGems(userLat, userLng).getOrDefault(0)
-        }
-        if (sourceIds.contains("wikivoyage_wikidata")) {
-            totalFetched += syncWikidataGems(userLat, userLng).getOrDefault(0)
-        }
-        if (sourceIds.contains("geonames_gazetteer")) {
-            totalFetched += syncGeonamesGems(userLat, userLng).getOrDefault(0)
-        }
-        if (sourceIds.contains("unesco_world_heritage")) {
-            totalFetched += syncUnescoGems(userLat, userLng).getOrDefault(0)
-        }
-        if (sourceIds.contains("europeana_cultural")) {
-            totalFetched += syncEuropeanaGems(cityName, userLat, userLng).getOrDefault(0)
-        }
-        if (sourceIds.contains("municipal_open_data")) {
-            totalFetched += syncMunicipalGems(cityName, userLat, userLng).getOrDefault(0)
-        }
-        if (sourceIds.contains("overpass_osm") || sourceIds.contains("firebase_gemini_ai")) {
-            totalFetched += syncLiveOsmGems(userLat, userLng).getOrDefault(0)
+        // 3) Firebase AI Logic (Gemini) discovery, only when requested, with the
+        //    curated Lisbon fallback already carrying non-invented coordinates.
+        if ("firebase_gemini_ai" in enabledSources) {
+            val result = try {
+                val geminiSpots = geminiSpotService.discoverGems(userLat, userLng, radiusMeters = 3000)
+                    .getOrNull().orEmpty()
+                if (geminiSpots.isNotEmpty()) {
+                    deduplicateAndInsert(geminiSpots)
+                    CoroutineScope(Dispatchers.IO).launch {
+                        enrichSpotsPhotosInBackground(geminiSpots)
+                    }
+                }
+                Result.success(geminiSpots.size)
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+            totalFetched += logProviderSync("firebase_gemini_ai", result)
         }
 
         Result.success(totalFetched)
+    }
+
+    /**
+     * Records a single provider's sync outcome as a diagnostic log line, returning
+     * the number of places that provider contributed. Distinguishes provider errors
+     * from legitimate empty results.
+     */
+    private fun logProviderSync(sourceId: String, result: Result<Int>): Int {
+        return result.fold(
+            onSuccess = { count ->
+                if (count == 0) SafeLog.i(TAG, "Provider '$sourceId' returned no places")
+                count
+            },
+            onFailure = { error ->
+                SafeLog.w(TAG, "Provider '$sourceId' failed: ${error.message}")
+                0
+            }
+        )
     }
 
     private suspend fun deduplicateAndInsert(spots: List<ScoutSpotEntity>) {
@@ -583,67 +651,93 @@ open class ScoutGemRepository(
         val lastAttemptTimestamp: Long = 0L
     )
 
-    private val inProgressPhotoIds = Collections.synchronizedSet(HashSet<String>())
-    private val completedPhotoIds = Collections.synchronizedSet(HashSet<String>())
-    private val failedPhotoAttempts = Collections.synchronizedMap(HashMap<String, PhotoAttemptInfo>())
+    // Photo-enrichment queue state, keyed by spot id. Room remains the persisted
+    // source of truth: a spot is "pending" while its imageUrl is still generic,
+    // so the queue re-arms from Room after an app restart.
+    //  - in-progress: [inProgressPhotoIds] while its network lookup is running
+    //  - completed:   [completedPhotoIds] (authentic URL already persisted to Room)
+    //  - retryable:   [failedPhotoAttempts] waiting out exponential backoff
+    //  - exhausted:   five failed attempts; skipped until a connectivity re-sync
+    internal val inProgressPhotoIds = Collections.synchronizedSet(HashSet<String>())
+    internal val completedPhotoIds = Collections.synchronizedSet(HashSet<String>())
+    internal val failedPhotoAttempts = Collections.synchronizedMap(HashMap<String, PhotoAttemptInfo>())
     private val enrichmentMutex = Mutex()
+
+    // Deterministic test seams for backoff timing and request pacing; production
+    // uses real wall-clock time and the 50 ms inter-request delay.
+    internal var currentTimeMs: () -> Long = { System.currentTimeMillis() }
+    internal var enrichmentPacingMs: () -> Long = { ENRICHMENT_DELAY_MS }
+
+    /**
+     * True while [spotId] is in exponential backoff after a failed lookup, or has
+     * exhausted its retries. Backoff doubles with each failure (1 s × 2^failures).
+     */
+    private fun isBackingOff(spotId: String): Boolean {
+        val attempt = failedPhotoAttempts[spotId] ?: return false
+        val backoffMs = 1000L * (1 shl attempt.failedCount.coerceAtMost(MAX_PHOTO_ATTEMPTS))
+        return attempt.failedCount >= MAX_PHOTO_ATTEMPTS ||
+            (currentTimeMs() - attempt.lastAttemptTimestamp) < backoffMs
+    }
+
+    private fun recordFailedAttempt(spotId: String) {
+        val currentFailed = failedPhotoAttempts[spotId]?.failedCount ?: 0
+        failedPhotoAttempts[spotId] = PhotoAttemptInfo(currentFailed + 1, currentTimeMs())
+    }
+
+    /**
+     * Selects the next bounded batch of eligible candidates: pending spots (generic
+     * imageUrl) that are neither in progress, completed, nor backing off, with saved
+     * places prioritized and then by recency.
+     */
+    private fun nextEnrichmentBatch(candidates: List<ScoutSpotEntity>): List<ScoutSpotEntity> {
+        val eligible = candidates.filter { spot ->
+            if (!photoResolver.isGenericOrStockPhoto(spot.imageUrl)) {
+                // Room is the source of truth: an authentic persisted URL means completed.
+                completedPhotoIds.add(spot.id)
+                return@filter false
+            }
+            if (inProgressPhotoIds.contains(spot.id) || completedPhotoIds.contains(spot.id)) {
+                return@filter false
+            }
+            !isBackingOff(spot.id)
+        }.sortedWith(
+            compareByDescending<ScoutSpotEntity> { it.isSaved }
+                .thenByDescending { it.timestamp }
+        )
+        return eligible.take(ENRICHMENT_BATCH_SIZE)
+    }
 
     /**
      * Automatically enriches spots having placeholder or generic image URLs
      * by querying live Wikipedia & Wikimedia Commons APIs for 1200px HD resolution metadata
      * and caching the authentic image URLs directly in the Room database for permanent offline availability.
      * Prioritizes saved/bookmarked spots first, followed by active feed spots.
+     *
+     * Drains the queue in bounded batches until no eligible candidate remains — there is
+     * no fixed pass limit, so a backlog of any size is fully processed across one or more
+     * drains. Concurrent invocations merge into the running drain via the mutex; each spot
+     * is resolved at most once per drain, and coroutine cancellation reliably clears the
+     * in-progress marker.
      */
     open suspend fun enrichSpotsPhotosInBackground(spots: List<ScoutSpotEntity> = emptyList()) = withContext(Dispatchers.IO) {
         if (!enrichmentMutex.tryLock()) {
+            // A drain is already running; this invocation's candidates are merged into it
+            // because every drain re-reads the full candidate set from Room between batches.
             return@withContext
         }
 
         try {
-            var passCount = 0
-            val maxPasses = 10 // Safety guard against runaway loops
+            var processedThisSession = 0
+            var candidates: List<ScoutSpotEntity> = if (spots.isNotEmpty()) spots else scoutDao.getAllSpotsList()
 
-            while (passCount < maxPasses) {
-                passCount++
-                val now = System.currentTimeMillis()
-                val allCandidates = if (spots.isNotEmpty() && passCount == 1) spots else scoutDao.getAllSpotsList()
+            while (processedThisSession < MAX_ENRICHMENTS_PER_SESSION) {
+                val batch = nextEnrichmentBatch(candidates)
+                if (batch.isEmpty()) break // Queue drained: no pending, non-backing-off candidates.
 
-                val eligible = allCandidates.filter { spot ->
-                    val isGeneric = LocationPhotoResolver.isGenericOrStockPhoto(spot.imageUrl)
-                    if (!isGeneric) {
-                        completedPhotoIds.add(spot.id)
-                        return@filter false
-                    }
-
-                    if (inProgressPhotoIds.contains(spot.id) || completedPhotoIds.contains(spot.id)) {
-                        return@filter false
-                    }
-
-                    val attempt = failedPhotoAttempts[spot.id]
-                    if (attempt != null) {
-                        val backoffMs = (1000L * (1 shl (attempt.failedCount.coerceAtMost(5))))
-                        if (attempt.failedCount >= 5 || (now - attempt.lastAttemptTimestamp) < backoffMs) {
-                            return@filter false
-                        }
-                    }
-
-                    true
-                }
-
-                if (eligible.isEmpty()) {
-                    break // All eligible spots processed or backing off
-                }
-
-                val priorityQueue = eligible.sortedWith(
-                    compareByDescending<ScoutSpotEntity> { it.isSaved }
-                        .thenByDescending { it.timestamp }
-                )
-
-                val currentBatch = priorityQueue.take(30)
-                for (spot in currentBatch) {
+                for (spot in batch) {
                     inProgressPhotoIds.add(spot.id)
                     try {
-                        val resolved = LocationPhotoResolver.resolveEnrichedPhoto(
+                        val resolved = photoResolver.resolveEnrichedPhoto(
                             title = spot.title,
                             category = spot.category,
                             districtOrLocation = spot.locationName,
@@ -652,28 +746,40 @@ open class ScoutGemRepository(
                             spotId = spot.id
                         )
 
-                        val isAuthenticPhoto = resolved.url.isNotBlank() && !LocationPhotoResolver.isGenericOrStockPhoto(resolved.url)
+                        val isAuthenticPhoto = resolved.url.isNotBlank() && !photoResolver.isGenericOrStockPhoto(resolved.url)
                         if (isAuthenticPhoto) {
                             scoutDao.updateImageUrl(spot.id, resolved.url)
                             completedPhotoIds.add(spot.id)
                             failedPhotoAttempts.remove(spot.id)
                             SafeLog.i(
-                                "ScoutGemRepository",
+                                TAG,
                                 "Wikimedia Commons Resolution SUCCESS: Validated photo for '${spot.title}' (isSaved=${spot.isSaved}): ${resolved.url}"
                             )
                         } else {
-                            val currentFailed = failedPhotoAttempts[spot.id]?.failedCount ?: 0
-                            failedPhotoAttempts[spot.id] = PhotoAttemptInfo(currentFailed + 1, System.currentTimeMillis())
+                            recordFailedAttempt(spot.id)
                         }
-                        delay(50L)
+                        delay(enrichmentPacingMs())
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e // Cancellation must propagate; the finally below clears the in-progress marker.
                     } catch (e: Exception) {
-                        val currentFailed = failedPhotoAttempts[spot.id]?.failedCount ?: 0
-                        failedPhotoAttempts[spot.id] = PhotoAttemptInfo(currentFailed + 1, System.currentTimeMillis())
-                        SafeLog.w("ScoutGemRepository", "Background photo enrichment error for ${spot.id} ('${spot.title}'): ${e.message}")
+                        recordFailedAttempt(spot.id)
+                        SafeLog.w(TAG, "Background photo enrichment error for ${spot.id} ('${spot.title}'): ${e.message}")
                     } finally {
                         inProgressPhotoIds.remove(spot.id)
                     }
+                    processedThisSession++
                 }
+
+                // Continue the drain: re-read Room so spots inserted mid-session join the queue.
+                candidates = scoutDao.getAllSpotsList()
+            }
+
+            if (processedThisSession >= MAX_ENRICHMENTS_PER_SESSION) {
+                SafeLog.w(
+                    TAG,
+                    "Photo enrichment session hit the $MAX_ENRICHMENTS_PER_SESSION-item safety cap; " +
+                        "remaining candidates are picked up by the next scheduled drain."
+                )
             }
         } finally {
             enrichmentMutex.unlock()
@@ -688,11 +794,11 @@ open class ScoutGemRepository(
         failedPhotoAttempts.clear()
         inProgressPhotoIds.clear()
         val allSpots = scoutDao.getAllSpotsList()
-        val unEnriched = allSpots.filter { com.example.util.LocationPhotoResolver.isGenericOrStockPhoto(it.imageUrl) }
+        val unEnriched = allSpots.filter { photoResolver.isGenericOrStockPhoto(it.imageUrl) }
         if (unEnriched.isNotEmpty()) {
             val (savedSpots, feedSpots) = unEnriched.partition { it.isSaved }
             SafeLog.i(
-                "ScoutGemRepository",
+                TAG,
                 "Automatic Network Reconnection Re-Sync: Found ${unEnriched.size} spots needing photos (${savedSpots.size} saved/bookmarked, ${feedSpots.size} feed)."
             )
             enrichSpotsPhotosInBackground(savedSpots + feedSpots)

@@ -29,7 +29,13 @@ data class AStarRouteResult(
     val waypoints: List<WalkNode>,
     val steps: List<RouteStep>,
     val totalDistanceMeters: Double,
-    val estimatedWalkingMinutes: Int
+    val estimatedWalkingMinutes: Int,
+    /**
+     * True when no usable graph path was found and the result is a straight-line
+     * estimate instead of a real pedestrian-network route. Callers must never label
+     * such a distance as a walking route.
+     */
+    val isDirectFallback: Boolean = false
 ) {
     val formattedDistance: String
         get() = if (totalDistanceMeters >= 1000) {
@@ -57,6 +63,12 @@ object AStarPathfinder {
 
     // Standard average walking speed: 4.8 km/h (~80 meters / minute)
     private const val WALKING_SPEED_METERS_PER_MIN = 80.0
+
+    // Maximum distance a GPS endpoint may lie from the nearest graph node to be snapped
+    // onto the pedestrian network. Beyond this the area has no routing coverage and the
+    // caller must receive a clearly-labeled straight-line fallback instead of a route
+    // snapped to a distant, unrelated street.
+    const val MAX_SNAP_METERS = 400.0
 
     private data class PriorityNode(
         val nodeId: String,
@@ -109,6 +121,27 @@ object AStarPathfinder {
         val allNodes = VectorWalkGraph.getNodes().toMutableMap()
         val allEdges = VectorWalkGraph.getEdges().toMutableList()
 
+        val baseCandidates = allNodes.values.toList()
+
+        // Only snap endpoints to graph nodes within the walking snap radius. If either
+        // endpoint has no nearby node, this area has no routing coverage: fail over to
+        // the honest straight-line fallback instead of inventing a route through a
+        // distant, unrelated network.
+        val closestOriginNodes = findKClosestNodes(startLat, startLng, baseCandidates, 3, MAX_SNAP_METERS)
+        val closestDestNodes = findKClosestNodes(destLat, destLng, baseCandidates, 3, MAX_SNAP_METERS)
+
+        if (closestOriginNodes.isEmpty() || closestDestNodes.isEmpty()) {
+            return generateDirectFallbackRoute(
+                startLat = startLat,
+                startLng = startLng,
+                destLat = destLat,
+                destLng = destLng,
+                startName = startName,
+                destName = destName,
+                distance = directDist
+            )
+        }
+
         // 1. Create virtual origin and destination nodes
         val originId = "virtual_origin"
         val destId = "virtual_dest"
@@ -120,9 +153,6 @@ object AStarPathfinder {
         allNodes[destId] = destNode
 
         // 2. Snap Origin and Destination to closest base graph nodes
-        val closestOriginNodes = findKClosestNodes(startLat, startLng, allNodes.values.filter { it.id != originId && it.id != destId }, 3)
-        val closestDestNodes = findKClosestNodes(destLat, destLng, allNodes.values.filter { it.id != originId && it.id != destId }, 3)
-
         closestOriginNodes.forEach { targetNode ->
             val d = haversineMeters(startLat, startLng, targetNode.lat, targetNode.lng)
             allEdges.add(WalkEdge(originId, targetNode.id, d, "Walk towards ${targetNode.name}", isPedestrianOnly = true))
@@ -267,8 +297,17 @@ object AStarPathfinder {
         )
     }
 
-    private fun findKClosestNodes(lat: Double, lng: Double, nodes: Iterable<WalkNode>, k: Int): List<WalkNode> {
-        return nodes.sortedBy { node ->
+    private fun findKClosestNodes(
+        lat: Double,
+        lng: Double,
+        nodes: Iterable<WalkNode>,
+        k: Int,
+        maxDistanceMeters: Double = Double.POSITIVE_INFINITY
+    ): List<WalkNode> {
+        return nodes.mapNotNull { node ->
+            val dist = haversineMeters(lat, lng, node.lat, node.lng)
+            if (dist <= maxDistanceMeters) node else null
+        }.sortedBy { node ->
             haversineMeters(lat, lng, node.lat, node.lng)
         }.take(k)
     }
@@ -397,7 +436,8 @@ object AStarPathfinder {
                 )
             ),
             totalDistanceMeters = distance,
-            estimatedWalkingMinutes = minutes
+            estimatedWalkingMinutes = minutes,
+            isDirectFallback = true
         )
     }
 }

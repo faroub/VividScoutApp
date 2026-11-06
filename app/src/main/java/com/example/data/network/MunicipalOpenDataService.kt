@@ -7,62 +7,71 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * Service providing curated municipal open data POIs (public art, historic walking trails,
- * and civic park landmarks) from verified city datasets (e.g. Lisboa Aberta portal).
+ * Service providing editorially curated municipal places (public parks, landmarks,
+ * and heritage sites) for supported cities.
+ *
+ * No documented municipal open-data API is available for these records: the entries
+ * below are an honest editorial selection, not official dataset exports, and carry no
+ * dataset record IDs or municipal licenses. Place coordinates were verified against
+ * OpenStreetMap (Nominatim) and images against live Wikimedia Commons files, with the
+ * attribution and license recorded per entry. Cities without curated coverage return
+ * an empty result.
  */
-class MunicipalOpenDataService {
+open class MunicipalOpenDataService {
 
     companion object {
         private const val TAG = "MunicipalOpenDataService"
 
-        // Verified municipal dataset records for central Lisbon (Lisboa Aberta portal)
-        private val LISBON_MUNICIPAL_DATASET = listOf(
+        // Editorially curated Lisbon places. Coordinates verified against
+        // OpenStreetMap (Nominatim); images are real, verified Wikimedia Commons files.
+        private val LISBON_CURATED_PLACES = listOf(
             ScoutSpotEntity(
-                id = "muni_lisbon_azulejo_trail",
-                title = "Municipal Tile Heritage Trail (Rota dos Azulejos)",
-                description = "Curated municipal public art trail in Alfama, documented in the Lisboa Aberta civic dataset.",
+                id = "curated_lisbon_sao_vicente_azulejos",
+                title = "São Vicente de Fora Azulejo Cloisters",
+                description = "Editorially curated Lisbon landmark: the church and former monastery of São Vicente de Fora, whose cloisters hold one of the city's largest azulejo collections.",
                 category = "history",
-                distance = "5 min walk",
-                walkMinutes = 5,
+                distance = "0 m away",
+                walkMinutes = 0,
                 rating = null, // Never invent ratings
                 reviewCount = null, // Never invent review counts
-                imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Azulejos_de_Lisboa.jpg/1200px-Azulejos_de_Lisboa.jpg",
-                badgeLabel = "Lisbon Dataset",
-                statusBadge = "Curated Municipal Spot",
-                tagsRaw = "municipal|||lisboa_aberta|||azulejo|||art",
-                proTip = "Curated landmark from Lisboa Aberta Municipal Open Data Portal. License: CC BY 4.0.",
-                contributor = "@lisboa_aberta",
-                latitude = 38.7125,
-                longitude = -9.1310,
-                locationName = "Alfama Civic District"
+                imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/2/29/View_of_Igreja_e_Mosteiro_de_S%C3%A3o_Vicente_de_Fora_from_Miradouro_das_Portas_do_Sol.JPG/1280px-View_of_Igreja_e_Mosteiro_de_S%C3%A3o_Vicente_de_Fora_from_Miradouro_das_Portas_do_Sol.JPG",
+                badgeLabel = "Editorial Curation",
+                statusBadge = "Curated Lisbon Spot",
+                tagsRaw = "curated|||azulejo|||history|||monastery",
+                proTip = "Editorially curated Lisbon place; coordinates verified against OpenStreetMap. Image: José Luiz, CC BY-SA 3.0, via Wikimedia Commons.",
+                contributor = "VividScout Editorial",
+                latitude = 38.7147286,
+                longitude = -9.1274895,
+                locationName = "São Vicente, Lisboa"
             ),
             ScoutSpotEntity(
-                id = "muni_lisbon_miradouro_garden",
+                id = "curated_lisbon_cerca_da_graca",
                 title = "Jardim da Cerca da Graça Public Viewpoint Park",
-                description = "Curated civic viewpoint park in Graça, documented in the Lisboa Aberta civic dataset.",
+                description = "Editorially curated Lisbon landmark: civic hillside viewpoint park in Graça with shaded terraces overlooking the city.",
                 category = "sights",
-                distance = "8 min walk",
-                walkMinutes = 8,
+                distance = "0 m away",
+                walkMinutes = 0,
                 rating = null, // Never invent ratings
                 reviewCount = null, // Never invent review counts
-                imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/2/25/Miradouro_da_Gra%C3%A7a_Lisboa.jpg/1200px-Miradouro_da_Gra%C3%A7a_Lisboa.jpg",
-                badgeLabel = "Lisbon Dataset",
-                statusBadge = "Curated Municipal Spot",
-                tagsRaw = "municipal|||lisboa_aberta|||park|||viewpoint",
-                proTip = "Curated landmark from Lisboa Aberta Municipal Open Data Portal. License: CC BY 4.0.",
-                contributor = "@lisboa_aberta",
-                latitude = 38.7160,
-                longitude = -9.1315,
-                locationName = "Graça Civic District"
+                imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/6/64/Jardim_da_Cerca_da_Gra%C3%A7a_Lisboa_01.jpg/1280px-Jardim_da_Cerca_da_Gra%C3%A7a_Lisboa_01.jpg",
+                badgeLabel = "Editorial Curation",
+                statusBadge = "Curated Lisbon Spot",
+                tagsRaw = "curated|||park|||viewpoint",
+                proTip = "Editorially curated Lisbon place; coordinates verified against OpenStreetMap. Image: GualdimG, CC BY-SA 4.0, via Wikimedia Commons.",
+                contributor = "VividScout Editorial",
+                latitude = 38.7173184,
+                longitude = -9.1319531,
+                locationName = "Graça, Lisboa"
             )
         )
     }
 
     /**
-     * Retrieves verified municipal open dataset POIs near given location.
-     * Enforces strict geodesic radius filtering and returns empty list for cities without municipal datasets.
+     * Returns editor-curated places for the requested city, filtered by exact geodesic
+     * distance from the user. Returns an empty list for cities without curated coverage,
+     * for invalid coordinates, and for non-positive radii.
      */
-    suspend fun fetchMunicipalDataSpots(
+    open suspend fun fetchMunicipalDataSpots(
         cityName: String = "Lisbon",
         userLat: Double = 38.7112,
         userLng: Double = -9.1423,
@@ -76,17 +85,22 @@ class MunicipalOpenDataService {
             return@withContext emptyList()
         }
 
-        val isLisbonArea = cityName.contains("Lisbon", ignoreCase = true) ||
-                cityName.contains("Lisboa", ignoreCase = true) ||
-                (userLat in 38.65..38.80 && userLng in -9.30..-9.00)
-
-        if (!isLisbonArea) {
-            SafeLog.i(TAG, "No municipal open dataset available for city '$cityName'. Returning empty result.")
+        if (radiusMeters <= 0) {
+            SafeLog.w(TAG, "Invalid radius provided: $radiusMeters m")
             return@withContext emptyList()
         }
 
-        // Filter Lisbon municipal dataset records by exact geodesic distance
-        LISBON_MUNICIPAL_DATASET.filter { spot ->
+        val isLisbonArea = cityName.contains("Lisbon", ignoreCase = true) ||
+            cityName.contains("Lisboa", ignoreCase = true) ||
+            (userLat in 38.65..38.80 && userLng in -9.30..-9.00)
+
+        if (!isLisbonArea) {
+            SafeLog.i(TAG, "No curated places available for city '$cityName'. Returning empty result.")
+            return@withContext emptyList()
+        }
+
+        // Filter curated Lisbon places by exact geodesic distance
+        LISBON_CURATED_PLACES.filter { spot ->
             val distMeters = Geo.calculateDistanceMeters(userLat, userLng, spot.latitude, spot.longitude)
             !distMeters.isNaN() && distMeters <= radiusMeters
         }.map { spot ->

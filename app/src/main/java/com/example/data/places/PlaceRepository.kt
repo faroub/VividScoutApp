@@ -15,7 +15,7 @@ import kotlinx.coroutines.withContext
  */
 class PlaceRepository(
     private val cachedPlaceDao: CachedPlaceDao,
-    private val placeSources: List<PlaceSource> = emptyList()
+    val placeSources: List<PlaceSource> = emptyList()
 ) {
 
     companion object {
@@ -30,8 +30,13 @@ class PlaceRepository(
         lat: Double,
         lon: Double,
         radiusMeters: Int = 3000,
-        currentTimeMs: Long = System.currentTimeMillis()
+        currentTimeMs: Long = System.currentTimeMillis(),
+        sourceIds: Set<String>? = null
     ): PlaceRepositoryResult = withContext(Dispatchers.IO) {
+        // Only the requested subset of the configured providers is invoked; a null
+        // filter means every configured source is enabled.
+        val activeSources = if (sourceIds == null) placeSources
+            else placeSources.filter { it.sourceId in sourceIds }
         val centerTile = GeohashUtils.encode(lat, lon, precision = 5)
         val coveringTiles = GeohashUtils.getCoveringTiles(lat, lon, radiusMeters)
 
@@ -60,10 +65,10 @@ class PlaceRepository(
         val networkCandidates = mutableListOf<PlaceCandidate>()
         var networkSuccess = false
 
-        if (placeSources.isNotEmpty()) {
+        if (activeSources.isNotEmpty()) {
             try {
                 coroutineScope {
-                    val fetchJobs = placeSources.map { source ->
+                    val fetchJobs = activeSources.map { source ->
                         async {
                             source.fetchNear(lat, lon, radiusMeters)
                         }

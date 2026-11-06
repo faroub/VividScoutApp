@@ -6,13 +6,31 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
+ * Injectable seam over the photo resolution engine, used by the background
+ * enrichment worker in ScoutGemRepository so the production queue can be
+ * exercised with deterministic resolvers.
+ */
+interface PhotoResolver {
+    fun isGenericOrStockPhoto(url: String?): Boolean
+    suspend fun resolveEnrichedPhoto(
+        title: String,
+        category: String?,
+        districtOrLocation: String? = null,
+        osmTags: Map<String, String>? = null,
+        latitude: Double? = null,
+        longitude: Double? = null,
+        spotId: String? = null
+    ): LocationPhotoResolver.EnrichedPhoto
+}
+
+/**
  * Unified photo resolution engine that bridges:
  * 1. OpenStreetMap node tags (image, wikimedia_commons, wikipedia)
  * 2. Curated Lisbon & Global Landmark Catalogs
  * 3. Asynchronous Wikipedia/Wikimedia REST API queries across languages
  * 4. Contextual keyword & regional ambient photo fallbacks
  */
-object LocationPhotoResolver {
+object LocationPhotoResolver : PhotoResolver {
 
     private const val TAG = "LocationPhotoResolver"
     private val wikiService = WikipediaPhotoService()
@@ -33,7 +51,7 @@ object LocationPhotoResolver {
     /**
      * Checks if a URL is empty, an icon placeholder, or a generic stock vector asset.
      */
-    fun isGenericOrStockPhoto(url: String?): Boolean {
+    override fun isGenericOrStockPhoto(url: String?): Boolean {
         if (url.isNullOrBlank()) return true
         val trimmed = url.trim()
         if (trimmed.startsWith("ic_cat_") || trimmed.startsWith("img_lisbon_")) return true
@@ -103,14 +121,14 @@ object LocationPhotoResolver {
      * Full asynchronous photo enrichment.
      * Queries Wikipedia REST API, search API, and Geosearch if no direct verified photo exists yet.
      */
-    suspend fun resolveEnrichedPhoto(
+    override suspend fun resolveEnrichedPhoto(
         title: String,
         category: String?,
-        districtOrLocation: String? = null,
-        osmTags: Map<String, String>? = null,
-        latitude: Double? = null,
-        longitude: Double? = null,
-        spotId: String? = null
+        districtOrLocation: String?,
+        osmTags: Map<String, String>?,
+        latitude: Double?,
+        longitude: Double?,
+        spotId: String?
     ): EnrichedPhoto = withContext(Dispatchers.IO) {
         // 1. Direct OSM image tag
         val osmImage = osmTags?.get("image")

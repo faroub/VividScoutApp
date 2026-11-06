@@ -16,6 +16,8 @@ class GeonamesSource(
     private val functionsProvider: () -> FirebaseFunctions = { FirebaseFunctions.getInstance() }
 ) : PlaceSource {
 
+    override val sourceId: String = "geonames_gazetteer"
+
     companion object {
         private const val TAG = "GeonamesSource"
     }

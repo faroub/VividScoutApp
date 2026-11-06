@@ -1,6 +1,7 @@
 package com.example.data.offline
 
 import com.example.data.local.ScoutSpotEntity
+import com.example.engine.AStarPathfinder
 import com.example.engine.CityElevationResolver
 import com.example.engine.ElevationModel
 import com.example.engine.LisbonElevationModel
@@ -22,14 +23,82 @@ data class GuidedWalkPlan(
     val returnLegDistanceMeters: Double,
     val totalWalkingMinutes: Int,
     val isCircularLoop: Boolean,
-    val elevationProfile: RouteElevationProfile? = null
+    val elevationProfile: RouteElevationProfile? = null,
+    /**
+     * True only when every leg of the loop was routed on the offline pedestrian
+     * network. When false, [totalDistanceMeters] mixes or consists of straight-line
+     * estimates and must be labeled approximate.
+     */
+    val isFullyRouted: Boolean = false
+) {
+    val formattedDistance: String
+        get() = if (totalDistanceMeters >= 1000) {
+            String.format(java.util.Locale.US, "%.1f km", totalDistanceMeters / 1000.0)
+        } else {
+            "${totalDistanceMeters.toInt()} m"
+        }
+
+    val routingLabel: String
+        get() = if (isCircularLoop && isFullyRouted) {
+            "Pedestrian route · offline walking network"
+        } else if (isCircularLoop) {
+            "Approximate · offline routing unavailable for part of this loop"
+        } else {
+            ""
+        }
+}
+
+/**
+ * One leg of a guided-walk loop. [distanceMeters] is a real pedestrian-network route
+ * distance when [isRouted] is true; otherwise it is a straight-line estimate, used
+ * only because no offline routing data covers this leg. [pathPoints] carries the
+ * leg's geometry (routed polyline or straight interpolation) so distance, duration
+ * and elevation all follow the same path.
+ */
+data class GuidedWalkLeg(
+    val distanceMeters: Double,
+    val isRouted: Boolean,
+    val pathPoints: List<Pair<Double, Double>> = emptyList()
 )
 
 /**
  * Guided Walk Planner Engine: Generates genuine circular walking loops including the return leg to the origin,
  * enforcing walking duration budgets and honest terrain elevation profiles.
+ *
+ * Loop distances are routed on the offline pedestrian network ([AStarPathfinder]) whenever
+ * graph coverage exists: each leg's distance is the actual network path length. When a leg
+ * has no routing coverage it falls back to a clearly-labeled straight-line estimate, and the
+ * resulting plan is marked [GuidedWalkPlan.isFullyRouted] = false so the UI never presents
+ * straight-line distance as a walking route.
  */
 object GuidedWalkPlannerEngine {
+
+    /**
+     * Routes one loop leg on the pedestrian network. Falls back to a straight-line
+     * estimate (marked [GuidedWalkLeg.isRouted] = false) when either endpoint lies
+     * outside the graph's coverage or the coordinates are unusable.
+     */
+    private fun routeLeg(
+        fromLat: Double,
+        fromLng: Double,
+        toLat: Double,
+        toLng: Double,
+        fromName: String,
+        toName: String
+    ): GuidedWalkLeg {
+        val direct = Geo.calculateDistanceMeters(fromLat, fromLng, toLat, toLng)
+        if (direct.isNaN()) return GuidedWalkLeg(0.0, false)
+
+        val result = AStarPathfinder.findShortestPath(
+            startLat = fromLat,
+            startLng = fromLng,
+            destLat = toLat,
+            destLng = toLng,
+            startName = fromName,
+            destName = toName
+        )
+        return GuidedWalkLeg(result.totalDistanceMeters, !result.isDirectFallback, result.pathPoints)
+    }
 
     /**
      * Filters spots by mood category and accumulates waypoints forming a complete circular loop back to origin,
@@ -76,11 +145,16 @@ object GuidedWalkPlannerEngine {
             Geo.calculateDistanceMeters(originLat, originLng, spot.latitude, spot.longitude)
         }
 
-        // 3. Accumulate waypoints up to target duration budget, accounting for return leg W_k -> Origin
+        // 3. Accumulate waypoints up to target duration budget, accounting for return leg W_k -> Origin.
+        //    Every leg is routed on the pedestrian network where coverage exists; budget
+        //    and totals use the routed distances, and unrouted legs mark the plan approximate.
         val selectedWaypoints = mutableListOf<ScoutSpotEntity>()
+        val legs = mutableListOf<GuidedWalkLeg>()
         var outboundDistanceMeters = 0.0
         var currentLat = originLat
         var currentLng = originLng
+        var currentTitle = startTitle
+        var lastReturnLeg: GuidedWalkLeg? = null
 
         for (candidate in sortedCandidates) {
             // Validate candidate coordinates
@@ -91,14 +165,12 @@ object GuidedWalkPlannerEngine {
                 continue
             }
 
-            val legDistance = Geo.calculateDistanceMeters(currentLat, currentLng, candidate.latitude, candidate.longitude)
-            if (legDistance.isNaN()) continue
+            val outLeg = routeLeg(currentLat, currentLng, candidate.latitude, candidate.longitude, currentTitle, candidate.title)
+            val returnLeg = routeLeg(candidate.latitude, candidate.longitude, originLat, originLng, candidate.title, startTitle)
+            if (outLeg.distanceMeters.isNaN() || returnLeg.distanceMeters.isNaN()) continue
 
-            val potentialOutbound = outboundDistanceMeters + legDistance
-            val returnLegToOrigin = Geo.calculateDistanceMeters(candidate.latitude, candidate.longitude, originLat, originLng)
-            if (returnLegToOrigin.isNaN()) continue
-
-            val potentialLoopDistance = potentialOutbound + returnLegToOrigin
+            val potentialOutbound = outboundDistanceMeters + outLeg.distanceMeters
+            val potentialLoopDistance = potentialOutbound + returnLeg.distanceMeters
             val potentialLoopWalkMinutes = Geo.calculateWalkMinutes(potentialLoopDistance)
 
             // Duration budget constraint applied to ALL waypoints (first and subsequent).
@@ -108,28 +180,38 @@ object GuidedWalkPlannerEngine {
             }
 
             selectedWaypoints.add(candidate)
+            legs.add(outLeg)
             outboundDistanceMeters = potentialOutbound
             currentLat = candidate.latitude
             currentLng = candidate.longitude
+            currentTitle = candidate.title
+            lastReturnLeg = returnLeg
         }
 
         if (selectedWaypoints.isEmpty()) {
             return emptyPlan(startTitle, targetDurationMinutes, mood)
         }
 
-        // Return leg distance from last waypoint back to origin
-        val lastWaypoint = selectedWaypoints.last()
-        val returnLegMeters = Geo.calculateDistanceMeters(lastWaypoint.latitude, lastWaypoint.longitude, originLat, originLng)
+        // Return leg from last waypoint back to origin
+        val returnLeg = lastReturnLeg ?: routeLeg(
+            currentLat, currentLng, originLat, originLng, currentTitle, startTitle
+        )
+        legs.add(returnLeg)
+        val returnLegMeters = returnLeg.distanceMeters
         val totalLoopDistanceMeters = outboundDistanceMeters + returnLegMeters
         val totalLoopWalkingMinutes = Geo.calculateWalkMinutes(totalLoopDistanceMeters)
 
-        // Calculate honest elevation profile along loop path points (Origin -> W1 -> W2 ... -> Wn -> Origin)
+        // Calculate honest elevation profile along the routed loop path
+        // (Origin -> leg geometry -> ... -> Origin), so distance, duration and
+        // elevation all follow the same pedestrian path.
         val pathPoints = mutableListOf<Pair<Double, Double>>()
         pathPoints.add(Pair(originLat, originLng))
-        for (wp in selectedWaypoints) {
-            pathPoints.add(Pair(wp.latitude, wp.longitude))
+        for (leg in legs) {
+            pathPoints.addAll(leg.pathPoints.drop(1))
         }
-        pathPoints.add(Pair(originLat, originLng)) // Complete loop back to origin
+        if (pathPoints.isEmpty() || pathPoints.last() != Pair(originLat, originLng)) {
+            pathPoints.add(Pair(originLat, originLng)) // Complete loop back to origin
+        }
 
         val realElevation = try {
             if (elevationModel != null && elevationModel.isSupported && pathPoints.size >= 2) {
@@ -150,7 +232,8 @@ object GuidedWalkPlannerEngine {
             returnLegDistanceMeters = returnLegMeters,
             totalWalkingMinutes = totalLoopWalkingMinutes,
             isCircularLoop = true,
-            elevationProfile = realElevation
+            elevationProfile = realElevation,
+            isFullyRouted = legs.isNotEmpty() && legs.all { it.isRouted }
         )
     }
 

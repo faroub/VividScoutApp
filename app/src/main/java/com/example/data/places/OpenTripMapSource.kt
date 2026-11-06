@@ -15,6 +15,8 @@ class OpenTripMapSource(
     private val callableProvider: (suspend (HashMap<String, Any>) -> List<Map<String, Any?>>)? = null
 ) : PlaceSource {
 
+    override val sourceId: String = "open_trip_map"
+
     companion object {
         private const val TAG = "OpenTripMapSource"
     }

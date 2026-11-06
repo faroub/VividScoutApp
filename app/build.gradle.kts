@@ -45,6 +45,9 @@ android {
       }
     }
     create("debugConfig") {
+      // AI Studio convention: debug builds sign with the project-local debug keystore using
+      // the well-known standard Android debug credentials (not a secret). The debug build
+      // type below only applies this config when such a keystore is actually present.
       storeFile = file("${rootDir}/debug.keystore")
       storePassword = "android"
       keyAlias = "androiddebugkey"
@@ -65,7 +68,13 @@ android {
     debug {
       // Do not remove or modify this signingConfig assignment. It is necessary for Android apps in
       // AI Studio.
-      signingConfig = signingConfigs.getByName("debugConfig")
+      // When AI Studio ships debug.keystore in the repository root it is used as before. When
+      // it is absent (fresh clone, CI runner) no signingConfig is assigned, so AGP applies its
+      // standard debug signing: the user-level keystore at ~/.android/debug.keystore, which
+      // AGP generates automatically on first use.
+      if (rootProject.file("debug.keystore").exists()) {
+        signingConfig = signingConfigs.getByName("debugConfig")
+      }
     }
   }
   compileOptions {

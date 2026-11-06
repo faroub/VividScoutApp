@@ -169,6 +169,40 @@ object OfflineMapTileEstimator {
         )
     }
 
+    /**
+     * Estimates a tile pack for a circular coverage area — the OfflineMapPack model —
+     * by deriving the bounding box of the configured radius around the pack center and
+     * delegating to [estimateTilePackForBounds]. Uses the pack's actual configured
+     * coverage instead of generic default tile dimensions.
+     *
+     * Degree deltas use the local equirectangular approximation:
+     *  1° lat ≈ 111_320 m; 1° lng ≈ 111_320 m × cos(centerLat).
+     */
+    fun estimateTilePackForRadius(
+        centerLat: Double,
+        centerLng: Double,
+        radiusMeters: Int,
+        minZoom: Int = 12,
+        maxZoom: Int = 16
+    ): TileEstimateResult {
+        if (!centerLat.isFinite() || !centerLng.isFinite() ||
+            centerLat !in -90.0..90.0 || centerLng !in -180.0..180.0 ||
+            radiusMeters <= 0) {
+            return invalidEstimateResult()
+        }
+
+        val latDelta = radiusMeters / 111_320.0
+        val lngDelta = radiusMeters / (111_320.0 * cos(Math.toRadians(centerLat)))
+
+        val bounds = GeoBoundingBox(
+            minLat = (centerLat - latDelta).coerceIn(-90.0, 90.0),
+            minLng = (centerLng - lngDelta).coerceIn(-180.0, 180.0),
+            maxLat = (centerLat + latDelta).coerceIn(-90.0, 90.0),
+            maxLng = (centerLng + lngDelta).coerceIn(-180.0, 180.0)
+        )
+        return estimateTilePackForBounds(bounds, minZoom, maxZoom)
+    }
+
     fun validateZoomRange(minZoom: Int, maxZoom: Int): Boolean {
         if (minZoom < 0 || maxZoom > 20) return false
         if (minZoom > maxZoom) return false

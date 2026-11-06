@@ -1,6 +1,8 @@
 package com.example.data.repository
 
+import android.content.Context
 import android.graphics.Bitmap
+import android.net.Uri
 import com.example.util.PhotoProcessor
 import com.example.util.ProcessedPhoto
 import com.example.util.SafeLog
@@ -27,6 +29,30 @@ class FirebasePhotoStorageService(
 
     companion object {
         private const val TAG = "FirebasePhotoStorage"
+    }
+
+    /**
+     * Processes an image selected via the Android Photo Picker (identified by its content
+     * [uri]); the content resolver stream is processed (resized to 1600px, EXIF stripped,
+     * decompression-bomb protections in [PhotoProcessor] preserved) and uploaded under the
+     * ownership-aware Storage path, with Firestore metadata persisted atomically in
+     * [uploadSpotPhoto]. Photo-picker cancellation produces a null [uri] and must be
+     * handled by the caller without reporting any result.
+     */
+    suspend fun uploadSpotPhotoFromUri(
+        spotId: String,
+        context: Context,
+        uri: Uri
+    ): Result<SpotPhotoData> = withContext(Dispatchers.IO) {
+        runCatching {
+            val imageStream = context.contentResolver.openInputStream(uri)
+                ?: return@withContext Result.failure(
+                    IllegalArgumentException("Selected photo could not be opened.")
+                )
+            imageStream.use { stream ->
+                uploadSpotPhoto(spotId, stream).getOrThrow()
+            }
+        }
     }
 
     /**

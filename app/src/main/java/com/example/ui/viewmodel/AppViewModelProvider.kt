@@ -50,6 +50,12 @@ object AppViewModelProvider {
                 repository = container.scoutRepository
             )
         }
+        initializer {
+            val container = vividScoutApplication().container
+            SpotPhotoViewModel(
+                photoRepository = container.photoModerationRepository
+            )
+        }
     }
 }
 

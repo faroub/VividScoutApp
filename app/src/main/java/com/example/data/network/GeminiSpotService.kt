@@ -20,7 +20,7 @@ private const val TAG = "GeminiSpotService"
  * Replaces noisy OSM scraping with structured, verified local spots, historical landmarks,
  * dining gems, and cultural events tailored to the user's exact GPS coordinates.
  */
-class GeminiSpotService {
+open class GeminiSpotService {
 
     // Structured JSON Schema definition using Firebase AI Logic Schema API
     private val spotItemSchema = Schema.obj(
@@ -74,7 +74,7 @@ class GeminiSpotService {
      * Queries Gemini AI for real, authentic, named spots around the specified GPS coordinates.
      * Uses a fast 15-second timeout window and returns verified curated local spots if network is delayed.
      */
-    suspend fun discoverGems(
+    open suspend fun discoverGems(
         userLat: Double,
         userLng: Double,
         category: String = "all",
@@ -128,16 +128,16 @@ class GeminiSpotService {
                 Result.success(parsedSpots)
             } else {
                 SafeLog.w(TAG, "Parsed 0 spots from response, generating curated vicinity spots")
-                Result.success(generateCuratedVicinitySpots(userLat, userLng, category))
+                Result.success(generateCuratedVicinitySpots(userLat, userLng, category, radiusMeters))
             }
         } catch (e: TimeoutCancellationException) {
             SafeLog.w(TAG, "Gemini spot discovery timed out gracefully, returning curated verified spots")
-            Result.success(generateCuratedVicinitySpots(userLat, userLng, category))
+            Result.success(generateCuratedVicinitySpots(userLat, userLng, category, radiusMeters))
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             SafeLog.w(TAG, "Gemini spot discovery encountered connection issue (${e.message}), returning curated verified spots")
-            Result.success(generateCuratedVicinitySpots(userLat, userLng, category))
+            Result.success(generateCuratedVicinitySpots(userLat, userLng, category, radiusMeters))
         }
     }
 
@@ -252,13 +252,20 @@ class GeminiSpotService {
     }
 
     /**
-     * Generates verified, authentic named tourist landmarks, viewpoints, and dining gems
-     * calculated dynamically around the user's active GPS coordinates.
+     * Generates curated fallback spots from a catalog of real, OSM-verified central
+     * Lisbon landmarks. Each landmark keeps its own verified real-world coordinates
+     * regardless of the user's location; distances are real Haversine geodesics
+     * ([LocationTracker.distanceBetween]) and walking minutes follow the same
+     * 80 m/min model used elsewhere in the app. A landmark is only emitted when it
+     * lies within [radiusMeters] of the user, so users outside the catalog's actual
+     * coverage (central Lisbon) receive an empty result and the repository can fall
+     * back to real provider discoveries instead of invented nearby landmarks.
      */
     fun generateCuratedVicinitySpots(
         userLat: Double,
         userLng: Double,
-        category: String = "all"
+        category: String = "all",
+        radiusMeters: Int = 2000
     ): List<ScoutSpotEntity> {
         data class CuratedSpotBlueprint(
             val title: String,
@@ -268,122 +275,127 @@ class GeminiSpotService {
             val audioLore: String,
             val badgeLabel: String,
             val rating: Double? = null,
-            val latOffset: Double,
-            val lngOffset: Double,
+            val latitude: Double,
+            val longitude: Double,
             val imageUrl: String,
             val tags: String
         )
 
-        val isLisbonArea = LocationTracker.distanceBetween(userLat, userLng, 38.7112, -9.1423) < 100000f
-
-        val catalog = if (isLisbonArea) {
-            listOf(
-                CuratedSpotBlueprint(
-                    title = "Miradouro de Santa Luzia",
-                    district = "Alfama Terraces",
-                    category = "touristic",
-                    description = "Romantic bougainvillea-framed terrace overlooking the red terracotta roofs of Alfama down to the blue Tagus estuary.",
-                    audioLore = "Legend says 18th-century sailors would look back up at these painted blue azulejo panels depicting Praça do Comércio before departing into the Atlantic.",
-                    badgeLabel = "ICONIC VIEWPOINT",
-                    rating = null,
-                    latOffset = 0.0018,
-                    lngOffset = 0.0022,
-                    imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/c/cd/MiradouroSantaLuzia.JPG/800px-MiradouroSantaLuzia.JPG",
-                    tags = "viewpoint,terrace,azulejos,romantic,alfama"
-                ),
-                CuratedSpotBlueprint(
-                    title = "Pastelaria Manteigaria — Chiado",
-                    district = "Praça Luís de Camões",
-                    category = "restaurant",
-                    description = "Artisan bakery where pastel de nata custard tarts are hand-rolled and baked fresh continuously before your eyes.",
-                    audioLore = "Listen closely for the bronze bell ringing over Camões square—every single chime signals a fresh hot tray coming right out of the 300-degree oven.",
-                    badgeLabel = "MUST-TRY FOOD GEM",
-                    rating = null,
-                    latOffset = -0.0012,
-                    lngOffset = -0.0015,
-                    imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/2/24/Pastel_de_Nata_Manteigaria.jpg/800px-Pastel_de_Nata_Manteigaria.jpg",
-                    tags = "bakery,pastry,local_favorite,cinnamon,chiado"
-                ),
-                CuratedSpotBlueprint(
-                    title = "Castelo de São Jorge Ramparts",
-                    district = "Santa Maria Maior",
-                    category = "historical",
-                    description = "11th-century Moorish citadel perched atop the highest hill of the historic center offering 360-degree panoramic rampart walks.",
-                    audioLore = "The ancient stone pine trees here cast deep shade over battlements that have withstood earthquakes, sieges, and eight centuries of royal intrigue.",
-                    badgeLabel = "HISTORIC FORTRESS",
-                    rating = null,
-                    latOffset = 0.0031,
-                    lngOffset = 0.0008,
-                    imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/6/69/Castelo_de_S%C3%A3o_Jorge_by_Augusto_Cabrita.jpg/800px-Castelo_de_S%C3%A3o_Jorge_by_Augusto_Cabrita.jpg",
-                    tags = "castle,fortress,history,panoramic,moorish"
-                ),
-                CuratedSpotBlueprint(
-                    title = "Elevador da Bica Funicular",
-                    district = "Bica / Misericórdia",
-                    category = "touristic",
-                    description = "Charming yellow funicular operating since 1892, climbing the steep, lantern-lit cobblestones between Rua de São Paulo and Calhariz.",
-                    audioLore = "Designed by Raoul Mesnier du Ponsard, this twin-cable carriage is immortalized in vintage photographs with laundry fluttering above from wrought-iron balconies.",
-                    badgeLabel = "LIVING HERITAGE",
-                    rating = null,
-                    latOffset = -0.0025,
-                    lngOffset = -0.0031,
-                    imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d3/Elevador_da_Bica_01.jpg/800px-Elevador_da_Bica_01.jpg",
-                    tags = "funicular,tram,cobblestone,street,bica"
-                ),
-                CuratedSpotBlueprint(
-                    title = "Convento do Carmo Ruins",
-                    district = "Largo do Carmo",
-                    category = "historical",
-                    description = "Roofless Gothic church preserved as a hauntingly beautiful open-air memorial following the Great 1755 Lisbon Earthquake.",
-                    audioLore = "Look straight up through the pointed rib-vault arches to see open sky—the monument serves as a silent testament to survival and rebirth.",
-                    badgeLabel = "GOTHIC MONUMENT",
-                    rating = null,
-                    latOffset = 0.0009,
-                    lngOffset = -0.0019,
-                    imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d4/Convento_do_Carmo_Lisbon.jpg/800px-Convento_do_Carmo_Lisbon.jpg",
-                    tags = "monument,gothic,history,museum,chiado"
-                ),
-                CuratedSpotBlueprint(
-                    title = "Taberna da Rua das Flores",
-                    district = "Chiado / Baixa",
-                    category = "restaurant",
-                    description = "Cozy chalkboard-menu tavern championing seasonal Portuguese petiscos, cured cheeses, and fresh Atlantic seafood.",
-                    audioLore = "There are no reservations here: patrons gather under the wooden awning sipping chilled vinho verde while chatting with locals.",
-                    badgeLabel = "LOCAL TAVERN",
-                    rating = null,
-                    latOffset = -0.0008,
-                    lngOffset = -0.0011,
-                    imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/a/ad/Taberna_tradicional_Lisboa_petiscos.jpg/800px-Taberna_tradicional_Lisboa_petiscos.jpg",
-                    tags = "dining,seafood,wine,cozy,tavern"
-                )
-            )
-        } else {
-            // No invented fallback catalog for other cities: an empty result lets
-            // ScoutGemRepository fall back to real Overpass OSM data instead of
-            // fabricated spots. Only the Lisbon catalog (real, named places) is curated.
-            emptyList()
+        // Invalid request coordinates (NaN, out of range, null island) yield no spots.
+        if (userLat.isNaN() || userLng.isNaN() ||
+            userLat !in -90.0..90.0 || userLng !in -180.0..180.0 ||
+            (userLat == 0.0 && userLng == 0.0)
+        ) {
+            return emptyList()
         }
 
-        val filtered = if (category.equals("all", ignoreCase = true)) {
+        // Verified catalog: every landmark, coordinate, and type confirmed against
+        // OpenStreetMap (Nominatim) — real places at their real-world locations.
+        // The catalog covers central Lisbon only.
+        val catalog = listOf(
+            CuratedSpotBlueprint(
+                title = "Miradouro de Santa Luzia",
+                district = "Alfama Terraces",
+                category = "touristic",
+                description = "Romantic bougainvillea-framed terrace overlooking the red terracotta roofs of Alfama down to the blue Tagus estuary.",
+                audioLore = "Legend says 18th-century sailors would look back up at these painted blue azulejo panels depicting Praça do Comércio before departing into the Atlantic.",
+                badgeLabel = "ICONIC VIEWPOINT",
+                rating = null,
+                latitude = 38.7117382,
+                longitude = -9.1301295,
+                imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/c/cd/MiradouroSantaLuzia.JPG/800px-MiradouroSantaLuzia.JPG",
+                tags = "viewpoint,terrace,azulejos,romantic,alfama"
+            ),
+            CuratedSpotBlueprint(
+                title = "Pastelaria Manteigaria — Chiado",
+                district = "Praça Luís de Camões",
+                category = "restaurant",
+                description = "Artisan bakery where pastel de nata custard tarts are hand-rolled and baked fresh continuously before your eyes.",
+                audioLore = "Listen closely for the bronze bell ringing over Camões square—every single chime signals a fresh hot tray coming right out of the 300-degree oven.",
+                badgeLabel = "MUST-TRY FOOD GEM",
+                rating = null,
+                latitude = 38.7107638,
+                longitude = -9.1440621,
+                imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/2/24/Pastel_de_Nata_Manteigaria.jpg/800px-Pastel_de_Nata_Manteigaria.jpg",
+                tags = "bakery,pastry,local_favorite,cinnamon,chiado"
+            ),
+            CuratedSpotBlueprint(
+                title = "Castelo de São Jorge Ramparts",
+                district = "Santa Maria Maior",
+                category = "historical",
+                description = "11th-century Moorish citadel perched atop the highest hill of the historic center offering 360-degree panoramic rampart walks.",
+                audioLore = "The ancient stone pine trees here cast deep shade over battlements that have withstood earthquakes, sieges, and eight centuries of royal intrigue.",
+                badgeLabel = "HISTORIC FORTRESS",
+                rating = null,
+                latitude = 38.7139258,
+                longitude = -9.1334830,
+                imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/6/69/Castelo_de_S%C3%A3o_Jorge_by_Augusto_Cabrita.jpg/800px-Castelo_de_S%C3%A3o_Jorge_by_Augusto_Cabrita.jpg",
+                tags = "castle,fortress,history,panoramic,moorish"
+            ),
+            CuratedSpotBlueprint(
+                title = "Elevador da Bica Funicular",
+                district = "Bica / Misericórdia",
+                category = "touristic",
+                description = "Charming yellow funicular operating since 1892, climbing the steep, lantern-lit cobblestones between Rua de São Paulo and Calhariz.",
+                audioLore = "Designed by Raoul Mesnier du Ponsard, this twin-cable carriage is immortalized in vintage photographs with laundry fluttering above from wrought-iron balconies.",
+                badgeLabel = "LIVING HERITAGE",
+                rating = null,
+                latitude = 38.7097584,
+                longitude = -9.1462053,
+                imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d3/Elevador_da_Bica_01.jpg/800px-Elevador_da_Bica_01.jpg",
+                tags = "funicular,tram,cobblestone,street,bica"
+            ),
+            CuratedSpotBlueprint(
+                title = "Convento do Carmo Ruins",
+                district = "Largo do Carmo",
+                category = "historical",
+                description = "Roofless Gothic church preserved as a hauntingly beautiful open-air memorial following the Great 1755 Lisbon Earthquake.",
+                audioLore = "Look straight up through the pointed rib-vault arches to see open sky—the monument serves as a silent testament to survival and rebirth.",
+                badgeLabel = "GOTHIC MONUMENT",
+                rating = null,
+                latitude = 38.7120060,
+                longitude = -9.1405862,
+                imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d4/Convento_do_Carmo_Lisbon.jpg/800px-Convento_do_Carmo_Lisbon.jpg",
+                tags = "monument,gothic,history,museum,chiado"
+            ),
+            CuratedSpotBlueprint(
+                title = "Taberna da Rua das Flores",
+                district = "Chiado / Baixa",
+                category = "restaurant",
+                description = "Cozy chalkboard-menu tavern championing seasonal Portuguese petiscos, cured cheeses, and fresh Atlantic seafood.",
+                audioLore = "There are no reservations here: patrons gather under the wooden awning sipping chilled vinho verde while chatting with locals.",
+                badgeLabel = "LOCAL TAVERN",
+                rating = null,
+                latitude = 38.7101395,
+                longitude = -9.1435869,
+                imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/a/ad/Taberna_tradicional_Lisboa_petiscos.jpg/800px-Taberna_tradicional_Lisboa_petiscos.jpg",
+                tags = "dining,seafood,wine,cozy,tavern"
+            )
+        )
+
+        val categoryFiltered = if (category.equals("all", ignoreCase = true)) {
             catalog
         } else {
             val matching = catalog.filter { it.category.equals(category, ignoreCase = true) }
             if (matching.isNotEmpty()) matching else catalog
         }
 
-        return filtered.mapIndexed { idx, spot ->
-            val lat = userLat + spot.latOffset
-            val lng = userLng + spot.lngOffset
-            val distMeters = (150 + idx * 85)
+        val effectiveRadius = radiusMeters.coerceAtLeast(1)
+
+        return categoryFiltered.mapNotNull { spot ->
+            val distMeters = LocationTracker.distanceBetween(userLat, userLng, spot.latitude, spot.longitude)
+            if (distMeters.isNaN() || distMeters < 0f || distMeters > effectiveRadius) {
+                return@mapNotNull null
+            }
             val spotId = "curated_${spot.title.lowercase().replace(Regex("[^a-z0-9]"), "_")}"
 
-            ScoutSpotEntity(
+            distMeters to ScoutSpotEntity(
                 id = spotId,
                 title = spot.title,
                 description = spot.description,
                 category = spot.category,
-                distance = "${distMeters}m away",
-                walkMinutes = (distMeters / 80).coerceAtLeast(1),
+                distance = "${distMeters.toInt()}m away",
+                walkMinutes = (distMeters / 80f).toInt().coerceAtLeast(1),
                 rating = spot.rating,
                 reviewCount = null,
                 imageUrl = spot.imageUrl,
@@ -396,10 +408,10 @@ class GeminiSpotService {
                 isOfflineDraft = false,
                 isDiscovered = false,
                 locationName = spot.district,
-                latitude = lat,
-                longitude = lng,
+                latitude = spot.latitude,
+                longitude = spot.longitude,
                 timestamp = System.currentTimeMillis()
             )
-        }
+        }.sortedBy { it.first }.map { it.second }
     }
 }

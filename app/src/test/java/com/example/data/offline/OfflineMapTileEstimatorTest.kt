@@ -169,4 +169,102 @@ class OfflineMapTileEstimatorTest {
         val formatted = OfflineMapTileEstimator.formatDownloadDate(timestamp, Locale.US)
         assertEquals("Nov 1, 2026", formatted)
     }
+
+    @Test
+    fun estimateTilePackForRadius_twoCitiesWithSameRadius_produceDifferentEstimates() {
+        // The two preset packs from OfflineMapManager: both 3500 m radius, but Berlin's
+        // longitude degree is compressed at its higher latitude, so its bounding box
+        // covers more tiles than Lisbon's. The generic 5x5 default showed identical
+        // estimates for both.
+        val lisbon = OfflineMapTileEstimator.estimateTilePackForRadius(
+            centerLat = 38.7112, centerLng = -9.1423, radiusMeters = 3500
+        )
+        val berlin = OfflineMapTileEstimator.estimateTilePackForRadius(
+            centerLat = 52.5200, centerLng = 13.4050, radiusMeters = 3500
+        )
+
+        assertTrue(lisbon.isValid)
+        assertTrue(berlin.isValid)
+        assertTrue(
+            "Lisbon and Berlin packs with equal radii must produce different tile counts, " +
+                "got lisbon=${lisbon.tileCount} berlin=${berlin.tileCount}",
+            lisbon.tileCount != berlin.tileCount
+        )
+    }
+
+    @Test
+    fun estimateTilePackForRadius_identicalPacks_produceIdenticalEstimates() {
+        val first = OfflineMapTileEstimator.estimateTilePackForRadius(
+            centerLat = 48.8566, centerLng = 2.3522, radiusMeters = 3500
+        )
+        val second = OfflineMapTileEstimator.estimateTilePackForRadius(
+            centerLat = 48.8566, centerLng = 2.3522, radiusMeters = 3500
+        )
+
+        assertEquals(first.tileCount, second.tileCount)
+        assertEquals(first.formattedSize, second.formattedSize)
+    }
+
+    @Test
+    fun estimateTilePackForRadius_invalidCenters_returnInvalidEstimates() {
+        assertFalse("NaN center latitude", OfflineMapTileEstimator.estimateTilePackForRadius(
+            Double.NaN, -9.1423, 3500).isValid)
+        assertFalse("Out-of-range center latitude", OfflineMapTileEstimator.estimateTilePackForRadius(
+            91.0, -9.1423, 3500).isValid)
+        assertFalse("NaN center longitude", OfflineMapTileEstimator.estimateTilePackForRadius(
+            38.7112, Double.NaN, 3500).isValid)
+    }
+
+    @Test
+    fun estimateTilePackForRadius_nonPositiveRadius_returnsInvalidEstimate() {
+        val zero = OfflineMapTileEstimator.estimateTilePackForRadius(38.7112, -9.1423, 0)
+        val negative = OfflineMapTileEstimator.estimateTilePackForRadius(38.7112, -9.1423, -1000)
+        assertFalse(zero.isValid)
+        assertFalse(negative.isValid)
+        assertEquals(0L, zero.tileCount)
+    }
+
+    @Test
+    fun estimateTilePackForRadius_hugeRadius_isCappedAndLabeled() {
+        // A 3000 km radius spans a continent: must hit the 1M-tile safety cap.
+        val huge = OfflineMapTileEstimator.estimateTilePackForRadius(38.7112, -9.1423, 3_000_000)
+        assertTrue(huge.isValid)
+        assertTrue(huge.isCapped)
+        assertEquals(OfflineMapTileEstimator.MAX_SAFE_TILE_CAP, huge.tileCount)
+        assertTrue("Capped estimates must be labeled", huge.formattedSize.contains("Capped"))
+    }
+
+    @Test
+    fun estimateTilePackForRadius_zoomRangeValidation_rejectsInvalidRanges() {
+        assertFalse(OfflineMapTileEstimator.estimateTilePackForRadius(
+            38.7112, -9.1423, 3500, minZoom = 16, maxZoom = 12).isValid)
+        assertFalse(OfflineMapTileEstimator.estimateTilePackForRadius(
+            38.7112, -9.1423, 3500, minZoom = 12, maxZoom = 21).isValid)
+    }
+
+    @Test
+    fun estimateTilePackForRadius_antimeridianCenter_staysValid() {
+        // Coercion must keep a date-line pack's box within valid longitude bounds
+        // instead of producing an invalid antimeridian-crossing box.
+        val dateLine = OfflineMapTileEstimator.estimateTilePackForRadius(
+            0.0, 179.99, 3500
+        )
+        assertTrue(dateLine.isValid)
+        assertFalse(dateLine.isCapped)
+    }
+
+    @Test
+    fun offlineMapPack_displaySize_prefersActualStoredBytes() {
+        val downloaded = OfflineMapPack(
+            id = "test_pack", cityName = "Test", country = "TC",
+            lat = 0.0, lng = 0.0,
+            estimatedSizeBytes = 4_200_000L,
+            actualSizeBytes = 2_100_000L,
+            isDownloaded = true
+        )
+        val pending = downloaded.copy(isDownloaded = false, actualSizeBytes = 0L)
+
+        assertEquals("2.0 MB", downloaded.displaySize)
+        assertEquals("4.0 MB", pending.displaySize)
+    }
 }

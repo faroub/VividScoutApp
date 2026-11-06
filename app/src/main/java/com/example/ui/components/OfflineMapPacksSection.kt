@@ -239,8 +239,14 @@ fun OfflineMapPackCard(
     onDownload: () -> Unit,
     onDelete: () -> Unit
 ) {
-    val estimate = remember(pack) {
-        OfflineMapTileEstimator.estimateTilePack()
+    // City-specific estimate derived from the pack's actual configured coverage
+    // (center + radius), not generic default tile dimensions.
+    val estimate = remember(pack.lat, pack.lng, pack.radiusMeters) {
+        OfflineMapTileEstimator.estimateTilePackForRadius(
+            centerLat = pack.lat,
+            centerLng = pack.lng,
+            radiusMeters = pack.radiusMeters
+        )
     }
     val isStale = remember(pack.downloadedAt) {
         OfflineMapTileEstimator.isPackStale(pack.downloadedAt)
@@ -273,8 +279,10 @@ fun OfflineMapPackCard(
                     Text(
                         text = if (pack.isDownloaded) {
                             "${pack.country} • ${pack.displaySize}${if (downloadDateText != null) " • $downloadDateText" else ""}"
-                        } else {
+                        } else if (estimate.isValid) {
                             "${pack.country} • ${estimate.formattedSize} (${estimate.formattedTime})"
+                        } else {
+                            "${pack.country} • size estimate unavailable"
                         },
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant

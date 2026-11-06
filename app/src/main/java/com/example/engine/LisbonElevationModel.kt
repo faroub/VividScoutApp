@@ -48,6 +48,11 @@ data class RouteElevationProfile(
  * Lisbon Topography & Elevation Engine.
  * 100% offline interpolation of Lisbon's iconic "Seven Hills" (Sete Colinas) topography.
  * Accurately models the elevation contrast from Tagus riverbank (2m) up to Castelo & Bairro Alto (104m).
+ *
+ * The model is only valid inside the geographic envelope spanned by its surveyed
+ * [topoAnchors] (central Lisbon's Baixa, Chiado, Bairro Alto and Alfama/Castelo
+ * quarters). Coordinates outside that envelope have no surveyed basis; queries for
+ * them return null rather than an invented elevation, so callers hide the chart.
  */
 object LisbonElevationModel : ElevationModel {
     override val isSupported: Boolean = true
@@ -106,10 +111,32 @@ object LisbonElevationModel : ElevationModel {
         TopoAnchor(38.7139, -9.1334, 104.0, "Castelo de São Jorge")
     )
 
+    // Verified geographic coverage: the bounding envelope of the surveyed anchors,
+    // expanded by a small tolerance so ordinary GNSS jitter on route points just
+    // inside the surveyed area does not discard an otherwise valid profile.
+    // Central Lisbon only — explicitly excludes Sintra, Belém, Cascais and every
+    // other city or district where no anchor survey exists.
+    private const val COVERAGE_TOLERANCE_DEGREES = 0.002 // ~220 m at these latitudes
+
+    val minCoveredLat: Double = topoAnchors.minOf { it.lat } - COVERAGE_TOLERANCE_DEGREES
+    val maxCoveredLat: Double = topoAnchors.maxOf { it.lat } + COVERAGE_TOLERANCE_DEGREES
+    val minCoveredLng: Double = topoAnchors.minOf { it.lng } - COVERAGE_TOLERANCE_DEGREES
+    val maxCoveredLng: Double = topoAnchors.maxOf { it.lng } + COVERAGE_TOLERANCE_DEGREES
+
     /**
-     * Interpolates elevation in meters for any GPS coordinate using inverse distance weighting.
+     * True only for coordinates inside the model's verified central-Lisbon coverage.
      */
-    override fun getElevationForCoordinate(lat: Double, lng: Double): Double {
+    fun coversCoordinate(lat: Double, lng: Double): Boolean =
+        lat in minCoveredLat..maxCoveredLat && lng in minCoveredLng..maxCoveredLng
+
+    /**
+     * Interpolates elevation in meters for a GPS coordinate inside the covered area
+     * using inverse distance weighting. Returns null for coordinates with no
+     * surveyed basis (outside the anchor envelope).
+     */
+    override fun getElevationForCoordinate(lat: Double, lng: Double): Double? {
+        if (!coversCoordinate(lat, lng)) return null
+
         // Find 4 nearest topo anchors
         val nearest = topoAnchors.map { anchor ->
             val dist = haversineMeters(lat, lng, anchor.lat, anchor.lng)
@@ -133,9 +160,11 @@ object LisbonElevationModel : ElevationModel {
     }
 
     /**
-     * Constructs a continuous elevation profile from path points.
+     * Constructs a continuous elevation profile from path points. Returns null when
+     * any path point falls outside the verified coverage — no partial or invented
+     * terrain is produced.
      */
-    override fun buildElevationProfile(pathPoints: List<Pair<Double, Double>>): RouteElevationProfile {
+    override fun buildElevationProfile(pathPoints: List<Pair<Double, Double>>): RouteElevationProfile? {
         if (pathPoints.isEmpty()) {
             return RouteElevationProfile(
                 points = emptyList(),
@@ -150,6 +179,7 @@ object LisbonElevationModel : ElevationModel {
 
         if (pathPoints.size == 1) {
             val elev = getElevationForCoordinate(pathPoints[0].first, pathPoints[0].second)
+                ?: return null
             val pt = ElevationPoint(0.0, elev, 0.0)
             return RouteElevationProfile(
                 points = listOf(pt),
@@ -166,7 +196,7 @@ object LisbonElevationModel : ElevationModel {
         var cumulativeDist = 0.0
         var prevLat = pathPoints[0].first
         var prevLng = pathPoints[0].second
-        var prevElev = getElevationForCoordinate(prevLat, prevLng)
+        var prevElev = getElevationForCoordinate(prevLat, prevLng) ?: return null
 
         rawPoints.add(ElevationPoint(0.0, prevElev, 0.0))
 
@@ -175,7 +205,7 @@ object LisbonElevationModel : ElevationModel {
             val lng = pathPoints[i].second
             val segDist = haversineMeters(prevLat, prevLng, lat, lng)
             cumulativeDist += segDist
-            val elev = getElevationForCoordinate(lat, lng)
+            val elev = getElevationForCoordinate(lat, lng) ?: return null
 
             val dElev = elev - prevElev
             val gradePct = if (segDist > 0) (dElev / segDist) * 100.0 else 0.0

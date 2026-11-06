@@ -400,7 +400,8 @@ fun RoutePlannerSheet(
                     startTitle = startTitle,
                     targetDurationMinutes = selectedDurationMinutes,
                     mood = selectedMood,
-                    availableSpots = allSpots
+                    availableSpots = allSpots,
+                    cityName = origin?.locationName
                 )
             }
 
@@ -424,11 +425,19 @@ fun RoutePlannerSheet(
                                 color = Color.White
                             )
                             Text(
-                                text = "${guidedWalkPlan.totalWalkingMinutes} min walk",
+                                text = "${guidedWalkPlan.formattedDistance} • ${guidedWalkPlan.totalWalkingMinutes} min walk",
                                 style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                                 color = BrandTeal
                             )
                         }
+
+                        // Honest distance provenance: routed network distance vs approximate estimate.
+                        Text(
+                            text = guidedWalkPlan.routingLabel,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (guidedWalkPlan.isFullyRouted) BrandTeal else Color(0xFFF59E0B),
+                            fontSize = 11.sp
+                        )
 
                         if (sharePublishError != null) {
                             Text(

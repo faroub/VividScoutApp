@@ -15,7 +15,7 @@ import java.util.concurrent.TimeUnit
  * Service to query digital cultural heritage items from European museums and archives via Europeana Cultural API.
  * Enforces strict coordinate verification, radius filtering, and null ratings when unprovided.
  */
-class EuropeanaCulturalService(
+open class EuropeanaCulturalService(
     private val client: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(6, TimeUnit.SECONDS)
         .readTimeout(8, TimeUnit.SECONDS)
@@ -31,7 +31,7 @@ class EuropeanaCulturalService(
     /**
      * Queries Europeana Cultural Heritage repository for localized heritage objects with verified geographic coordinates.
      */
-    suspend fun fetchEuropeanaCulturalSpots(
+    open suspend fun fetchEuropeanaCulturalSpots(
         locationName: String = "Lisbon",
         lat: Double = 38.7112,
         lon: Double = -9.1423,

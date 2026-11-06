@@ -15,6 +15,7 @@ import com.example.data.repository.FirebasePhotoStorageService
 import com.example.data.repository.PhotoModerationRepository
 import com.example.data.repository.ScoutGemRepository
 import com.example.data.repository.ScoutRepository
+import com.example.data.repository.SpotPhotoRepository
 import com.example.engine.PreScoutEngine
 import com.example.sensor.CompassSensorManager
 
@@ -28,7 +29,7 @@ interface AppContainer {
     val regionStorage: OfflineRegionStorage
     val communityTipRepository: CommunityTipRepository
     val photoStorageService: FirebasePhotoStorageService
-    val photoModerationRepository: PhotoModerationRepository
+    val photoModerationRepository: SpotPhotoRepository
     val preScoutEngine: PreScoutEngine
     val compassSensorManager: CompassSensorManager
     val networkMonitor: com.example.util.NetworkMonitor
@@ -93,8 +94,8 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
         FirebasePhotoStorageService()
     }
 
-    override val photoModerationRepository: PhotoModerationRepository by lazy {
-        PhotoModerationRepository()
+    override val photoModerationRepository: SpotPhotoRepository by lazy {
+        PhotoModerationRepository(storageService = photoStorageService)
     }
 
     override val preScoutEngine: PreScoutEngine by lazy {

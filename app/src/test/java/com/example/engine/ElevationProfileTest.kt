@@ -10,15 +10,15 @@ class ElevationProfileTest {
     @Test
     fun getElevationForCoordinate_reflectsLisbonTopography() {
         // Tagus riverfront should be low elevation (~2m - 6m)
-        val riverElev = LisbonElevationModel.getElevationForCoordinate(38.7063, -9.1368)
+        val riverElev = LisbonElevationModel.getElevationForCoordinate(38.7063, -9.1368)!!
         assertTrue("Riverfront elevation should be near sea level (< 10m), was $riverElev", riverElev < 10.0)
 
         // Bairro Alto / São Pedro de Alcântara should be elevated (> 60m)
-        val alcantaraElev = LisbonElevationModel.getElevationForCoordinate(38.7150, -9.1443)
+        val alcantaraElev = LisbonElevationModel.getElevationForCoordinate(38.7150, -9.1443)!!
         assertTrue("São Pedro de Alcântara elevation should be elevated (> 60m), was $alcantaraElev", alcantaraElev > 60.0)
 
         // Castelo de São Jorge summit should be near top (> 85m)
-        val castleElev = LisbonElevationModel.getElevationForCoordinate(38.7139, -9.1334)
+        val castleElev = LisbonElevationModel.getElevationForCoordinate(38.7139, -9.1334)!!
         assertTrue("Castelo elevation should be high (> 85m), was $castleElev", castleElev > 85.0)
     }
 
@@ -58,7 +58,7 @@ class ElevationProfileTest {
 
         val profile = LisbonElevationModel.buildElevationProfile(flatPath)
         assertNotNull(profile)
-        assertTrue("Total ascent along riverbank should be very low (< 10m)", profile.totalAscentMeters < 10.0)
+        assertTrue("Total ascent along riverbank should be very low (< 10m)", profile!!.totalAscentMeters < 10.0)
         assertEquals("Gentle Walk", profile.intensityLabel)
     }
 
@@ -72,7 +72,8 @@ class ElevationProfileTest {
         )
 
         val profile = LisbonElevationModel.buildElevationProfile(steepPath)
-        val hasPositiveGrade = profile.points.any { it.slopeGradePct > 2.0 }
+        assertNotNull(profile)
+        val hasPositiveGrade = profile!!.points.any { it.slopeGradePct > 2.0 }
         assertTrue("Climbing path should contain positive slope grades", hasPositiveGrade)
     }
 }

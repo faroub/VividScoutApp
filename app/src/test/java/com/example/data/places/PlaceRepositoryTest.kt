@@ -113,10 +113,12 @@ class PlaceRepositoryTest {
         )
 
         val fakeSource1 = object : PlaceSource {
+            override val sourceId: String = "open_trip_map"
             override suspend fun fetchNear(lat: Double, lon: Double, radiusMeters: Int): Result<List<PlaceCandidate>> =
                 Result.success(listOf(candidate1))
         }
         val fakeSource2 = object : PlaceSource {
+            override val sourceId: String = "geonames_gazetteer"
             override suspend fun fetchNear(lat: Double, lon: Double, radiusMeters: Int): Result<List<PlaceCandidate>> =
                 Result.success(listOf(candidate2))
         }
@@ -156,6 +158,7 @@ class PlaceRepositoryTest {
         )
 
         val fakeSource = object : PlaceSource {
+            override val sourceId: String = "open_trip_map"
             override suspend fun fetchNear(lat: Double, lon: Double, radiusMeters: Int): Result<List<PlaceCandidate>> =
                 Result.success(listOf(insideCandidate, distantCandidate))
         }
@@ -188,6 +191,7 @@ class PlaceRepositoryTest {
         dao.insertPlaces(listOf(freshEntity))
 
         val fakeSource = object : PlaceSource {
+            override val sourceId: String = "open_trip_map"
             override suspend fun fetchNear(lat: Double, lon: Double, radiusMeters: Int): Result<List<PlaceCandidate>> =
                 Result.success(emptyList())
         }
@@ -222,6 +226,7 @@ class PlaceRepositoryTest {
         dao.insertPlaces(listOf(staleEntity))
 
         val failingSource = object : PlaceSource {
+            override val sourceId: String = "open_trip_map"
             override suspend fun fetchNear(lat: Double, lon: Double, radiusMeters: Int): Result<List<PlaceCandidate>> =
                 Result.failure(RuntimeException("Network offline"))
         }

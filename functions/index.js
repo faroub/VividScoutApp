@@ -10,15 +10,17 @@
 
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { initializeApp } = require("firebase-admin/app");
-const { getFirestore, FieldValue } = require("firebase-admin/firestore");
+const { getFirestore, FieldValue, Timestamp } = require("firebase-admin/firestore");
 const axios = require("axios");
+const { validateSharedTripPayload } = require("./sharedTrips");
+const { validateNearbyPlacesRequest } = require("./validation");
 
 initializeApp();
 const db = getFirestore();
 
-const ALLOWED_SOURCES = ["opentripmap", "geonames"];
 const RATE_LIMIT_MAX_PER_HOUR = 60;
 const RATE_LIMIT_WINDOW_MS = 3600 * 1000; // 1 hour
+const SHARED_TRIP_RATE_LIMIT_MAX_PER_HOUR = 10;
 
 /**
  * Calculates Haversine geodesic distance in meters between two lat/lon pairs.
@@ -38,47 +40,11 @@ function calculateHaversineMeters(lat1, lon1, lat2, lon2) {
 }
 
 /**
- * Parses numeric coordinate values strictly, rejecting malformed strings with trailing text.
- */
-function parseStrictNumber(val) {
-  if (typeof val === "number") {
-    return isNaN(val) || !isFinite(val) ? null : val;
-  }
-  if (typeof val === "string") {
-    const trimmed = val.trim();
-    if (!/^-?\d+(\.\d+)?$/.test(trimmed)) {
-      return null;
-    }
-    const parsed = Number(trimmed);
-    return isNaN(parsed) || !isFinite(parsed) ? null : parsed;
-  }
-  return null;
-}
-
-/**
- * Parses integer values strictly, rejecting malformed strings or floats.
- */
-function parseStrictInt(val) {
-  if (typeof val === "number") {
-    return Number.isInteger(val) ? val : Math.floor(val);
-  }
-  if (typeof val === "string") {
-    const trimmed = val.trim();
-    if (!/^\d+$/.test(trimmed)) {
-      return null;
-    }
-    const parsed = parseInt(trimmed, 10);
-    return isNaN(parsed) || !isFinite(parsed) ? null : parsed;
-  }
-  return null;
-}
-
-/**
  * Enforces per-user rate limit (60 requests/UID/hour) using Firestore counter documents.
  */
-async function checkRateLimit(uid) {
+async function checkRateLimit(uid, counterKey = `nearby_places_${uid}`, maxPerHour = RATE_LIMIT_MAX_PER_HOUR) {
   const now = Date.now();
-  const rateLimitRef = db.collection("rate_limits").doc(`nearby_places_${uid}`);
+  const rateLimitRef = db.collection("rate_limits").doc(counterKey);
 
   return db.runTransaction(async (transaction) => {
     const doc = await transaction.get(rateLimitRef);
@@ -102,7 +68,7 @@ async function checkRateLimit(uid) {
       return true;
     }
 
-    if (currentCount >= RATE_LIMIT_MAX_PER_HOUR) {
+    if (currentCount >= maxPerHour) {
       return false;
     }
 
@@ -221,27 +187,15 @@ exports.nearbyPlaces = onCall(
     }
 
     const data = request.data || {};
-    const lat = parseStrictNumber(data.lat);
-    const lon = parseStrictNumber(data.lon);
-    const radiusMeters = parseStrictInt(data.radiusMeters);
-    const requestedSources = Array.isArray(data.sources) && data.sources.length > 0 ? data.sources : ["opentripmap", "geonames"];
 
-    // 3. Strict Parameter Validation: Coordinates (supports Equator 0.0 & Prime Meridian 0.0)
-    if (lat === null || lon === null || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
-      throw new HttpsError("invalid-argument", "Invalid or malformed latitude/longitude coordinates.");
+    // 3. Strict end-to-end request validation: App Check, auth, coordinates,
+    //    integer radius bounds and the source allowlist (shared with tests via
+    //    functions/validation.js — never duplicated).
+    const validated = validateNearbyPlacesRequest(data, request.auth, request.app);
+    if (!validated.ok) {
+      throw new HttpsError(validated.error, validated.message);
     }
-
-    // 4. Strict Parameter Validation: Radius (100m <= radiusMeters <= 50000m)
-    if (radiusMeters === null || radiusMeters < 100 || radiusMeters > 50000) {
-      throw new HttpsError("invalid-argument", "Invalid radiusMeters argument. Must be an integer between 100 and 50000 meters.");
-    }
-
-    // 5. Explicit Source Allowlist & Non-Empty Subset Validation
-    for (const source of requestedSources) {
-      if (!ALLOWED_SOURCES.includes(source)) {
-        throw new HttpsError("invalid-argument", `Unsupported source name requested: '${source}'. Allowed sources: ${ALLOWED_SOURCES.join(", ")}`);
-      }
-    }
+    const { lat, lon, radiusMeters, requestedSources } = validated;
 
     console.log(`[nearbyPlaces] Processing query for UID=${uid.substring(0, 4)}*** at coords (${lat.toFixed(2)}, ${lon.toFixed(2)}) radius=${radiusMeters}m`);
 
@@ -264,5 +218,55 @@ exports.nearbyPlaces = onCall(
     });
 
     return validatedCandidates;
+  }
+);
+
+/**
+ * Firebase Cloud Function: publishSharedTrip
+ *
+ * The only trusted writer of shared_trips documents. Firestore Rules deny direct
+ * client creation (the rules language cannot validate list contents), so a shared
+ * trip is created here after full server-side schema validation. Writes real
+ * Firestore Timestamps with a 30-day TTL, enforces authentication, App Check
+ * and a per-UID publishing rate limit.
+ */
+exports.publishSharedTrip = onCall(
+  {
+    cors: true,
+    enforceAppCheck: true
+  },
+  async (request) => {
+    // 1. Firebase Authentication Check
+    const auth = request.auth;
+    if (!auth || !auth.uid) {
+      throw new HttpsError("unauthenticated", "User authentication required to publish a shared trip.");
+    }
+
+    // 2. Per-UID Rate Limit Check (publishing user content)
+    const isAllowed = await checkRateLimit(
+      auth.uid,
+      `shared_trips_publish_${auth.uid}`,
+      SHARED_TRIP_RATE_LIMIT_MAX_PER_HOUR
+    );
+    if (!isAllowed) {
+      throw new HttpsError(
+        "resource-exhausted",
+        `Rate limit exceeded. Maximum ${SHARED_TRIP_RATE_LIMIT_MAX_PER_HOUR} shared trips per hour per user.`
+      );
+    }
+
+    // 3. Strict server-side schema validation of the exact serializer payload
+    const validated = validateSharedTripPayload(request.data || {});
+
+    // 4. Persist with server-generated Firestore Timestamps
+    await db.collection("shared_trips").doc(validated.id).set({
+      id: validated.id,
+      title: validated.title,
+      spots: validated.spots,
+      createdAt: Timestamp.fromMillis(validated.createdAt),
+      expireAt: Timestamp.fromMillis(validated.expireAt)
+    });
+
+    return { shareableLink: `https://vividscout.app/trip/${validated.id}` };
   }
 );

@@ -22,6 +22,8 @@ import kotlin.random.Random
  */
 class OverpassScraperService : PlaceSource {
 
+    override val sourceId: String = "overpass_osm"
+
     override suspend fun fetchNear(
         lat: Double,
         lon: Double,

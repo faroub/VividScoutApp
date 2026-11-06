@@ -1,7 +1,10 @@
 package com.example.ui.dialogs
 
-import android.graphics.Bitmap
+import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -32,7 +35,6 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material.icons.outlined.FavoriteBorder
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -90,6 +92,7 @@ import com.example.VividScoutApplication
 import com.example.data.local.AppDatabase
 import com.example.data.model.WeatherReport
 import com.example.data.repository.CommunityTipRepository
+import com.example.data.repository.SpotPhotoData
 import com.example.data.repository.WeatherRepository
 import com.example.di.AppContainer
 import com.example.ui.components.SourceAttributionRow
@@ -100,6 +103,7 @@ import com.example.ui.theme.SurfaceContainerLowest
 import com.example.ui.theme.Tertiary
 import com.example.util.OpeningHoursParser
 import com.example.util.OpeningStatus
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -116,8 +120,8 @@ fun SpotDetailBottomSheet(
     onPlanRoute: (() -> Unit)? = null,
     onPostTip: ((spotId: String, spotTitle: String, content: String, isStatus: Boolean, category: String) -> Unit)? = null,
     onReFetchImage: (spotId: String, onResult: (Boolean, String) -> Unit) -> Unit = { _, _ -> },
-    onUploadPhoto: (suspend (String, Bitmap) -> Result<String>)? = null,
-    onReportPhoto: (suspend (String) -> Result<Int>)? = null
+    onUploadPhoto: (suspend (spotId: String, uri: Uri) -> Result<SpotPhotoData>)? = null,
+    onReportPhoto: (suspend (photoId: String) -> Result<Int>)? = null
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val strings = LocalAppStrings.current
@@ -143,6 +147,31 @@ fun SpotDetailBottomSheet(
     val db = remember { AppDatabase.getDatabase(context) }
     val tipsForSpot by db.communityTipDao().getTipsForSpotFlow(spot.id).collectAsState(initial = emptyList())
     val latestStatus = tipsForSpot.firstOrNull { it.isStatusUpdate }
+
+    val appContainer = (context.applicationContext as? VividScoutApplication)?.container
+    val spotPhotos by remember(spot.id) {
+        appContainer?.photoModerationRepository?.photosForSpotFlow(spot.id) ?: flowOf(emptyList())
+    }.collectAsState(initial = emptyList())
+    val visibleSpotPhotos = spotPhotos.filter { !it.isHidden }
+
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { pickedUri: Uri? ->
+        // Cancellation (null Uri) must never be reported as an action or success.
+        if (pickedUri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            isUploadingPhoto = true
+            uploadStatusMessage = null
+            val uploadResult = onUploadPhoto?.invoke(spot.id, pickedUri)
+            isUploadingPhoto = false
+            uploadStatusMessage = when {
+                uploadResult == null -> "Photo upload unavailable."
+                uploadResult.isSuccess -> "Photo uploaded successfully!"
+                else -> uploadResult.exceptionOrNull()?.message
+                    ?: "Photo upload failed. Please try again."
+            }
+        }
+    }
 
     fun fetchWeather(forceRefresh: Boolean = false) {
         scope.launch {
@@ -273,7 +302,7 @@ fun SpotDetailBottomSheet(
                 onReFetchImage = onReFetchImage
             )
 
-            // Community Photo Actions (Upload & Moderation Report)
+            // Community Photos (Upload & Moderation Report)
             Surface(
                 color = SurfaceContainerLow,
                 shape = RoundedCornerShape(12.dp),
@@ -284,57 +313,104 @@ fun SpotDetailBottomSheet(
                 Column(modifier = Modifier.padding(12.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        OutlinedButton(
-                            onClick = {
-                                scope.launch {
-                                    isUploadingPhoto = true
-                                    uploadStatusMessage = null
-                                    val sampleBitmap = Bitmap.createBitmap(800, 600, Bitmap.Config.ARGB_8888)
-                                    val uploadResult = onUploadPhoto?.invoke(spot.id, sampleBitmap)
-                                    isUploadingPhoto = false
-                                    if (uploadResult?.isSuccess == true) {
-                                        uploadStatusMessage = "Photo uploaded successfully!"
-                                    } else {
-                                        uploadStatusMessage = uploadResult?.exceptionOrNull()?.message ?: "Photo upload completed."
-                                    }
+                        Text(
+                            text = "COMMUNITY PHOTOS",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.Black,
+                                letterSpacing = 0.8.sp
+                            ),
+                            color = BrandTeal
+                        )
+
+                        if (onUploadPhoto != null) {
+                            OutlinedButton(
+                                onClick = {
+                                    photoPickerLauncher.launch(
+                                        PickVisualMediaRequest(
+                                            ActivityResultContracts.PickVisualMedia.ImageOnly
+                                        )
+                                    )
+                                },
+                                enabled = !isUploadingPhoto,
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.testTag("upload_spot_photo_btn")
+                            ) {
+                                if (isUploadingPhoto) {
+                                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                } else {
+                                    Icon(imageVector = Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Upload Photo", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                 }
-                            },
-                            enabled = !isUploadingPhoto,
-                            shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier.weight(1f).testTag("upload_spot_photo_btn")
-                        ) {
-                            if (isUploadingPhoto) {
-                                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                            } else {
-                                Icon(imageVector = Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(14.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Upload Photo", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             }
                         }
+                    }
 
-                        OutlinedButton(
-                            onClick = {
-                                scope.launch {
-                                    reportStatusMessage = null
-                                    val photoId = "photo_${spot.id}"
-                                    val reportResult = onReportPhoto?.invoke(photoId)
-                                    if (reportResult?.isSuccess == true) {
-                                        reportStatusMessage = "Report submitted. Thank you for keeping VividScout safe!"
-                                    } else {
-                                        reportStatusMessage = reportResult?.exceptionOrNull()?.message ?: "You have already reported this photo."
+                    if (visibleSpotPhotos.isEmpty()) {
+                        Text(
+                            text = if (onUploadPhoto != null) {
+                                "No community photos yet. Share the first one!"
+                            } else {
+                                "No community photos yet."
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(vertical = 6.dp)
+                        )
+                    } else {
+                        visibleSpotPhotos.forEach { photo ->
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(160.dp)
+                                    .padding(vertical = 4.dp)
+                            ) {
+                                AsyncImage(
+                                    model = ImageRequest.Builder(context)
+                                        .data(photo.photoUrl)
+                                        .crossfade(true)
+                                        .build(),
+                                    contentDescription = "Community photo for ${spot.title}",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+
+                                if (onReportPhoto != null) {
+                                    Box(
+                                        modifier = Modifier
+                                            .align(Alignment.TopEnd)
+                                            .padding(8.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(Color.Black.copy(alpha = 0.55f))
+                                    ) {
+                                        IconButton(
+                                            onClick = {
+                                                scope.launch {
+                                                    reportStatusMessage = null
+                                                    val reportResult = onReportPhoto.invoke(photo.id)
+                                                    reportStatusMessage = if (reportResult.isSuccess) {
+                                                        "Report submitted. Thank you for keeping VividScout safe!"
+                                                    } else {
+                                                        reportResult.exceptionOrNull()?.message
+                                                            ?: "Report failed. Please try again."
+                                                    }
+                                                }
+                                            },
+                                            modifier = Modifier.testTag("report_photo_btn")
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Flag,
+                                                contentDescription = "Report this photo",
+                                                tint = Color.White,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
                                     }
                                 }
-                            },
-                            shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = BrandCoral),
-                            border = BorderStroke(1.dp, BrandCoral.copy(alpha = 0.5f)),
-                            modifier = Modifier.weight(1f).testTag("report_photo_btn")
-                        ) {
-                            Icon(imageVector = Icons.Default.Flag, contentDescription = null, modifier = Modifier.size(14.dp), tint = BrandCoral)
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Report Photo", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
 

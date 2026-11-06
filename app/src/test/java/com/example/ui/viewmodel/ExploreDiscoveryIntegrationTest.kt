@@ -62,6 +62,7 @@ class ExploreDiscoveryIntegrationTest {
         )
 
         val fakeSource = object : PlaceSource {
+            override val sourceId: String = "open_trip_map"
             override suspend fun fetchNear(lat: Double, lon: Double, radiusMeters: Int): Result<List<PlaceCandidate>> =
                 Result.success(listOf(candidate))
         }
@@ -87,7 +88,7 @@ class ExploreDiscoveryIntegrationTest {
         val userLng = -9.1423
 
         // 1. Execute multi-source discovery sync
-        val syncResult = gemRepository.syncMultiSourceGems(userLat, userLng)
+        val syncResult = gemRepository.syncMultiSourceGems(userLat, userLng, sourceIds = listOf("open_trip_map"))
         testDispatcher.scheduler.advanceUntilIdle()
 
         assertTrue("Multi-source sync must succeed", syncResult.isSuccess)
@@ -133,7 +134,7 @@ class ExploreDiscoveryIntegrationTest {
         scoutDao.insertSpots(listOf(savedSpot))
 
         // Execute discovery
-        gemRepository.syncMultiSourceGems(userLat, userLng)
+        gemRepository.syncMultiSourceGems(userLat, userLng, sourceIds = listOf("open_trip_map"))
         testDispatcher.scheduler.advanceUntilIdle()
 
         // Verify bookmark is strictly preserved

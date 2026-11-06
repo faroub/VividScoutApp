@@ -9,11 +9,11 @@ import com.example.util.SafeLog
 import com.google.firebase.FirebaseApp
 import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.functions.FirebaseFunctions
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
-import java.util.Date
 import java.util.UUID
 
 data class SharedSpotItem(
@@ -148,9 +148,7 @@ object SharedTripManager {
                 auth.signInAnonymously().await()
             }
 
-            val firestore = getFirestore(context)
-                ?: return@withContext Result.failure(IllegalStateException("Firestore instance unavailable."))
-
+            // Payload mirrors the schema enforced server-side by functions/sharedTrips.js.
             val spotMaps = trip.spots.map { spot ->
                 mapOf(
                     "spotId" to spot.spotId,
@@ -162,24 +160,51 @@ object SharedTripManager {
                 )
             }
 
-            val createdAtTs = Timestamp(Date(trip.createdAt))
-            val expireAtTs = Timestamp(Date(trip.expireAt))
-
-            val tripDoc = mapOf(
+            val payload = hashMapOf<String, Any>(
                 "id" to trip.id,
                 "title" to trip.title,
                 "spots" to spotMaps,
-                "createdAt" to createdAtTs,
-                "expireAt" to expireAtTs
+                "createdAt" to trip.createdAt,
+                "expireAt" to trip.expireAt
             )
 
-            firestore.collection("shared_trips").document(trip.id).set(tripDoc).await()
-            SafeLog.i(TAG, "Published shared trip document '${trip.id}' to Firestore")
-            Result.success(trip.shareableLink)
+            // Shared trips are written by the trusted publishSharedTrip Cloud Function
+            // (firestore.rules denies direct client creation of shared_trips).
+            val functions = FirebaseFunctions.getInstance(app)
+            val result = functions.getHttpsCallable("publishSharedTrip").call(payload).await()
+
+            @Suppress("UNCHECKED_CAST")
+            val link = (result.data as? Map<*, *>)?.get("shareableLink") as? String
+                ?: trip.shareableLink
+            SafeLog.i(TAG, "Published shared trip '${trip.id}' via Cloud Function")
+            Result.success(link)
         } catch (e: Exception) {
             SafeLog.w(TAG, "Failed to publish shared trip to Firestore: ${e.message}")
             Result.failure(e)
         }
+    }
+
+    /**
+     * Parses one waypoints element into a [SharedSpotItem], rejecting entries with
+     * missing title or invalid coordinates.
+     */
+    private fun parseSharedSpotItem(item: Map<String, Any?>): SharedSpotItem? {
+        val name = item["title"] as? String ?: return null
+        val lat = (item["latitude"] as? Number)?.toDouble() ?: return null
+        val lng = (item["longitude"] as? Number)?.toDouble() ?: return null
+
+        if (lat.isNaN() || lng.isNaN() || lat !in -90.0..90.0 || lng !in -180.0..180.0 || (lat == 0.0 && lng == 0.0)) {
+            return null
+        }
+
+        return SharedSpotItem(
+            spotId = item["spotId"] as? String ?: "",
+            title = name,
+            category = item["category"] as? String ?: "sights",
+            latitude = lat,
+            longitude = lng,
+            imageUrl = item["imageUrl"] as? String
+        )
     }
 
     /**
@@ -218,26 +243,11 @@ object SharedTripManager {
                 else -> currentTimeMs
             }
 
+            // Accepts the list serialization written by the publishSharedTrip Cloud
+            // Function (and legacy documents shared before schema enforcement).
             @Suppress("UNCHECKED_CAST")
             val rawSpots = docSnap.get("spots") as? List<Map<String, Any?>> ?: emptyList()
-            val spotItems = rawSpots.mapNotNull { item ->
-                val name = item["title"] as? String ?: return@mapNotNull null
-                val lat = (item["latitude"] as? Number)?.toDouble() ?: return@mapNotNull null
-                val lng = (item["longitude"] as? Number)?.toDouble() ?: return@mapNotNull null
-
-                if (lat.isNaN() || lng.isNaN() || lat !in -90.0..90.0 || lng !in -180.0..180.0 || (lat == 0.0 && lng == 0.0)) {
-                    return@mapNotNull null
-                }
-
-                SharedSpotItem(
-                    spotId = item["spotId"] as? String ?: "",
-                    title = name,
-                    category = item["category"] as? String ?: "sights",
-                    latitude = lat,
-                    longitude = lng,
-                    imageUrl = item["imageUrl"] as? String
-                )
-            }
+            val spotItems = rawSpots.mapNotNull { item -> parseSharedSpotItem(item) }
 
             val trip = SharedTrip(
                 id = tripId,

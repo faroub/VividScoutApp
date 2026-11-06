@@ -84,6 +84,7 @@ import com.example.ui.viewmodel.MainTab
 import com.example.ui.viewmodel.MainViewModel
 import com.example.ui.viewmodel.OfflineMapsViewModel
 import com.example.ui.viewmodel.ProfileViewModel
+import com.example.ui.viewmodel.SpotPhotoViewModel
 import com.example.util.configureAppCheck
 import com.example.util.SafeLog
 
@@ -95,6 +96,7 @@ class MainActivity : ComponentActivity() {
     private val communityViewModel: CommunityViewModel by viewModels { AppViewModelProvider.Factory }
     private val offlineMapsViewModel: OfflineMapsViewModel by viewModels { AppViewModelProvider.Factory }
     private val profileViewModel: ProfileViewModel by viewModels { AppViewModelProvider.Factory }
+    private val spotPhotoViewModel: SpotPhotoViewModel by viewModels { AppViewModelProvider.Factory }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -114,7 +116,8 @@ class MainActivity : ComponentActivity() {
                     exploreViewModel = exploreViewModel,
                     communityViewModel = communityViewModel,
                     offlineMapsViewModel = offlineMapsViewModel,
-                    profileViewModel = profileViewModel
+                    profileViewModel = profileViewModel,
+                    spotPhotoViewModel = spotPhotoViewModel
                 )
             }
         }
@@ -128,7 +131,8 @@ fun VividScoutApp(
     exploreViewModel: ExploreViewModel,
     communityViewModel: CommunityViewModel,
     offlineMapsViewModel: OfflineMapsViewModel,
-    profileViewModel: ProfileViewModel
+    profileViewModel: ProfileViewModel,
+    spotPhotoViewModel: SpotPhotoViewModel
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -534,6 +538,12 @@ fun VividScoutApp(
                                 val success = exploreViewModel.refreshSpotPhoto(spotId)
                                 callback(success, if (success) "Real photo extracted from Wikipedia & cached in database!" else "No online Wikipedia photo available")
                             }
+                        },
+                        onUploadPhoto = { spotId, uri ->
+                            spotPhotoViewModel.uploadSpotPhoto(context, spotId, uri)
+                        },
+                        onReportPhoto = { photoId ->
+                            spotPhotoViewModel.reportSpotPhoto(photoId)
                         }
                     )
                 }

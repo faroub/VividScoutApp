@@ -22,6 +22,8 @@ class WikidataSearchService(
     private val wikipediaApi: WikipediaApi = WikipediaRetrofitClient.api
 ) : PlaceSource {
 
+    override val sourceId: String = "wikivoyage_wikidata"
+
     override suspend fun fetchNear(
         lat: Double,
         lon: Double,

@@ -1,4 +1,6 @@
 *.iml
+node_modules/
+firebase-debug.log
 .gradle
 .kotlin
 .aistudio/

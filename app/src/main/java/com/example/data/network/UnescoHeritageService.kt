@@ -14,7 +14,7 @@ import java.util.concurrent.TimeUnit
  * Service to query UNESCO World Heritage Sites spatial coordinates, official designation details,
  * and historical significance criteria.
  */
-class UnescoHeritageService(
+open class UnescoHeritageService(
     private val client: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(6, TimeUnit.SECONDS)
         .readTimeout(8, TimeUnit.SECONDS)
@@ -86,7 +86,7 @@ class UnescoHeritageService(
     /**
      * Fetches UNESCO World Heritage Monuments near given coordinates.
      */
-    suspend fun fetchNearbyUnescoSites(
+    open suspend fun fetchNearbyUnescoSites(
         lat: Double,
         lon: Double,
         radiusKm: Double = 30.0
