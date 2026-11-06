@@ -11,8 +11,10 @@
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore, FieldValue, Timestamp } = require("firebase-admin/firestore");
+const { getStorage } = require("firebase-admin/storage");
 const axios = require("axios");
-const { validateSharedTripPayload } = require("./sharedTrips");
+const { validateSharedTripPublishPayload, publishSharedTripDocument } = require("./sharedTrips");
+const { finalizePhotoUploadDocument, PHOTO_FINALIZE_RATE_LIMIT_MAX_PER_HOUR } = require("./photos");
 const { validateNearbyPlacesRequest } = require("./validation");
 
 initializeApp();
@@ -226,9 +228,16 @@ exports.nearbyPlaces = onCall(
  *
  * The only trusted writer of shared_trips documents. Firestore Rules deny direct
  * client creation (the rules language cannot validate list contents), so a shared
- * trip is created here after full server-side schema validation. Writes real
- * Firestore Timestamps with a 30-day TTL, enforces authentication, App Check
- * and a per-UID publishing rate limit.
+ * trip is created here after full server-side schema validation.
+ *
+ * Server-authoritative persistence (see functions/sharedTrips.js): the document id is
+ * an unpredictable server-generated auto-id, createdAt uses the server's clock, and
+ * expireAt is exactly 30 days later — the client cannot influence any of them. The
+ * trip document is created with create()-only semantics, never an unconditional
+ * overwrite, and a client-supplied requestId makes retries idempotent (a replay
+ * returns the already-published trip instead of publishing a second one).
+ * Enforces authentication, App Check, and a per-UID publishing rate limit
+ * (consumed only by genuinely new publishes).
  */
 exports.publishSharedTrip = onCall(
   {
@@ -236,37 +245,48 @@ exports.publishSharedTrip = onCall(
     enforceAppCheck: true
   },
   async (request) => {
-    // 1. Firebase Authentication Check
+    // Firebase Authentication Check
     const auth = request.auth;
     if (!auth || !auth.uid) {
       throw new HttpsError("unauthenticated", "User authentication required to publish a shared trip.");
     }
 
-    // 2. Per-UID Rate Limit Check (publishing user content)
-    const isAllowed = await checkRateLimit(
-      auth.uid,
-      `shared_trips_publish_${auth.uid}`,
-      SHARED_TRIP_RATE_LIMIT_MAX_PER_HOUR
-    );
-    if (!isAllowed) {
-      throw new HttpsError(
-        "resource-exhausted",
-        `Rate limit exceeded. Maximum ${SHARED_TRIP_RATE_LIMIT_MAX_PER_HOUR} shared trips per hour per user.`
-      );
+    // Server-owned publishing: validation, id generation, timestamps, atomic create,
+    // idempotency replay, and the per-UID rate limit (new publishes only).
+    return publishSharedTripDocument(db, auth.uid, request.data || {}, {
+      shouldRateLimit: () =>
+        checkRateLimit(auth.uid, `shared_trips_publish_${auth.uid}`, SHARED_TRIP_RATE_LIMIT_MAX_PER_HOUR)
+    });
+  }
+);
+
+/**
+ * Firebase Cloud Function: finalizePhotoUpload
+ *
+ * The only trusted writer of spot_photos metadata documents. Firestore Rules deny
+ * direct client creation, so a photo becomes visible only after its Storage object has
+ * been verified server-side: the object must exist in the project's bucket under the
+ * authenticated caller's own ownership-aware path spot_photos/{uid}/{spotId}/{filename},
+ * stay within the size limit, and be a permitted image type. The Firestore document id
+ * is generated server-side; the metadata references the verified object only (an
+ * arbitrary external URL is rejected). Replays of the same object are idempotent.
+ * Enforces authentication, App Check, and a per-UID registration rate limit
+ * (consumed only by genuinely new registrations).
+ */
+exports.finalizePhotoUpload = onCall(
+  {
+    cors: true,
+    enforceAppCheck: true
+  },
+  async (request) => {
+    const auth = request.auth;
+    if (!auth || !auth.uid) {
+      throw new HttpsError("unauthenticated", "User authentication required to finalize a photo upload.");
     }
 
-    // 3. Strict server-side schema validation of the exact serializer payload
-    const validated = validateSharedTripPayload(request.data || {});
-
-    // 4. Persist with server-generated Firestore Timestamps
-    await db.collection("shared_trips").doc(validated.id).set({
-      id: validated.id,
-      title: validated.title,
-      spots: validated.spots,
-      createdAt: Timestamp.fromMillis(validated.createdAt),
-      expireAt: Timestamp.fromMillis(validated.expireAt)
+    return finalizePhotoUploadDocument(db, getStorage().bucket(), auth.uid, request.data || {}, {
+      shouldRateLimit: () =>
+        checkRateLimit(auth.uid, `photo_finalize_${auth.uid}`, PHOTO_FINALIZE_RATE_LIMIT_MAX_PER_HOUR)
     });
-
-    return { shareableLink: `https://vividscout.app/trip/${validated.id}` };
   }
 );

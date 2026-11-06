@@ -40,6 +40,7 @@ const {
   deleteDoc,
   runTransaction,
   increment,
+  orderBy,
   Timestamp,
 } = require('firebase/firestore');
 const {
@@ -159,11 +160,21 @@ const atomicVote = async (db, tipId, uid) => {
   });
 };
 
+// Mirrors PhotoModerationRepository.reportPhoto() exactly: the transaction reads ONLY the
+// parent photo document (publicly readable) — it NEVER reads the user's report document,
+// because the Firestore security rules deny all reads of spot_photos/{photoId}/reports/{userId}
+// (reporter privacy). Uniqueness is enforced exclusively by the rules' before/after
+// existence checks on the atomic counter increment. The parent-counter write is an explicit
+// transaction-read value + 1 (no FieldValue.increment) so the rules child-create checks can
+// observe the before/after counter state within the transaction.
 const atomicReport = async (db, photoId, uid) => {
   const photoRef = doc(db, 'spot_photos', photoId);
   const reportRef = doc(db, 'spot_photos', photoId, 'reports', uid);
   await runTransaction(db, async (txn) => {
     const photoDoc = await txn.get(photoRef);
+    if (!photoDoc.exists()) {
+      throw new Error('This photo no longer exists and cannot be reported.');
+    }
     const count = photoDoc.get('reportsCount') ?? 0;
     txn.update(photoRef, { reportsCount: count + 1 });
     txn.set(reportRef, { reporterUid: uid, timestamp: Date.now() });
@@ -482,10 +493,14 @@ describe('community_tips', () => {
 
 describe('spot_photos', () => {
   const seedPhoto = async (ownerUid) => {
+    // Seeds exactly like the trusted finalizePhotoUpload Cloud Function (Admin SDK,
+    // which bypasses rules): server-generated document id, owner-scoped Storage object
+    // path, photoUrl referencing the verified object, zero initial report counter.
     const id = nextId('photo');
     const data = validPhoto(ownerUid);
     data.id = id;
-    await assertSucceeds(setDoc(doc(dbAs(ownerUid), 'spot_photos', id), data));
+    data.photoPath = `spot_photos/${ownerUid}/spot-1/photo-${id}.jpg`;
+    await admin.firestore().collection('spot_photos').doc(id).create(data);
     return { id, data };
   };
 
@@ -501,50 +516,60 @@ describe('spot_photos', () => {
     await assertFails(setDoc(doc(dbAs(null), 'spot_photos', id), data));
   });
 
-  it('allows an authenticated user to create valid photo metadata', async () => {
+  it('rejects authenticated direct client creation of photo metadata (trusted writer only)', async () => {
+    // firestore.rules denies ALL client creation of spot_photos: photo metadata is
+    // registered only by the trusted finalizePhotoUpload Cloud Function after the
+    // Storage object has been verified server-side (see photos.test.js).
+    const id = nextId('photo');
+    const data = validPhoto(ALICE);
+    data.id = id;
+    data.photoPath = `spot_photos/${ALICE}/spot-1/photo-${id}.jpg`;
+    await assertFails(setDoc(doc(dbAs(ALICE), 'spot_photos', id), data));
+
+    const id2 = nextId('photo');
+    const externalUrl = validPhoto(ALICE);
+    externalUrl.id = id2;
+    externalUrl.photoUrl = 'https://example.com/arbitrary-external.jpg';
+    await assertFails(setDoc(doc(dbAs(ALICE), 'spot_photos', id2), externalUrl));
+  });
+
+  it('accepts a photo document created by the trusted writer and exposes its fields', async () => {
     const { id, data } = await seedPhoto(ALICE);
     const saved = await getDoc(doc(dbAs(ALICE), 'spot_photos', id));
     assert.strictEqual(saved.get('reportsCount'), 0);
     assert.strictEqual(saved.get('photoUrl'), data.photoUrl);
+    assert.strictEqual(saved.get('photoPath'), `spot_photos/${ALICE}/spot-1/photo-${id}.jpg`);
   });
 
-  it('rejects creation when the document id field does not match the path id', async () => {
-    const id = nextId('photo');
-    const data = validPhoto(ALICE);
-    data.id = 'mismatched-id';
-    await assertFails(setDoc(doc(dbAs(ALICE), 'spot_photos', id), data));
-  });
+  it('rejects every direct client document shape of photo metadata (schema is trusted-writer enforced)', async () => {
+    // The spot_photos schema (id==path id, zero report counter, mandatory fields, no
+    // unexpected fields, https photoUrl) is enforced by the trusted finalizePhotoUpload
+    // Cloud Function (exercised in photos.test.js), not by rules — rules deny ALL client
+    // creation. Each of these shapes must fail as a client write.
+    const shapes = [];
+    const mismatched = validPhoto(ALICE);
+    mismatched.id = 'mismatched-id';
+    shapes.push(mismatched);
+    const nonzero = validPhoto(ALICE);
+    nonzero.id = nextId('photo');
+    nonzero.reportsCount = 3;
+    shapes.push(nonzero);
+    const missing = validPhoto(ALICE);
+    missing.id = nextId('photo');
+    delete missing.spotId;
+    shapes.push(missing);
+    const smuggled = validPhoto(ALICE);
+    smuggled.id = nextId('photo');
+    smuggled.smuggled = 'field';
+    shapes.push(smuggled);
+    const insecure = validPhoto(ALICE);
+    insecure.id = nextId('photo');
+    insecure.photoUrl = 'http://insecure.example/photo.jpg';
+    shapes.push(insecure);
 
-  it('rejects creation with a non-zero reportsCount', async () => {
-    const id = nextId('photo');
-    const data = validPhoto(ALICE);
-    data.id = id;
-    data.reportsCount = 3;
-    await assertFails(setDoc(doc(dbAs(ALICE), 'spot_photos', id), data));
-  });
-
-  it('rejects creation with a missing mandatory field', async () => {
-    const id = nextId('photo');
-    const data = validPhoto(ALICE);
-    data.id = id;
-    delete data.spotId;
-    await assertFails(setDoc(doc(dbAs(ALICE), 'spot_photos', id), data));
-  });
-
-  it('rejects creation with an unexpected field', async () => {
-    const id = nextId('photo');
-    const data = validPhoto(ALICE);
-    data.id = id;
-    data.smuggled = 'field';
-    await assertFails(setDoc(doc(dbAs(ALICE), 'spot_photos', id), data));
-  });
-
-  it('rejects creation with a non-https photoUrl', async () => {
-    const id = nextId('photo');
-    const data = validPhoto(ALICE);
-    data.id = id;
-    data.photoUrl = 'http://insecure.example/photo.jpg';
-    await assertFails(setDoc(doc(dbAs(ALICE), 'spot_photos', id), data));
+    for (const data of shapes) {
+      await assertFails(setDoc(doc(dbAs(ALICE), 'spot_photos', data.id), data));
+    }
   });
 
   it('accepts a valid first atomic photo report (counter increment + report document)', async () => {
@@ -565,6 +590,65 @@ describe('spot_photos', () => {
 
     await assertSucceeds(atomicReport(db, id, BOB));
     await assertFails(atomicReport(db, id, BOB));
+  });
+
+  it('rejects a transaction that reads the report document before reporting (production defect mirror)', async () => {
+    // PhotoModerationRepository.reportPhoto() must never read the caller's report
+    // document: the rules deny every read of spot_photos/{photoId}/reports/{userId}, so a
+    // transaction containing that read fails with permission denied even though the
+    // writes themselves would be valid. This is the exact regression the production
+    // repository used to ship; this test pins the fix.
+    const { id } = await seedPhoto(ALICE);
+    const db = dbAs(BOB);
+    const photoRef = doc(db, 'spot_photos', id);
+    const reportRef = doc(db, 'spot_photos', id, 'reports', BOB);
+
+    await assertFails(
+      runTransaction(db, async (txn) => {
+        await txn.get(reportRef);
+        const photoDoc = await txn.get(photoRef);
+        const count = photoDoc.get('reportsCount') ?? 0;
+        txn.update(photoRef, { reportsCount: count + 1 });
+        txn.set(reportRef, { reporterUid: BOB, timestamp: Date.now() });
+      })
+    );
+
+    const photo = await getDoc(photoRef);
+    assert.strictEqual(photo.get('reportsCount'), 0);
+  });
+
+  it('mirrors the production pre-check: atomicReport on a nonexistent photo fails with a clear error', async () => {
+    // PhotoModerationRepository.reportPhoto() detects the missing parent via its permitted
+    // parent read and surfaces a clear client-side error instead of attempting the write.
+    // (Rule-level rejection of writes against a missing parent is covered by the standalone
+    // report-creation test above.)
+    const db = dbAs(BOB);
+    await assert.rejects(
+      atomicReport(db, 'nonexistent-photo-doc', BOB),
+      /This photo no longer exists/
+    );
+  });
+
+  it('leaves the reports counter unchanged when a duplicate report is rejected', async () => {
+    const { id } = await seedPhoto(ALICE);
+    const db = dbAs(BOB);
+
+    await assertSucceeds(atomicReport(db, id, BOB));
+    await assertFails(atomicReport(db, id, BOB));
+
+    const photo = await getDoc(doc(db, 'spot_photos', id));
+    assert.strictEqual(photo.get('reportsCount'), 1);
+  });
+
+  it('lets three distinct accounts reach the 3-report moderation threshold', async () => {
+    const { id } = await seedPhoto(ALICE);
+
+    await assertSucceeds(atomicReport(dbAs(ALICE), id, ALICE));
+    await assertSucceeds(atomicReport(dbAs(BOB), id, BOB));
+    await assertSucceeds(atomicReport(dbAs('carol-uid'), id, 'carol-uid'));
+
+    const photo = await getDoc(doc(dbAs(ALICE), 'spot_photos', id));
+    assert.strictEqual(photo.get('reportsCount'), 3);
   });
 
   it('rejects standalone report creation (no parent counter update)', async () => {
@@ -675,6 +759,54 @@ describe('spot_photos', () => {
   it('rejects deletion of photo metadata, including by its owner', async () => {
     const { id } = await seedPhoto(ALICE);
     await assertFails(deleteDoc(doc(dbAs(ALICE), 'spot_photos', id)));
+  });
+
+  it('supports the exact production photo query (spotId filter + timestamp desc, index-backed)', async () => {
+    // The exact query shape of PhotoModerationRepository.photosForSpotFlow, backed by
+    // the composite index declared in firestore.indexes.json (spotId ASC, timestamp
+    // DESC). Firestore returns the spot's photos in descending timestamp order; a
+    // missing-index failure surfaces as a query error, never an empty collection.
+    const spotId = nextId('spot');
+    const photoIds = [];
+    for (let i = 0; i < 3; i += 1) {
+      const id = nextId('photo');
+      photoIds.push(id);
+      await admin.firestore().collection('spot_photos').doc(id).create({
+        id,
+        spotId,
+        photoPath: `spot_photos/${ALICE}/${spotId}/photo-${id}.jpg`,
+        photoUrl: `https://firebasestorage.googleapis.com/v0/b/vividscout-rules-emulator.appspot.com/o/spot_photos%2F${ALICE}%2F${spotId}%2Fphoto-${id}.jpg`,
+        ownerUid: ALICE,
+        reportsCount: 0,
+        timestamp: 1_700_000_000_000 + i * 1000,
+      });
+    }
+    // A photo of a different spot must not appear.
+    const otherId = nextId('photo');
+    await admin.firestore().collection('spot_photos').doc(otherId).create({
+      id: otherId,
+      spotId: nextId('spot'),
+      photoPath: `spot_photos/${ALICE}/other/photo-${otherId}.jpg`,
+      photoUrl: 'https://firebasestorage.googleapis.com/v0/b/vividscout-rules-emulator.appspot.com/o/o.jpg',
+      ownerUid: ALICE,
+      reportsCount: 0,
+      timestamp: 1_700_000_000_000,
+    });
+
+    const reader = dbAs(null);
+    const snapshot = await getDocs(
+      query(
+        collection(reader, 'spot_photos'),
+        where('spotId', '==', spotId),
+        orderBy('timestamp', 'desc')
+      )
+    );
+    assert.strictEqual(snapshot.size, 3, 'returns exactly the spot photos');
+    assert.deepStrictEqual(
+      snapshot.docs.map((d) => d.id),
+      [...photoIds].reverse(),
+      'descending timestamp order'
+    );
   });
 });
 
@@ -791,6 +923,28 @@ describe("shared_trips", () => {
     const id = nextId("trip");
     await seedTripAsTrustedWriter(validTripPayload(id));
     await assertFails(deleteDoc(doc(dbAs(ALICE), "shared_trips", id)));
+  });
+
+  it("denies all client access to the publish idempotency records", async () => {
+    // The shared_trip_publish_requests documents map request ids to published trips and
+    // owner UIDs; only the trusted Cloud Function may touch them.
+    const id = nextId("pubreq");
+    const adminDb = admin.firestore();
+    await adminDb.collection("shared_trip_publish_requests").doc(id).set({
+      ownerUid: ALICE,
+      tripId: "some-trip-id",
+    });
+
+    await assertFails(getDoc(doc(dbAs(ALICE), "shared_trip_publish_requests", id)));
+    await assertFails(getDoc(doc(dbAs(BOB), "shared_trip_publish_requests", id)));
+    await assertFails(getDoc(doc(dbAs(null), "shared_trip_publish_requests", id)));
+    await assertFails(
+      setDoc(doc(dbAs(ALICE), "shared_trip_publish_requests", id), {
+        ownerUid: ALICE,
+        tripId: "hijacked-trip-id",
+      })
+    );
+    await assertFails(deleteDoc(doc(dbAs(ALICE), "shared_trip_publish_requests", id)));
   });
 });
 

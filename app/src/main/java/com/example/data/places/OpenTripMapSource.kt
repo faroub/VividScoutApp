@@ -68,6 +68,7 @@ class OpenTripMapSource(
                 PlaceCandidate(
                     sourceName = item["sourceName"] as? String ?: "OpenTripMap API",
                     sourceId = item["sourceId"] as? String ?: "otm_${name.hashCode()}",
+                    providerId = sourceId,
                     name = name,
                     latitude = itemLat,
                     longitude = itemLon,

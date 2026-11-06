@@ -35,7 +35,16 @@ data class AStarRouteResult(
      * estimate instead of a real pedestrian-network route. Callers must never label
      * such a distance as a walking route.
      */
-    val isDirectFallback: Boolean = false
+    val isDirectFallback: Boolean = false,
+    /**
+     * True when the found path traverses only edges injected from offline region
+     * packs plus the short snap connectors at both endpoints, i.e. none of the
+     * hand-authored built-in graph edges. False for paths that use hand-authored
+     * edges ([WalkEdgeProvenance.MANUAL_BASE_GRAPH]) — those are approximate graph
+     * connections whose geometry is straight-line interpolation, and callers must
+     * not present them as verified street-level pedestrian routing.
+     */
+    val usesOnlyRegionPackGeometry: Boolean = false
 ) {
     val formattedDistance: String
         get() = if (totalDistanceMeters >= 1000) {
@@ -55,9 +64,15 @@ data class AStarRouteResult(
 }
 
 /**
- * 100% Offline A* Pathfinding Engine for pedestrian street navigation.
- * Snaps arbitrary GPS points to the vector road network, calculates optimal
+ * 100% Offline A* Pathfinding Engine for pedestrian navigation.
+ * Snaps arbitrary GPS points to the walking graph, calculates optimal
  * paths using Haversine distance heuristics, and produces turn-by-turn walking steps.
+ *
+ * The graph is a hand-authored network of real landmark positions connected by
+ * straight-line edges (plus optional edges injected from offline region packs).
+ * Distances and geometry are therefore graph approximations, not verified
+ * street-level pedestrian geometry: results report their provenance via
+ * [AStarRouteResult.usesOnlyRegionPackGeometry] so callers can label them honestly.
  */
 object AStarPathfinder {
 
@@ -155,14 +170,14 @@ object AStarPathfinder {
         // 2. Snap Origin and Destination to closest base graph nodes
         closestOriginNodes.forEach { targetNode ->
             val d = haversineMeters(startLat, startLng, targetNode.lat, targetNode.lng)
-            allEdges.add(WalkEdge(originId, targetNode.id, d, "Walk towards ${targetNode.name}", isPedestrianOnly = true))
-            allEdges.add(WalkEdge(targetNode.id, originId, d, "Walk towards $startName", isPedestrianOnly = true))
+            allEdges.add(WalkEdge(originId, targetNode.id, d, "Walk towards ${targetNode.name}", isPedestrianOnly = true, provenance = WalkEdgeProvenance.SNAP_CONNECTOR))
+            allEdges.add(WalkEdge(targetNode.id, originId, d, "Walk towards $startName", isPedestrianOnly = true, provenance = WalkEdgeProvenance.SNAP_CONNECTOR))
         }
 
         closestDestNodes.forEach { targetNode ->
             val d = haversineMeters(targetNode.lat, targetNode.lng, destLat, destLng)
-            allEdges.add(WalkEdge(targetNode.id, destId, d, "Approach $destName", isPedestrianOnly = true))
-            allEdges.add(WalkEdge(destId, targetNode.id, d, "Walk towards ${targetNode.name}", isPedestrianOnly = true))
+            allEdges.add(WalkEdge(targetNode.id, destId, d, "Approach $destName", isPedestrianOnly = true, provenance = WalkEdgeProvenance.SNAP_CONNECTOR))
+            allEdges.add(WalkEdge(destId, targetNode.id, d, "Walk towards ${targetNode.name}", isPedestrianOnly = true, provenance = WalkEdgeProvenance.SNAP_CONNECTOR))
         }
 
         // Build adjacency map
@@ -286,6 +301,10 @@ object AStarPathfinder {
         val steps = consolidateSteps(pathEdges, destName)
         val minutes = (totalDistance / WALKING_SPEED_METERS_PER_MIN).roundToInt().coerceAtLeast(1)
 
+        // A path is only free of hand-authored approximations when every edge it
+        // traverses comes from an offline region pack (or is a short snap connector).
+        val usesOnlyRegionPack = pathEdges.all { it.provenance != WalkEdgeProvenance.MANUAL_BASE_GRAPH }
+
         return AStarRouteResult(
             originName = startName,
             destinationName = destName,
@@ -293,7 +312,8 @@ object AStarPathfinder {
             waypoints = pathNodes,
             steps = steps,
             totalDistanceMeters = totalDistance,
-            estimatedWalkingMinutes = minutes
+            estimatedWalkingMinutes = minutes,
+            usesOnlyRegionPackGeometry = usesOnlyRegionPack
         )
     }
 

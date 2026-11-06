@@ -91,6 +91,7 @@ import androidx.compose.ui.platform.LocalContext
 import com.example.VividScoutApplication
 import com.example.data.local.AppDatabase
 import com.example.data.model.WeatherReport
+import com.example.data.repository.SpotPhotosState
 import com.example.data.repository.CommunityTipRepository
 import com.example.data.repository.SpotPhotoData
 import com.example.data.repository.WeatherRepository
@@ -149,10 +150,20 @@ fun SpotDetailBottomSheet(
     val latestStatus = tipsForSpot.firstOrNull { it.isStatusUpdate }
 
     val appContainer = (context.applicationContext as? VividScoutApplication)?.container
-    val spotPhotos by remember(spot.id) {
-        appContainer?.photoModerationRepository?.photosForSpotFlow(spot.id) ?: flowOf(emptyList())
-    }.collectAsState(initial = emptyList())
-    val visibleSpotPhotos = spotPhotos.filter { !it.isHidden }
+    // The photo stream distinguishes loaded photos, an empty result, and listener
+    // failure (e.g. a missing Firestore index) — a failed listener must never render
+    // as an empty photo grid as if the spot simply had no photos.
+    val spotPhotosState by remember(spot.id) {
+        appContainer?.photoModerationRepository?.photosForSpotFlow(spot.id)
+            ?: flowOf(SpotPhotosState.Loaded(emptyList()))
+    }.collectAsState(initial = SpotPhotosState.Loading)
+    val visibleSpotPhotos = when (val state = spotPhotosState) {
+        is SpotPhotosState.Loaded -> state.photos.filter { !it.isHidden }
+        else -> emptyList()
+    }
+    val photosErrorMessage = (spotPhotosState as? SpotPhotosState.Error)?.let {
+        "Community photos are unavailable${it.throwable.message?.let { m -> ": $m" } ?: "."}"
+    }
 
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
@@ -324,6 +335,15 @@ fun SpotDetailBottomSheet(
                             ),
                             color = BrandTeal
                         )
+
+                        if (photosErrorMessage != null) {
+                            Text(
+                                text = photosErrorMessage!!,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = BrandCoral,
+                                modifier = Modifier.padding(start = 8.dp)
+                            )
+                        }
 
                         if (onUploadPhoto != null) {
                             OutlinedButton(

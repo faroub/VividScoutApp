@@ -37,23 +37,32 @@ class PlaceRepository(
         // filter means every configured source is enabled.
         val activeSources = if (sourceIds == null) placeSources
             else placeSources.filter { it.sourceId in sourceIds }
+        val requestedProviderIds = activeSources.map { it.sourceId }.toSet()
         val centerTile = GeohashUtils.encode(lat, lon, precision = 5)
         val coveringTiles = GeohashUtils.getCoveringTiles(lat, lon, radiusMeters)
 
-        // 1. Look up cached places across covering neighbor tiles
+        // 1. Cached places across covering tiles, split by age into fresh windows.
         val cachedEntities = cachedPlaceDao.getPlacesForTiles(coveringTiles)
+        val freshCachedEntities = cachedEntities.filter {
+            (currentTimeMs - it.fetchedTimestamp) < CACHE_EXPIRATION_MS
+        }
 
-        val isCacheFresh = cachedEntities.isNotEmpty() &&
-                cachedEntities.all { (currentTimeMs - it.fetchedTimestamp) < CACHE_EXPIRATION_MS }
+        // 2. Provider coverage of the FRESH cache: a requested provider counts as
+        // covered only when a fresh cached place carries that provider's attribution.
+        // Cache age alone never proves coverage — records left over from a previously
+        // enabled provider must never be served for a different provider selection.
+        val coveredProviderIds = freshCachedEntities
+            .flatMap { providerIdsOf(it) }
+            .intersect(requestedProviderIds)
+        val providersNeedingFetch = activeSources.filter { it.sourceId !in coveredProviderIds }
 
-        // 2. If fresh cache exists (< 7 days old), filter by distance and return
-        if (isCacheFresh) {
-            val cachedMerged = cachedEntities.map { entityToMergedPlace(it) }
-                .filter { place ->
-                    val dist = Geo.calculateDistanceMeters(lat, lon, place.latitude, place.longitude)
-                    !dist.isNaN() && dist <= radiusMeters
-                }
-
+        // 3. Every requested provider is covered by fresh cache: return cached places
+        // of the requested providers only, filtered by radius. No network call.
+        if (providersNeedingFetch.isEmpty() && freshCachedEntities.isNotEmpty()) {
+            val cachedMerged = freshCachedEntities
+                .map { entityToMergedPlace(it) }
+                .filterRequestedProviders(requestedProviderIds)
+                .filterByRadius(lat, lon, radiusMeters)
             return@withContext PlaceRepositoryResult(
                 places = cachedMerged,
                 isStale = false,
@@ -61,14 +70,16 @@ class PlaceRepository(
             )
         }
 
-        // 3. If missing or stale, fetch from enabled PlaceSources concurrently
+        // 4. Fetch ONLY the providers not covered by the fresh cache (one request
+        // each). A provider failure is isolated: its results are simply absent while
+        // the other providers' results survive.
         val networkCandidates = mutableListOf<PlaceCandidate>()
         var networkSuccess = false
 
-        if (activeSources.isNotEmpty()) {
+        if (providersNeedingFetch.isNotEmpty()) {
             try {
                 coroutineScope {
-                    val fetchJobs = activeSources.map { source ->
+                    val fetchJobs = providersNeedingFetch.map { source ->
                         async {
                             source.fetchNear(lat, lon, radiusMeters)
                         }
@@ -86,17 +97,23 @@ class PlaceRepository(
             }
         }
 
-        // 4. If network call succeeded, merge with PlaceMerger and update Room cache transactionally
-        if (networkSuccess && networkCandidates.isNotEmpty()) {
-            val mergedPlaces = PlaceMerger.mergeCandidates(networkCandidates)
+        // 5. If the missing providers delivered candidates, merge them together with
+        // the fresh cached places (ALL of their providers, so the cache write never
+        // evicts a provider's rows merely because it was not re-requested this time),
+        // update the Room cache for the tile, and return only the places that carry
+        // at least one requested provider.
+        if (networkSuccess) {
+            val cachedCandidates = freshCachedEntities
+                .map { entityToMergedPlace(it) }
+                .flatMap { mergedPlaceToCandidates(it) }
+            val mergedPlaces = PlaceMerger.mergeCandidates(networkCandidates + cachedCandidates)
             val cacheEntities = mergedPlaces.map { mergedToEntity(it, centerTile, currentTimeMs) }
 
             cachedPlaceDao.replaceTilePlaces(centerTile, cacheEntities)
 
-            val radiusFiltered = mergedPlaces.filter { place ->
-                val dist = Geo.calculateDistanceMeters(lat, lon, place.latitude, place.longitude)
-                !dist.isNaN() && dist <= radiusMeters
-            }
+            val radiusFiltered = mergedPlaces
+                .filterRequestedProviders(requestedProviderIds)
+                .filterByRadius(lat, lon, radiusMeters)
 
             return@withContext PlaceRepositoryResult(
                 places = radiusFiltered,
@@ -105,27 +122,65 @@ class PlaceRepository(
             )
         }
 
-        // 5. If network fails or yields no candidates, fallback to cached data marked as stale
-        if (cachedEntities.isNotEmpty()) {
-            val staleMerged = cachedEntities.map { entityToMergedPlace(it) }
-                .filter { place ->
-                    val dist = Geo.calculateDistanceMeters(lat, lon, place.latitude, place.longitude)
-                    !dist.isNaN() && dist <= radiusMeters
-                }
+        // 6. Offline or every missing-provider fetch failed: serve whatever the cache
+        // holds for the requested providers, marked stale. An empty cache for the
+        // selection yields an empty stale result — never another provider's records.
+        val staleMerged = cachedEntities
+            .map { entityToMergedPlace(it) }
+            .filterRequestedProviders(requestedProviderIds)
+            .filterByRadius(lat, lon, radiusMeters)
 
-            return@withContext PlaceRepositoryResult(
+        return@withContext if (staleMerged.isNotEmpty()) {
+            PlaceRepositoryResult(
                 places = staleMerged,
                 isStale = true,
                 sourceTileKey = centerTile
             )
+        } else {
+            PlaceRepositoryResult(
+                places = emptyList(),
+                isStale = true,
+                sourceTileKey = centerTile
+            )
+        }
+    }
+
+    private fun providerIdsOf(entity: CachedPlaceEntity): Set<String> = try {
+        jsonAdapter.fromJson(entity.sourcesJson).orEmpty()
+            .mapNotNull { it.providerId.takeIf { id -> id.isNotBlank() } }
+            .toSet()
+    } catch (e: Exception) {
+        emptySet()
+    }
+
+    private fun List<MergedPlace>.filterRequestedProviders(requestedProviderIds: Set<String>): List<MergedPlace> =
+        filter { place -> place.providerIds.any { it in requestedProviderIds } }
+
+    private fun List<MergedPlace>.filterByRadius(lat: Double, lon: Double, radiusMeters: Int): List<MergedPlace> =
+        filter { place ->
+            val dist = Geo.calculateDistanceMeters(lat, lon, place.latitude, place.longitude)
+            !dist.isNaN() && dist <= radiusMeters
         }
 
-        PlaceRepositoryResult(
-            places = emptyList(),
-            isStale = true,
-            sourceTileKey = centerTile
-        )
-    }
+    /** Reconstructs candidates (one per attribution) so a cached merged place survives
+     *  re-merging with freshly fetched candidates without losing its provenance. */
+    private fun mergedPlaceToCandidates(place: MergedPlace): List<PlaceCandidate> =
+        place.sources.map { attribution ->
+            PlaceCandidate(
+                sourceName = attribution.sourceName,
+                sourceId = attribution.sourceId,
+                providerId = attribution.providerId,
+                name = place.primaryName,
+                latitude = place.latitude,
+                longitude = place.longitude,
+                category = place.category,
+                description = place.primaryDescription,
+                imageUrl = place.imageUrl,
+                sourceUrl = attribution.sourceUrl ?: place.sourceUrl,
+                license = attribution.license ?: place.license,
+                languageCode = place.languageCode
+            )
+        }
 
     private fun entityToMergedPlace(entity: CachedPlaceEntity): MergedPlace {
         val attributions = try {

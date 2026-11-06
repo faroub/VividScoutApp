@@ -7,6 +7,8 @@ package com.example.data.places
 data class PlaceCandidate(
     val sourceName: String,
     val sourceId: String,
+    /** Canonical PROVIDER identifier (e.g. "open_trip_map"), distinct from the per-record [sourceId]. */
+    val providerId: String = "",
     val name: String,
     val latitude: Double,
     val longitude: Double,

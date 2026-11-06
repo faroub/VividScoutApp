@@ -80,6 +80,7 @@ import com.example.engine.OfflineWalkingTrail
 import com.example.engine.RouteStep
 import com.example.ui.theme.BrandCoral
 import com.example.ui.theme.BrandTeal
+import java.util.UUID
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -105,6 +106,10 @@ fun RoutePlannerSheet(
     var areStepsExpanded by remember { mutableStateOf(true) }
     var isPublishingSharedTrip by remember { mutableStateOf(false) }
     var sharePublishError by remember { mutableStateOf<String?>(null) }
+    // Idempotency key for publishing: stable across retries of one share intent so a
+    // retry after a lost response replays the already-published trip server-side instead
+    // of publishing a second one. Regenerated only after a successful publish.
+    var shareRequestId by remember { mutableStateOf(UUID.randomUUID().toString()) }
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
 
@@ -459,10 +464,22 @@ fun RoutePlannerSheet(
                                         title = "${guidedWalkPlan.startTitle} ${guidedWalkPlan.mood.title} Walk",
                                         spots = guidedWalkPlan.waypoints
                                     )
-                                    val publishResult = SharedTripManager.publishSharedTripToFirestore(context, createdTrip)
+                                    val publishResult = SharedTripManager.publishSharedTripToFirestore(
+                                        context = context,
+                                        trip = createdTrip,
+                                        requestId = shareRequestId
+                                    )
                                     isPublishingSharedTrip = false
                                     if (publishResult.isSuccess) {
-                                        SharedTripManager.shareTripNativeIntent(context, createdTrip)
+                                        // Only the server-generated link resolves to the
+                                        // real Firestore document; never the local placeholder.
+                                        val published = publishResult.getOrThrow()
+                                        shareRequestId = UUID.randomUUID().toString()
+                                        SharedTripManager.shareTripNativeIntent(
+                                            context = context,
+                                            shareableLink = published.shareableLink,
+                                            tripTitle = createdTrip.title
+                                        )
                                     } else {
                                         sharePublishError = "Failed to publish trip: ${publishResult.exceptionOrNull()?.message ?: "Check network connection."}"
                                     }
@@ -635,13 +652,13 @@ fun RoutePlannerSheet(
                             Spacer(modifier = Modifier.width(6.dp))
                             Column {
                                 Text(
-                                    text = "ROUTING",
+                                    text = "APPROX. ROUTING",
                                     fontSize = 9.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Color(0xFF38BDF8)
                                 )
                                 Text(
-                                    text = "A* Snapped",
+                                    text = "A* Walking Graph",
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Color.White
@@ -733,7 +750,7 @@ fun RoutePlannerSheet(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Turn-by-Turn Walking Directions (${plannedRoute.steps.size} steps)",
+                        text = "Turn-by-Turn Directions · approximate graph (${plannedRoute.steps.size} steps)",
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold,
                         color = Color(0xFFE2E8F0)

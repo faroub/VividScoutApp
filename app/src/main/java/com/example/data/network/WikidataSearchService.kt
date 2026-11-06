@@ -37,6 +37,7 @@ class WikidataSearchService(
                 PlaceCandidate(
                     sourceName = "Wikidata Knowledge Graph",
                     sourceId = spot.id,
+                    providerId = sourceId,
                     name = spot.title,
                     latitude = spot.latitude,
                     longitude = spot.longitude,

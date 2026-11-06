@@ -7,7 +7,7 @@ import com.example.util.PhotoProcessor
 import com.example.util.ProcessedPhoto
 import com.example.util.SafeLog
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.functions.FirebaseFunctions
 import com.google.firebase.storage.FirebaseStorage
 import com.google.firebase.storage.StorageMetadata
 import kotlinx.coroutines.Dispatchers
@@ -19,11 +19,13 @@ import java.util.UUID
 /**
  * Service orchestrating local image EXIF stripping & 1600px resizing via PhotoProcessor,
  * uploading to ownership-aware Firebase Storage paths (spot_photos/{uid}/{spotId}/{filename}),
- * and persisting consistent Firestore photo metadata.
+ * and registering the Firestore photo metadata through the trusted finalizePhotoUpload
+ * Cloud Function. The Firestore document is never written directly by the client: the
+ * trusted backend verifies the uploaded Storage object (existence, ownership path, size,
+ * image type) and generates the photo document id and download URL reference.
  */
 class FirebasePhotoStorageService(
     private val storage: FirebaseStorage = FirebaseStorage.getInstance(),
-    private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance(),
     private val auth: FirebaseAuth = FirebaseAuth.getInstance()
 ) {
 
@@ -119,36 +121,47 @@ class FirebasePhotoStorageService(
                 .setCustomMetadata("spotId", spotId)
                 .build()
 
-            // 2. Upload processed JPEG bytes
+            // 1. Upload processed JPEG bytes (Storage rules enforce path ownership,
+            //    size, and image content type at the upload boundary).
             storageRef.putBytes(photo.jpegBytes, metadata).await()
             val downloadUrl = storageRef.downloadUrl.await().toString()
 
-            // 3. Create consistent Firestore photo document
-            val photoId = "photo_${UUID.randomUUID()}"
-            val photoData = hashMapOf<String, Any>(
-                "id" to photoId,
+            // 2. Register the photo through the trusted finalizePhotoUpload Cloud
+            //    Function. It verifies the object exists under the caller's own path,
+            //    is a permitted image, and only then creates the Firestore metadata
+            //    with a server-generated document id. The client never writes
+            //    spot_photos directly (firestore.rules denies client creation).
+            val payload = mapOf<String, Any>(
                 "spotId" to spotId,
-                "photoUrl" to downloadUrl,
-                "ownerUid" to userUid,
-                "reportsCount" to 0,
-                "timestamp" to System.currentTimeMillis()
+                "filename" to filename,
+                "photoUrl" to downloadUrl
             )
+            val functions = FirebaseFunctions.getInstance()
+            val result = functions.getHttpsCallable("finalizePhotoUpload").call(payload).await()
 
-            firestore.collection("spot_photos").document(photoId).set(photoData).await()
+            @Suppress("UNCHECKED_CAST")
+            val response = result.data as? Map<*, *>
+            val registeredPhotoId = response?.get("photoId") as? String
+            val registeredPhotoUrl = response?.get("photoUrl") as? String
 
-            val resultData = SpotPhotoData(
-                id = photoId,
-                spotId = spotId,
-                photoUrl = downloadUrl,
-                ownerUid = userUid,
-                reportsCount = 0,
-                timestamp = System.currentTimeMillis()
-            )
-
-            SafeLog.i(TAG, "Successfully uploaded photo to spot_photos/$userUid/$spotId/$filename")
-            Result.success(resultData)
+            if (registeredPhotoId.isNullOrBlank() || registeredPhotoUrl.isNullOrBlank()) {
+                Result.failure(
+                    IllegalStateException("Photo registration completed but returned no photo id or URL.")
+                )
+            } else {
+                Result.success(
+                    SpotPhotoData(
+                        id = registeredPhotoId,
+                        spotId = spotId,
+                        photoUrl = registeredPhotoUrl,
+                        ownerUid = userUid,
+                        reportsCount = 0,
+                        timestamp = System.currentTimeMillis()
+                    )
+                )
+            }
         } catch (e: Exception) {
-            SafeLog.w(TAG, "Failed to upload photo to Storage: ${e.message}")
+            SafeLog.w(TAG, "Failed to upload photo: ${e.message}")
             Result.failure(e)
         }
     }

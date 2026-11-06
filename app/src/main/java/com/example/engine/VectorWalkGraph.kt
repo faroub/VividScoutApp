@@ -15,6 +15,38 @@ data class WalkNode(
 )
 
 /**
+ * Origin of a [WalkEdge]'s geometry. Routing labels use this to distinguish real
+ * pedestrian-network data from hand-authored approximations, so a route is never
+ * presented as street-level verified routing when it was built from manually
+ * connected nodes.
+ */
+enum class WalkEdgeProvenance {
+    /**
+     * Edge of the built-in walking network. Its endpoints are real landmark
+     * coordinates, but the connection between them is hand-authored: the edge
+     * distance is the straight-line Haversine distance and the rendered geometry
+     * is a straight interpolation. Routes using such edges are approximate.
+     */
+    MANUAL_BASE_GRAPH,
+
+    /**
+     * Edge injected from a downloaded offline region pack
+     * ([VectorWalkGraph.loadCustomRegionSegments]). Note: region packs are
+     * currently produced locally by [com.example.data.offline.OfflineRegionStorage.synthesizeRoadNetworkForBounds],
+     * which generates a synthetic grid rather than retrieving real street
+     * geometry, so this provenance marks "region-pack data", not verified
+     * street-level geometry.
+     */
+    REGION_PACK_SEGMENT,
+
+    /**
+     * Short runtime connector created by [AStarPathfinder] to snap a GPS
+     * endpoint onto the nearest graph node. Always a straight-line segment.
+     */
+    SNAP_CONNECTOR
+}
+
+/**
  * Bidirectional or directional walking path segment in the offline vector network.
  */
 @Keep
@@ -24,12 +56,21 @@ data class WalkEdge(
     val distanceMeters: Double,
     val streetName: String,
     val isPedestrianOnly: Boolean = false,
-    val isStairsOrCalçada: Boolean = false
+    val isStairsOrCalçada: Boolean = false,
+    val provenance: WalkEdgeProvenance = WalkEdgeProvenance.MANUAL_BASE_GRAPH
 )
 
 /**
- * Comprehensive offline vector street and pedestrian walkway graph for Lisbon.
+ * Hand-authored offline walking graph for central Lisbon.
  * Connects major historical districts: Baixa, Chiado, Bairro Alto, Alfama, Rossio, and Riverfront.
+ *
+ * The node coordinates are real, verified landmark positions, but the edges between
+ * them are manually authored connections: edge length is the straight-line Haversine
+ * distance between its endpoints and route geometry is straight-line interpolation.
+ * This is an approximate walking network, not verified street-level pedestrian
+ * geometry — routes computed only on this graph must be labeled approximate
+ * (see [WalkEdgeProvenance.MANUAL_BASE_GRAPH]). Additional coverage can be injected
+ * from offline region packs via [loadCustomRegionSegments].
  * Pure Kotlin, zero network dependency, instant graph queries.
  */
 object VectorWalkGraph {
@@ -219,7 +260,8 @@ object VectorWalkGraph {
                         distanceMeters = seg.distanceMeters,
                         streetName = seg.streetName,
                         isPedestrianOnly = seg.isPedestrian,
-                        isStairsOrCalçada = seg.isStairs
+                        isStairsOrCalçada = seg.isStairs,
+                        provenance = WalkEdgeProvenance.REGION_PACK_SEGMENT
                     )
                 )
                 baseEdges.add(
@@ -229,7 +271,8 @@ object VectorWalkGraph {
                         distanceMeters = seg.distanceMeters,
                         streetName = seg.streetName,
                         isPedestrianOnly = seg.isPedestrian,
-                        isStairsOrCalçada = seg.isStairs
+                        isStairsOrCalçada = seg.isStairs,
+                        provenance = WalkEdgeProvenance.REGION_PACK_SEGMENT
                     )
                 )
             }

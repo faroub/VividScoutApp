@@ -35,6 +35,7 @@ class OverpassScraperService : PlaceSource {
                 PlaceCandidate(
                     sourceName = "OpenStreetMap Overpass API",
                     sourceId = spot.id,
+                    providerId = sourceId,
                     name = spot.title,
                     latitude = spot.latitude,
                     longitude = spot.longitude,

@@ -25,11 +25,21 @@ data class GuidedWalkPlan(
     val isCircularLoop: Boolean,
     val elevationProfile: RouteElevationProfile? = null,
     /**
-     * True only when every leg of the loop was routed on the offline pedestrian
-     * network. When false, [totalDistanceMeters] mixes or consists of straight-line
-     * estimates and must be labeled approximate.
+     * True only when every leg of the loop was routed on edges injected from
+     * offline region packs, never on the hand-authored built-in walking graph.
+     * The built-in graph connects real landmark coordinates with hand-authored
+     * straight-line edges, so finding an A* path through it does not constitute
+     * verified street-level pedestrian routing — such loops must be labeled
+     * approximate. When false, [totalDistanceMeters] mixes or consists of
+     * approximate graph distances and/or straight-line estimates.
      */
-    val isFullyRouted: Boolean = false
+    val isFullyRouted: Boolean = false,
+    /**
+     * True when at least one leg fell back to a straight-line estimate because no
+     * graph coverage exists for it. Distinguishes "partially unrouted" plans from
+     * plans that are fully routed on (possibly approximate) graph paths.
+     */
+    val hasStraightLineLegs: Boolean = false
 ) {
     val formattedDistance: String
         get() = if (totalDistanceMeters >= 1000) {
@@ -40,36 +50,46 @@ data class GuidedWalkPlan(
 
     val routingLabel: String
         get() = if (isCircularLoop && isFullyRouted) {
-            "Pedestrian route · offline walking network"
-        } else if (isCircularLoop) {
+            "Routed on offline region pack data"
+        } else if (isCircularLoop && hasStraightLineLegs) {
             "Approximate · offline routing unavailable for part of this loop"
+        } else if (isCircularLoop) {
+            "Approximate · hand-authored walking graph, not street-verified"
         } else {
             ""
         }
 }
 
 /**
- * One leg of a guided-walk loop. [distanceMeters] is a real pedestrian-network route
- * distance when [isRouted] is true; otherwise it is a straight-line estimate, used
- * only because no offline routing data covers this leg. [pathPoints] carries the
- * leg's geometry (routed polyline or straight interpolation) so distance, duration
+ * One leg of a guided-walk loop. [distanceMeters] is a graph path distance when
+ * [isRouted] is true; otherwise it is a straight-line estimate, used only because
+ * no offline routing data covers this leg. [usesOnlyRegionPackGeometry] is true
+ * when the leg's path traverses only region-pack edges (plus snap connectors);
+ * a routed leg on the hand-authored built-in graph is an approximate graph
+ * connection, not street-verified geometry. [pathPoints] carries the leg's
+ * geometry (routed polyline or straight interpolation) so distance, duration
  * and elevation all follow the same path.
  */
 data class GuidedWalkLeg(
     val distanceMeters: Double,
     val isRouted: Boolean,
-    val pathPoints: List<Pair<Double, Double>> = emptyList()
+    val pathPoints: List<Pair<Double, Double>> = emptyList(),
+    val usesOnlyRegionPackGeometry: Boolean = false
 )
 
 /**
  * Guided Walk Planner Engine: Generates genuine circular walking loops including the return leg to the origin,
  * enforcing walking duration budgets and honest terrain elevation profiles.
  *
- * Loop distances are routed on the offline pedestrian network ([AStarPathfinder]) whenever
- * graph coverage exists: each leg's distance is the actual network path length. When a leg
- * has no routing coverage it falls back to a clearly-labeled straight-line estimate, and the
- * resulting plan is marked [GuidedWalkPlan.isFullyRouted] = false so the UI never presents
- * straight-line distance as a walking route.
+ * Loop distances are routed on the offline walking graph ([AStarPathfinder]) whenever
+ * graph coverage exists: each leg's distance is the actual graph path length. The
+ * built-in graph is hand-authored (real landmark nodes connected by straight-line
+ * edges), so a loop routed only on it is an approximate graph connection, not a
+ * verified street-level pedestrian route — such plans keep
+ * [GuidedWalkPlan.isFullyRouted] = false and are labeled accordingly. Only loops
+ * whose legs run exclusively on edges injected from offline region packs qualify as
+ * fully routed. When a leg has no graph coverage at all it falls back to a
+ * clearly-labeled straight-line estimate, marking the plan approximate.
  */
 object GuidedWalkPlannerEngine {
 
@@ -97,7 +117,12 @@ object GuidedWalkPlannerEngine {
             startName = fromName,
             destName = toName
         )
-        return GuidedWalkLeg(result.totalDistanceMeters, !result.isDirectFallback, result.pathPoints)
+        return GuidedWalkLeg(
+            distanceMeters = result.totalDistanceMeters,
+            isRouted = !result.isDirectFallback,
+            pathPoints = result.pathPoints,
+            usesOnlyRegionPackGeometry = result.usesOnlyRegionPackGeometry
+        )
     }
 
     /**
@@ -233,7 +258,8 @@ object GuidedWalkPlannerEngine {
             totalWalkingMinutes = totalLoopWalkingMinutes,
             isCircularLoop = true,
             elevationProfile = realElevation,
-            isFullyRouted = legs.isNotEmpty() && legs.all { it.isRouted }
+            isFullyRouted = legs.isNotEmpty() && legs.all { it.isRouted && it.usesOnlyRegionPackGeometry },
+            hasStraightLineLegs = legs.any { !it.isRouted }
         )
     }
 

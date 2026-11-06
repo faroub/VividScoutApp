@@ -222,9 +222,17 @@ fun SharedTripDialog(
                         }
                     }
 
-                    // Action Button: Native Share Intent
+                    // Action Button: Native Share Intent.
+                    // The trip shown here was fetched by its server document id, so its
+                    // link genuinely resolves to the Firestore document.
                     Button(
-                        onClick = { SharedTripManager.shareTripNativeIntent(context, trip) },
+                        onClick = {
+                            SharedTripManager.shareTripNativeIntent(
+                                context = context,
+                                shareableLink = trip.shareableLink,
+                                tripTitle = trip.title
+                            )
+                        },
                         colors = ButtonDefaults.buttonColors(
                             containerColor = Secondary,
                             contentColor = Color.White

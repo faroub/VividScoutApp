@@ -85,10 +85,11 @@ object PlaceMerger {
             PlaceSourceAttribution(
                 sourceName = c.sourceName,
                 sourceId = c.sourceId,
+                providerId = c.providerId,
                 sourceUrl = c.sourceUrl,
                 license = c.license
             )
-        }.distinctBy { "${it.sourceName}_${it.sourceId}" }
+        }.distinctBy { "${it.providerId}_${it.sourceName}_${it.sourceId}" }
 
         val avgLat = cluster.map { it.latitude }.average()
         val avgLng = cluster.map { it.longitude }.average()

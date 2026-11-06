@@ -54,6 +54,7 @@ class ExploreDiscoveryIntegrationTest {
         val candidate = PlaceCandidate(
             sourceName = "OpenTripMap API",
             sourceId = "otm_W999",
+            providerId = "open_trip_map",
             name = "Praca do Comercio Arch",
             latitude = 38.7084,
             longitude = -9.1367,

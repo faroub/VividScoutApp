@@ -67,6 +67,7 @@ class GeonamesSource(
                 PlaceCandidate(
                     sourceName = item["sourceName"] as? String ?: "GeoNames Gazetteer",
                     sourceId = item["sourceId"] as? String ?: "geonames_${name.hashCode()}",
+                    providerId = sourceId,
                     name = name,
                     latitude = itemLat,
                     longitude = itemLon,

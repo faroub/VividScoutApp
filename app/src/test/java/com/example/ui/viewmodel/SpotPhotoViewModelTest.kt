@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.test.core.app.ApplicationProvider
 import com.example.data.repository.SpotPhotoData
 import com.example.data.repository.SpotPhotoRepository
+import com.example.data.repository.SpotPhotosState
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -48,7 +49,7 @@ class SpotPhotoViewModelTest {
         var uploadResult: Result<SpotPhotoData> = Result.success(uploadedPhoto)
         var reportResult: Result<Int> = Result.success(1)
         var reportedPhotoIds = mutableListOf<String>()
-        val photosFlow = MutableStateFlow<List<SpotPhotoData>>(emptyList())
+        val photosFlow = MutableStateFlow<SpotPhotosState>(SpotPhotosState.Loaded(emptyList()))
 
         override suspend fun uploadPhoto(
             context: android.content.Context,
@@ -64,7 +65,7 @@ class SpotPhotoViewModelTest {
             return reportResult
         }
 
-        override fun photosForSpotFlow(spotId: String): Flow<List<SpotPhotoData>> = photosFlow
+        override fun photosForSpotFlow(spotId: String): Flow<SpotPhotosState> = photosFlow
     }
 
     @Test
@@ -141,19 +142,38 @@ class SpotPhotoViewModelTest {
     @Test
     fun photosForSpotFlow_delegatesToRepositoryStream() = runTest {
         val fake = FakeSpotPhotoRepository().apply {
-            photosFlow.value = listOf(
-                uploadedPhoto.copy(id = "photo-2", reportsCount = 0),
-                uploadedPhoto.copy(id = "photo-hidden", reportsCount = 5)
+            photosFlow.value = SpotPhotosState.Loaded(
+                listOf(
+                    uploadedPhoto.copy(id = "photo-2", reportsCount = 0),
+                    uploadedPhoto.copy(id = "photo-hidden", reportsCount = 5)
+                )
             )
         }
         val viewModel = SpotPhotoViewModel(photoRepository = fake)
 
-        val photos = viewModel.photosForSpotFlow("spot-1").first()
+        val state = viewModel.photosForSpotFlow("spot-1").first()
 
+        assertTrue(state is SpotPhotosState.Loaded)
+        val photos = (state as SpotPhotosState.Loaded).photos
         assertEquals(2, photos.size)
         assertEquals("photo-2", photos[0].id)
         // Moderation state comes from the repository stream; the VM passes it through.
         assertTrue(photos[1].isHidden)
+    }
+
+    @Test
+    fun photosForSpotFlow_surfacesListenerErrorsInsteadOfAnEmptyCollection() = runTest {
+        // A failed listener (e.g. a missing Firestore composite index in a fresh
+        // Firebase project) must surface as an Error state — never as a Loaded empty
+        // list the UI would mistake for a spot without photos.
+        val fake = FakeSpotPhotoRepository().apply {
+            photosFlow.value = SpotPhotosState.Error(IllegalStateException("The query requires an index"))
+        }
+        val viewModel = SpotPhotoViewModel(photoRepository = fake)
+
+        val state = viewModel.photosForSpotFlow("spot-1").first()
+
+        assertTrue(state is SpotPhotosState.Error)
     }
 
     @Test

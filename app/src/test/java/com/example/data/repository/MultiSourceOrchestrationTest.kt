@@ -252,6 +252,7 @@ class MultiSourceOrchestrationTest {
         val pipelineCandidate = PlaceCandidate(
             sourceName = "OpenTripMap API",
             sourceId = "otm_1",
+            providerId = "open_trip_map",
             name = "Pipeline Landmark",
             latitude = userLat + 0.001,
             longitude = userLng + 0.001,
@@ -347,6 +348,7 @@ class MultiSourceOrchestrationTest {
                             PlaceCandidate(
                                 sourceName = "OpenTripMap API",
                                 sourceId = "otm_3",
+                                providerId = "open_trip_map",
                                 name = "Attributed Landmark",
                                 latitude = userLat,
                                 longitude = userLng,
@@ -384,7 +386,7 @@ class MultiSourceOrchestrationTest {
             sourceUrl = null,
             license = "ODbL",
             languageCode = "en",
-            sourcesJson = "[]",
+            sourcesJson = """[{"sourceName":"OpenTripMap API","sourceId":"otm_cached_1","providerId":"open_trip_map","license":"ODbL"}]""",
             tileKey = centerTile,
             fetchedTimestamp = System.currentTimeMillis() - 8 * 24 * 3600 * 1000L // 8 days old
         )

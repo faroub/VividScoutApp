@@ -12,16 +12,26 @@
  */
 
 const { HttpsError } = require("firebase-functions/v2/https");
+const { Timestamp } = require("firebase-admin/firestore");
 
 const MAX_SPOTS = 50;
 const MAX_TITLE_LENGTH = 120;
-const MAX_ID_LENGTH = 128;
 const MAX_SPOT_ID_LENGTH = 128;
 const MAX_CATEGORY_LENGTH = 32;
 const MAX_IMAGE_URL_LENGTH = 2048;
+const MAX_REQUEST_ID_LENGTH = 128;
 const TTL_DURATION_MS = 30 * 24 * 3600 * 1000; // 30-day maximum lifetime
 
-const TOP_LEVEL_KEYS = ["id", "title", "spots", "createdAt", "expireAt"];
+const TRIP_COLLECTION = "shared_trips";
+const PUBLISH_REQUEST_COLLECTION = "shared_trip_publish_requests";
+const SHAREABLE_LINK_BASE = "https://vividscout.app/trip/";
+
+/**
+ * Publish payload contract: clients control ONLY the idempotency request id, the trip
+ * title, and the waypoint list. The document id, createdAt and expireAt are server-owned
+ * and are never accepted from (or trusted from) a client.
+ */
+const PUBLISH_TOP_LEVEL_KEYS = ["requestId", "title", "spots"];
 const SPOT_KEYS = ["spotId", "title", "category", "latitude", "longitude", "imageUrl"];
 
 const isPlainObject = (value) =>
@@ -83,32 +93,38 @@ function validateSharedTripSpot(spot) {
 }
 
 /**
- * Validates the shared-trip payload produced by the Android serializer and
- * returns the normalized document with epoch-millis timestamps. Throws
- * HttpsError("invalid-argument") for any violation:
- * unexpected or missing top-level fields, id/title bounds, a spots list of
- * more than MAX_SPOTS entries, any malformed waypoint, or a lifetime that is
- * not (now, now + 30 days].
+ * Validates the client-controlled publish payload: an idempotency requestId, a trip
+ * title, and a list of at most MAX_SPOTS waypoints. The server owns the document id
+ * and the creation/expiry timestamps, so those fields are NOT accepted here —
+ * supplying them is rejected as an unexpected field. Throws HttpsError("invalid-argument")
+ * for any violation. Returns the normalized publish payload.
  */
-function validateSharedTripPayload(data, now = Date.now()) {
+function validateSharedTripPublishPayload(data) {
   if (!isPlainObject(data)) {
     throw invalid("Shared trip payload must be a JSON object.");
   }
 
   for (const key of Object.keys(data)) {
-    if (!TOP_LEVEL_KEYS.includes(key)) {
-      throw invalid(`Unexpected field '${key}'. Allowed fields: ${TOP_LEVEL_KEYS.join(", ")}.`);
+    if (!PUBLISH_TOP_LEVEL_KEYS.includes(key)) {
+      throw invalid(`Unexpected field '${key}'. Allowed fields: ${PUBLISH_TOP_LEVEL_KEYS.join(", ")}.`);
     }
   }
-  for (const key of TOP_LEVEL_KEYS) {
+  for (const key of PUBLISH_TOP_LEVEL_KEYS) {
     if (data[key] === undefined || data[key] === null) {
       throw invalid(`Missing mandatory field '${key}'.`);
     }
   }
 
-  const id = data.id;
-  if (typeof id !== "string" || id.length === 0 || id.length > MAX_ID_LENGTH) {
-    throw invalid(`'id' must be a non-empty string of at most ${MAX_ID_LENGTH} characters.`);
+  // Client-generated idempotency key: restrict to the character set of a UUID so it
+  // can never smuggle path separators or arbitrary content into a document id.
+  const requestId = data.requestId;
+  if (
+    typeof requestId !== "string" ||
+    requestId.length === 0 ||
+    requestId.length > MAX_REQUEST_ID_LENGTH ||
+    !/^[A-Za-z0-9_-]{8,}$/.test(requestId)
+  ) {
+    throw invalid(`'requestId' must be an alphanumeric string of 8 to ${MAX_REQUEST_ID_LENGTH} characters.`);
   }
 
   const title = data.title;
@@ -119,33 +135,125 @@ function validateSharedTripPayload(data, now = Date.now()) {
   if (!Array.isArray(data.spots)) {
     throw invalid("'spots' must be a list of spot objects.");
   }
+  if (data.spots.length === 0) {
+    throw invalid("'spots' must contain at least one waypoint.");
+  }
   if (data.spots.length > MAX_SPOTS) {
     throw invalid(`'spots' must contain at most ${MAX_SPOTS} entries.`);
   }
   const spots = data.spots.map(validateSharedTripSpot);
 
-  const createdAt = data.createdAt;
-  if (!isFiniteNumber(createdAt)) {
-    throw invalid("'createdAt' must be epoch milliseconds.");
+  return { requestId, title, spots };
+}
+
+/**
+ * Builds the shared-trips document exactly as persisted by the trusted writer: an
+ * unpredictable server-generated [tripId], server time [nowMs] as createdAt, and an
+ * expireAt of exactly TTL_DURATION_MS (30 days) later. No client-controlled value
+ * reaches the document identifier or the timestamps.
+ */
+function buildSharedTripDocument(tripId, validated, nowMs) {
+  return {
+    id: tripId,
+    title: validated.title,
+    spots: validated.spots,
+    createdAt: Timestamp.fromMillis(nowMs),
+    expireAt: Timestamp.fromMillis(nowMs + TTL_DURATION_MS),
+  };
+}
+
+const linkFor = (tripId) => `${SHAREABLE_LINK_BASE}${tripId}`;
+
+/**
+ * The complete server-owned publishing operation used by the publishSharedTrip Cloud
+ * Function. `db` is the Admin Firestore instance (bypasses rules; the function is the
+ * only writer of shared_trips). Guarantees:
+ *
+ * - The document id is generated server-side (unpredictable auto-id); the client cannot
+ *   choose or predict it, and cannot address an existing document.
+ * - The trip document is created with create() semantics: an atomic create-only write
+ *   that fails with ALREADY_EXISTS instead of overwriting an existing document.
+ * - createdAt/expireAt are generated from the server's clock at publish time; the
+ *   lifetime is exactly 30 days.
+ * - An idempotency record maps the client requestId to the published tripId, so a
+ *   duplicate request or retry after a lost response replays the ALREADY published
+ *   trip instead of publishing a second one. Concurrent duplicates race on the
+ *   idempotency record and all but one replay the winner.
+ * - [options.shouldRateLimit] gates only NEW publishes; idempotent replays never
+ *   consume publishing rate-limit budget.
+ *
+ * Returns { tripId, shareableLink, replayed }.
+ */
+async function publishSharedTripDocument(db, ownerUid, data, options = {}) {
+  if (!ownerUid) {
+    throw new HttpsError("unauthenticated", "User authentication required to publish a shared trip.");
   }
-  const expireAt = data.expireAt;
-  if (!isFiniteNumber(expireAt)) {
-    throw invalid("'expireAt' must be epoch milliseconds.");
-  }
-  if (expireAt <= now) {
-    throw invalid("'expireAt' must be in the future.");
-  }
-  if (expireAt > now + TTL_DURATION_MS) {
-    throw invalid("'expireAt' must be at most 30 days in the future.");
+  const validated = validateSharedTripPublishPayload(data);
+
+  // 1. Idempotent replay: return the trip this exact request already published.
+  const requestRef = db.collection(PUBLISH_REQUEST_COLLECTION).doc(validated.requestId);
+  const existing = await requestRef.get();
+  if (existing.exists) {
+    const record = existing.data();
+    if (record.ownerUid !== ownerUid) {
+      throw new HttpsError("already-exists", "This publish request identifier is already in use.");
+    }
+    return { tripId: record.tripId, shareableLink: linkFor(record.tripId), replayed: true };
   }
 
-  return { id, title, spots, createdAt, expireAt };
+  // 2. Rate limit consumes budget only for genuinely new publishes.
+  if (options.shouldRateLimit) {
+    const isAllowed = await options.shouldRateLimit();
+    if (!isAllowed) {
+      throw new HttpsError(
+        "resource-exhausted",
+        "Rate limit exceeded. Maximum 10 shared trips per hour per user."
+      );
+    }
+  }
+
+  // 3. Server-owned id + timestamps; create() never overwrites an existing document.
+  const nowMs = Date.now();
+  const tripRef = db.collection(TRIP_COLLECTION).doc();
+  await tripRef.create(buildSharedTripDocument(tripRef.id, validated, nowMs));
+
+  // 4. Record the idempotency marker. A lost race means another invocation with the
+  // same requestId published first: replay its published trip instead of leaking a
+  // second document.
+  try {
+    await requestRef.create({
+      ownerUid,
+      tripId: tripRef.id,
+      createdAt: Timestamp.fromMillis(nowMs),
+    });
+  } catch (err) {
+    const isAlreadyExists =
+      err.code === 6 ||
+      String(err.code).includes("already-exists") ||
+      String(err.message).toLowerCase().includes("already-exists");
+    if (!isAlreadyExists) {
+      throw err;
+    }
+    const winner = await requestRef.get();
+    const record = winner && winner.exists ? winner.data() : null;
+    if (record && record.tripId === tripRef.id) {
+      return { tripId: tripRef.id, shareableLink: linkFor(tripRef.id), replayed: false };
+    }
+    throw new HttpsError("already-exists", "This publish request was already completed.");
+  }
+
+  return { tripId: tripRef.id, shareableLink: linkFor(tripRef.id), replayed: false };
 }
 
 module.exports = {
   MAX_SPOTS,
   MAX_TITLE_LENGTH,
   TTL_DURATION_MS,
-  validateSharedTripPayload,
+  SHAREABLE_LINK_BASE,
+  TRIP_COLLECTION,
+  PUBLISH_REQUEST_COLLECTION,
+  validateSharedTripPublishPayload,
   validateSharedTripSpot,
+  buildSharedTripDocument,
+  publishSharedTripDocument,
 };

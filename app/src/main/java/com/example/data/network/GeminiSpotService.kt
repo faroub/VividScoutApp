@@ -373,12 +373,13 @@ open class GeminiSpotService {
             )
         )
 
-        val categoryFiltered = if (category.equals("all", ignoreCase = true)) {
-            catalog
-        } else {
-            val matching = catalog.filter { it.category.equals(category, ignoreCase = true) }
-            if (matching.isNotEmpty()) matching else catalog
-        }
+        // Category filtering normalizes BOTH the requested category and each blueprint's
+        // category through ScoutCategory (the app-wide canonical IDs) so aliases match:
+        // restaurant/bakery/cafe/dining -> eats, historical/monument/castle -> history,
+        // touristic/viewpoint/attraction -> sights. "all" keeps the full catalog. A
+        // category with no matching curated records returns an empty list — the full
+        // catalog is never silently served for an unmatched category.
+        val categoryFiltered = catalog.filter { ScoutCategory.matches(category, it.category) }
 
         val effectiveRadius = radiusMeters.coerceAtLeast(1)
 
@@ -393,7 +394,7 @@ open class GeminiSpotService {
                 id = spotId,
                 title = spot.title,
                 description = spot.description,
-                category = spot.category,
+                category = ScoutCategory.normalize(spot.category),
                 distance = "${distMeters.toInt()}m away",
                 walkMinutes = (distMeters / 80f).toInt().coerceAtLeast(1),
                 rating = spot.rating,

@@ -115,7 +115,19 @@ VividScout includes an automated GitHub Actions CI workflow in `.github/workflow
 - **JDK 25 & Node.js 20 Setup**: Environment configured with Gradle dependency caching. JDK 25 is required to run the Gradle daemon (see `gradle/gradle-daemon-jvm.properties`) and also drives the Firebase Emulators.
 - **Cloud Function Syntax Guard**: Runs `node --check functions/index.js` to catch entry-point syntax regressions.
 - **Cloud Function Validation Tests**: Runs `node functions/nearbyPlaces.test.js`.
-- **Firebase Security Rules Emulator Tests**: Installs `functions/package.json` dev dependencies (`@firebase/rules-unit-testing` + `firebase-tools`), then starts the **real Firestore and Storage emulators** (`firebase emulators:exec --only firestore,storage`) and executes `functions/firebase-security-rules.test.js` against them. The exact production `firestore.rules` and `storage.rules` files are loaded and evaluated by Firebase's own rules engine; the suite aborts if the emulator host environment variables are missing, so it can never touch a production project.
+- **Firebase Security Rules Emulator Tests**: Installs `functions/package.json` dev dependencies (`@firebase/rules-unit-testing` + `firebase-tools`), then starts the **real Firestore and Storage emulators** (`firebase emulators:exec --only firestore,storage`) and executes the backend test suites against them. The exact production `firestore.rules`, `storage.rules`, and `firestore.indexes.json` files are loaded and evaluated by Firebase's own engine; the suites abort if the emulator host environment variables are missing, so they can never touch a production project.
+
+### Firestore Composite Indexes
+
+The community photo stream queries `spot_photos` with `whereEqualTo("spotId", spotId)` followed by `orderBy("timestamp", Query.Direction.DESCENDING)`. This composite query requires an index declared in `firestore.indexes.json` and wired into `firebase.json`; a fresh Firebase project without it rejects the listener with `FAILED_PRECONDITION` (the app surfaces this as an explicit photo-stream error, never as an empty photo grid).
+
+Deploy all declared indexes to your Firebase project:
+
+```bash
+firebase deploy --only firestore:indexes
+```
+
+Index building is asynchronous — a query executed immediately after deployment may still report missing-index until the index finishes building (usually a few minutes; watch the Firebase Console → Firestore → Indexes tab). During that window the app shows the listener error state and retries automatically on the next snapshot, so no manual action is required.
 
 ### Local Regression Test Commands
 

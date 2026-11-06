@@ -145,4 +145,74 @@ class GeminiSpotServiceCuratedLisbonTest {
             )
         }
     }
+
+    // ------------------------------------------------------------------
+    // Canonical category filtering (P6)
+    // ------------------------------------------------------------------
+
+    @Test
+    fun eatsFilter_returnsOnlyDiningRecordsNormalizedToEats() {
+        val spots = service.generateCuratedVicinitySpots(38.7112, -9.1423, "eats", radiusMeters = 5000)
+        assertTrue("eats filter must not return a restaurant-free catalog mix", spots.isNotEmpty())
+        spots.forEach { spot ->
+            assertEquals("eats", spot.category)
+            assertTrue(spot.tagsRaw.split(",").any { it in listOf("bakery", "pastry", "dining", "seafood", "wine") })
+        }
+    }
+
+    @Test
+    fun historyFilter_returnsOnlyHistoricalRecords() {
+        val spots = service.generateCuratedVicinitySpots(38.7112, -9.1423, "history", radiusMeters = 5000)
+        assertTrue("history filter must return the historical landmarks", spots.isNotEmpty())
+        spots.forEach { spot -> assertEquals("history", spot.category) }
+        assertTrue(spots.map { it.title }.contains("Castelo de São Jorge Ramparts"))
+        assertTrue(spots.map { it.title }.contains("Convento do Carmo Ruins"))
+    }
+
+    @Test
+    fun sightsFilter_returnsOnlySightseeingRecords() {
+        val spots = service.generateCuratedVicinitySpots(38.7112, -9.1423, "sights", radiusMeters = 5000)
+        assertTrue("sights filter must return the touristic landmarks", spots.isNotEmpty())
+        spots.forEach { spot -> assertEquals("sights", spot.category) }
+        assertTrue(spots.map { it.title }.contains("Miradouro de Santa Luzia"))
+    }
+
+    @Test
+    fun shortcutFilter_returnsNoCuratedResults() {
+        // No curated catalog entry classifies as a shortcut; an empty list — never a
+        // fabricated shortcut or the full catalog.
+        val spots = service.generateCuratedVicinitySpots(38.7112, -9.1423, "shortcut", radiusMeters = 5000)
+        assertTrue("No curated shortcut entries exist", spots.isEmpty())
+    }
+
+    @Test
+    fun categoryAliasesNormalizeToCanonicalIds() {
+        // Raw aliases used by providers and the AI must map to the canonical ids.
+        val restaurantAlias = service.generateCuratedVicinitySpots(38.7112, -9.1423, "restaurant", radiusMeters = 5000)
+        assertTrue(restaurantAlias.isNotEmpty())
+        assertTrue(restaurantAlias.all { it.category == "eats" })
+
+        val historicAlias = service.generateCuratedVicinitySpots(38.7112, -9.1423, "historical", radiusMeters = 5000)
+        assertTrue(historicAlias.isNotEmpty())
+        assertTrue(historicAlias.all { it.category == "history" })
+
+        val touristicAlias = service.generateCuratedVicinitySpots(38.7112, -9.1423, "touristic", radiusMeters = 5000)
+        assertTrue(touristicAlias.isNotEmpty())
+        assertTrue(touristicAlias.all { it.category == "sights" })
+    }
+
+    @Test
+    fun allFilter_returnsTheFullInRadiusCatalog() {
+        val spots = service.generateCuratedVicinitySpots(38.7112, -9.1423, "all", radiusMeters = 5000)
+        assertEquals(6, spots.size)
+    }
+
+    @Test
+    fun unmatchedCategoryDoesNotReturnTheEntireCatalog() {
+        // An unknown category normalizes to "sights" (the app-wide convention), NOT to
+        // the full catalog — and any requested category outside the radius is empty.
+        val unknown = service.generateCuratedVicinitySpots(38.7112, -9.1423, "zebra-safari", radiusMeters = 5000)
+        assertTrue("Unknown categories must never return the full catalog", unknown.size <= 2)
+        assertTrue(unknown.all { it.category == "sights" })
+    }
 }

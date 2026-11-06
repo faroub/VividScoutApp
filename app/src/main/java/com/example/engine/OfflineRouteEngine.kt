@@ -123,7 +123,14 @@ object OfflineRouteEngine {
 
     /**
      * Calculates the shortest A* walking route between two cached locations or GPS positions,
-     * snapped to the vector road and pedestrian network.
+     * snapped to the offline walking graph.
+     *
+     * The graph is hand-authored: real landmark positions connected by straight-line
+     * edges, with optional edges injected from offline region packs (currently
+     * synthesized locally rather than retrieved from a real street-data source).
+     * Distances, geometry, and the pedestrian/stairs flags behind turn-by-turn steps
+     * are graph approximations, not verified street-level pedestrian data — present
+     * them as estimates.
      */
     fun calculateShortestAStarRoute(
         originLat: Double,

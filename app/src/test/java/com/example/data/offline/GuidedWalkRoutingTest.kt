@@ -1,7 +1,11 @@
 package com.example.data.offline
 
 import com.example.data.local.ScoutSpotEntity
+import com.example.data.offline.DownloadedRoadSegment
 import com.example.engine.AStarPathfinder
+import com.example.engine.VectorWalkGraph
+import com.example.engine.WalkEdge
+import com.example.engine.WalkEdgeProvenance
 import com.example.util.Geo
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -9,10 +13,12 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Verifies that guided-walk distances and durations follow the offline pedestrian
- * network (A*) rather than straight-line segments, that the return leg is included,
- * and that lapses in routing coverage are honestly labeled approximate instead of
- * being presented as routed walking distances.
+ * Verifies that guided-walk distances and durations follow the offline walking
+ * graph (A*) rather than straight-line segments, that the return leg is included,
+ * and that routing provenance is reported honestly: loops routed on the
+ * hand-authored base graph are labeled approximate, only loops running exclusively
+ * on offline region-pack edges qualify as fully routed, and lapses in routing
+ * coverage are labeled approximate instead of being presented as routed distances.
  */
 class GuidedWalkRoutingTest {
 
@@ -40,8 +46,11 @@ class GuidedWalkRoutingTest {
     }
 
     @Test
-    fun lisbonLoop_isFullyRoutedAlongPedestrianNetwork() {
+    fun lisbonLoop_handAuthoredGraph_isApproximateNotStreetVerified() {
         // Praça do Comércio area origin; waypoint on a graph-covered street.
+        // The built-in Lisbon walking graph connects real landmark coordinates with
+        // hand-authored straight-line edges, so a routed loop over it must NOT be
+        // presented as a verified street-level pedestrian route.
         val originLat = 38.7075
         val originLng = -9.1364
         val waypoint = createSpot("r1", "Largo do Carmo", "sights", 38.7122, -9.1404)
@@ -56,10 +65,71 @@ class GuidedWalkRoutingTest {
         )
 
         assertTrue("Loop must be circular", plan.isCircularLoop)
-        assertTrue("Lisbon legs on the pedestrian network must be routed", plan.isFullyRouted)
+        assertTrue("Legs must still be routed on the graph", !plan.hasStraightLineLegs)
+        assertFalse("Hand-authored base-graph loops must not claim verified routing", plan.isFullyRouted)
         assertEquals(
-            "Routed label must state the network provenance",
-            "Pedestrian route · offline walking network",
+            "Loop over the hand-authored graph must be labeled approximate",
+            "Approximate · hand-authored walking graph, not street-verified",
+            plan.routingLabel
+        )
+        assertTrue("Graph-routed loop must have a positive distance", plan.totalDistanceMeters > 0)
+    }
+
+    @Test
+    fun regionPackLoop_isFullyRoutedOnRegionPackGeometry() {
+        // Segments injected from an offline region pack form the only graph coverage
+        // here (Sintra, far outside the hand-authored Lisbon base network), so every
+        // leg of the loop runs exclusively on region-pack edges and may be labeled
+        // fully routed.
+        val sintraLat = 38.7900
+        val sintraLng = -9.3900
+        VectorWalkGraph.loadCustomRegionSegments(
+            listOf(
+                DownloadedRoadSegment(
+                    id = "p7_seg_1",
+                    fromId = "p7_palace",
+                    toId = "p7_town_center",
+                    fromLat = sintraLat,
+                    fromLng = sintraLng,
+                    toLat = sintraLat + 0.005,
+                    toLng = sintraLng + 0.005,
+                    distanceMeters = 650.0,
+                    streetName = "Rua das Pedras Negras Sintra",
+                    isPedestrian = true,
+                    isStairs = false
+                ),
+                DownloadedRoadSegment(
+                    id = "p7_seg_2",
+                    fromId = "p7_town_center",
+                    toId = "p7_castle_trail",
+                    fromLat = sintraLat + 0.005,
+                    fromLng = sintraLng + 0.005,
+                    toLat = sintraLat + 0.010,
+                    toLng = sintraLng + 0.010,
+                    distanceMeters = 800.0,
+                    streetName = "Calçada do Castelo dos Mouros",
+                    isPedestrian = true,
+                    isStairs = true
+                )
+            )
+        )
+
+        val waypoint = createSpot("p7w", "Moorish Castle", "sights", sintraLat + 0.010, sintraLng + 0.010)
+        val plan = GuidedWalkPlannerEngine.planGuidedWalk(
+            originLat = sintraLat,
+            originLng = sintraLng,
+            startTitle = "Sintra Palace",
+            targetDurationMinutes = 60,
+            mood = GuidedWalkMood.SCENIC,
+            availableSpots = listOf(waypoint)
+        )
+
+        assertTrue("Loop must be circular", plan.isCircularLoop)
+        assertTrue("Every leg must be a graph path", !plan.hasStraightLineLegs)
+        assertTrue("Region-pack-only loops qualify as fully routed", plan.isFullyRouted)
+        assertEquals(
+            "Fully routed label must state the region-pack provenance",
+            "Routed on offline region pack data",
             plan.routingLabel
         )
         assertTrue("Routed loop must have a positive distance", plan.totalDistanceMeters > 0)
@@ -178,7 +248,7 @@ class GuidedWalkRoutingTest {
     }
 
     @Test
-    fun firstWaypointWithinBudget_isAcceptedAndRouted() {
+    fun firstWaypointWithinBudget_isAcceptedAndRoutedOnGraph() {
         val originLat = 38.7112
         val originLng = -9.1423
         val closeSpot = createSpot("c1", "Praça da Figueira", "sights", 38.7132, -9.1373)
@@ -194,7 +264,8 @@ class GuidedWalkRoutingTest {
 
         assertEquals("c1", plan.waypoints.first().id)
         assertTrue(plan.isCircularLoop)
-        assertTrue("First waypoint within budget must be routed when covered", plan.isFullyRouted)
+        assertTrue("First waypoint within budget must be routed on the graph", !plan.hasStraightLineLegs)
+        assertFalse("Hand-authored Lisbon graph stays approximate", plan.isFullyRouted)
     }
 
     @Test
@@ -247,5 +318,83 @@ class GuidedWalkRoutingTest {
 
         assertFalse("Covered Lisbon routes must be real graph paths, not fallbacks", result.isDirectFallback)
         assertTrue("Routed distance must exceed the straight-line snap", result.totalDistanceMeters > 400.0)
+        assertFalse(
+            "Paths through the hand-authored Lisbon graph must not claim region-pack provenance",
+            result.usesOnlyRegionPackGeometry
+        )
+    }
+
+    @Test
+    fun aStarPathfinder_regionPackCoverage_flagsRegionPackProvenance() {
+        // Same region-pack segments as regionPackLoop_isFullyRoutedOnRegionPackGeometry;
+        // loading is idempotent (duplicate fromId/toId pairs are skipped), so this test
+        // also passes when it runs first.
+        VectorWalkGraph.loadCustomRegionSegments(
+            listOf(
+                DownloadedRoadSegment(
+                    id = "p7_seg_1",
+                    fromId = "p7_palace",
+                    toId = "p7_town_center",
+                    fromLat = 38.7900,
+                    fromLng = -9.3900,
+                    toLat = 38.7950,
+                    toLng = -9.3850,
+                    distanceMeters = 650.0,
+                    streetName = "Rua das Pedras Negras Sintra",
+                    isPedestrian = true,
+                    isStairs = false
+                ),
+                DownloadedRoadSegment(
+                    id = "p7_seg_2",
+                    fromId = "p7_town_center",
+                    toId = "p7_castle_trail",
+                    fromLat = 38.7950,
+                    fromLng = -9.3850,
+                    toLat = 38.8000,
+                    toLng = -9.3800,
+                    distanceMeters = 800.0,
+                    streetName = "Calçada do Castelo dos Mouros",
+                    isPedestrian = true,
+                    isStairs = true
+                )
+            )
+        )
+
+        val result = AStarPathfinder.findShortestPath(
+            startLat = 38.7900,
+            startLng = -9.3900,
+            destLat = 38.8000,
+            destLng = -9.3800,
+            startName = "Sintra Palace",
+            destName = "Moorish Castle"
+        )
+
+        assertFalse("Region-pack routes must be real graph paths, not fallbacks", result.isDirectFallback)
+        assertTrue("Region-pack-only paths must report their provenance", result.usesOnlyRegionPackGeometry)
+    }
+
+    @Test
+    fun walkEdge_provenanceReflectsEdgeOrigin() {
+        val manualEdge = WalkEdge(
+            fromId = "a",
+            toId = "b",
+            distanceMeters = 100.0,
+            streetName = "Test Street"
+        )
+        assertEquals(
+            "Edges of the built-in network default to hand-authored provenance",
+            WalkEdgeProvenance.MANUAL_BASE_GRAPH,
+            manualEdge.provenance
+        )
+
+        val packEdges = VectorWalkGraph.getEdges().filter {
+            it.fromId == "p7_palace" && it.toId == "p7_town_center"
+        }
+        assertTrue("Injected region-pack segments must exist in the graph", packEdges.isNotEmpty())
+        assertEquals(
+            "Edges injected from region packs must carry region-pack provenance",
+            WalkEdgeProvenance.REGION_PACK_SEGMENT,
+            packEdges.first().provenance
+        )
     }
 }

@@ -127,18 +127,14 @@ service cloud.firestore {
 
     match /spot_photos/{photoId} {
       allow read: if true;
-      allow create: if isAuthenticated()
-                    && request.resource.data.keys().hasOnly(['id', 'spotId', 'photoUrl', 'ownerUid', 'reportsCount', 'timestamp'])
-                    && request.resource.data.id == photoId
-                    && request.resource.data.ownerUid == request.auth.uid
-                    && request.resource.data.spotId is string
-                    && request.resource.data.spotId.size() >= 1
-                    && request.resource.data.spotId.size() <= 128
-                    && request.resource.data.photoUrl is string
-                    && request.resource.data.photoUrl.size() <= 2048
-                    && request.resource.data.photoUrl.matches('^https://.*')
-                    && request.resource.data.reportsCount == 0
-                    && request.resource.data.timestamp is number;
+
+      // Photo metadata documents are created ONLY by the trusted finalizePhotoUpload
+      // Cloud Function (its Admin SDK writes bypass rules). The function verifies that
+      // the referenced Storage object exists in the project bucket, lives under the
+      // authenticated caller's own ownership-aware path, is within the size limit, and
+      // is a permitted image type, and generates the document id server-side. Direct
+      // client creation is denied so an arbitrary external URL can never become a photo.
+      allow create: if false;
 
       // Atomic photo report increment: requires report doc NOT to exist before operation, and TO exist after operation.
       // Pre-write (!exists) + Post-write (existsAfter) prevents re-using pre-existing report docs for replay increments.
@@ -188,6 +184,14 @@ service cloud.firestore {
 
       // Shared trip links are immutable and read-only once created
       allow update, delete: if false;
+    }
+
+    // Idempotency records of the publishSharedTrip Cloud Function: each maps a
+    // client-supplied requestId to the server-generated tripId of the published trip
+    // and the publishing owner UID. Written exclusively by the trusted Admin SDK;
+    // clients must never read, write, or enumerate them.
+    match /shared_trip_publish_requests/{requestId} {
+      allow read, write: if false;
     }
   }
 }
