@@ -9,16 +9,18 @@
  */
 
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore, FieldValue, Timestamp } = require("firebase-admin/firestore");
 const { getStorage } = require("firebase-admin/storage");
 const axios = require("axios");
 const { validateSharedTripPublishPayload, publishSharedTripDocument } = require("./sharedTrips");
-const { finalizePhotoUploadDocument, PHOTO_FINALIZE_RATE_LIMIT_MAX_PER_HOUR } = require("./photos");
+const { finalizePhotoUploadDocument, PHOTO_FINALIZE_RATE_LIMIT_MAX_PER_HOUR, reapUnregisteredPhotoObjects } = require("./photos");
 const { validateNearbyPlacesRequest } = require("./validation");
+const { firestoreDatabaseId } = require("./firestoreDatabase");
 
-initializeApp();
-const db = getFirestore();
+const app = initializeApp();
+const db = getFirestore(app, firestoreDatabaseId());
 
 const RATE_LIMIT_MAX_PER_HOUR = 60;
 const RATE_LIMIT_WINDOW_MS = 3600 * 1000; // 1 hour
@@ -290,3 +292,24 @@ exports.finalizePhotoUpload = onCall(
     });
   }
 );
+
+/**
+ * Firebase Cloud Function: reapOrphanedPhotoUploads (scheduled, hourly)
+ *
+ * Server-side cleanup of Storage objects under spot_photos/ whose upload never reached
+ * a registered photo document — a client crash or lost connection between the Storage
+ * upload and the finalizePhotoUpload call otherwise leaves the object behind forever.
+ * Safety: candidates must be older than 24 hours (in-flight retries are never touched),
+ * follow the ownership-aware path structure with matching ownerUid metadata, and have
+ * no spot_photos Firestore record referencing them (registered photos are never
+ * deleted). Deletion failures are logged and retried by the next run; the operation is
+ * idempotent and bounded (at most 200 objects per invocation).
+ */
+exports.reapOrphanedPhotoUploads = onSchedule("every 60 minutes", async () => {
+  const result = await reapUnregisteredPhotoObjects(db, getStorage().bucket());
+  if (result.processed > 0) {
+    console.log(
+      `[reapOrphanedPhotoUploads] processed=${result.processed} deleted=${result.deleted} kept=${result.kept}`
+    );
+  }
+});

@@ -93,6 +93,7 @@ import com.example.data.local.AppDatabase
 import com.example.data.model.WeatherReport
 import com.example.data.repository.SpotPhotosState
 import com.example.data.repository.CommunityTipRepository
+import com.example.data.repository.PhotoModerationRepository
 import com.example.data.repository.SpotPhotoData
 import com.example.data.repository.WeatherRepository
 import com.example.di.AppContainer
@@ -122,7 +123,8 @@ fun SpotDetailBottomSheet(
     onPostTip: ((spotId: String, spotTitle: String, content: String, isStatus: Boolean, category: String) -> Unit)? = null,
     onReFetchImage: (spotId: String, onResult: (Boolean, String) -> Unit) -> Unit = { _, _ -> },
     onUploadPhoto: (suspend (spotId: String, uri: Uri) -> Result<SpotPhotoData>)? = null,
-    onReportPhoto: (suspend (photoId: String) -> Result<Int>)? = null
+    onReportPhoto: (suspend (photoId: String) -> Result<Int>)? = null,
+    onLoadOlderPhotos: (suspend (spotId: String, beforeTimestamp: Long) -> Result<List<SpotPhotoData>>)? = null
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val strings = LocalAppStrings.current
@@ -157,12 +159,32 @@ fun SpotDetailBottomSheet(
         appContainer?.photoModerationRepository?.photosForSpotFlow(spot.id)
             ?: flowOf(SpotPhotosState.Loaded(emptyList()))
     }.collectAsState(initial = SpotPhotosState.Loading)
-    val visibleSpotPhotos = when (val state = spotPhotosState) {
-        is SpotPhotosState.Loaded -> state.photos.filter { !it.isHidden }
-        else -> emptyList()
-    }
+
+    // The live stream is bounded to the newest PHOTOS_PAGE_SIZE photos; older photos
+    // are paged in on demand. olderPhotos keeps the raw fetched page (hidden photos
+    // included, same as the live page) so the load-more cursor can use the true oldest
+    // fetched timestamp; display filters duplicates and moderation-hidden photos.
+    var olderPhotos by remember(spot.id) { mutableStateOf<List<SpotPhotoData>>(emptyList()) }
+    var isLoadingOlderPhotos by remember(spot.id) { mutableStateOf(false) }
+    var lastOlderPageWasFull by remember(spot.id) { mutableStateOf(false) }
+    var olderPhotosStatusMessage by remember(spot.id) { mutableStateOf<String?>(null) }
+
+    val livePhotos = (spotPhotosState as? SpotPhotosState.Loaded)?.photos ?: emptyList()
+    val displayedPhotos = livePhotos.asSequence()
+        .filter { !it.isHidden }
+        .plus(olderPhotos.asSequence().filter { older ->
+            !older.isHidden && livePhotos.none { it.id == older.id }
+        })
+        .toList()
     val photosErrorMessage = (spotPhotosState as? SpotPhotosState.Error)?.let {
         "Community photos are unavailable${it.throwable.message?.let { m -> ": $m" } ?: "."}"
+    }
+    val canLoadMorePhotos = !isLoadingOlderPhotos && when {
+        // A live page smaller than the page size means the spot's whole (visible)
+        // history fits in the current page — there is nothing older to load.
+        livePhotos.size < PhotoModerationRepository.PHOTOS_PAGE_SIZE -> false
+        olderPhotos.isEmpty() -> true // never paged yet, but the live page is full
+        else -> lastOlderPageWasFull // paged at least once: continue only off a full page
     }
 
     val photoPickerLauncher = rememberLauncherForActivityResult(
@@ -369,7 +391,7 @@ fun SpotDetailBottomSheet(
                         }
                     }
 
-                    if (visibleSpotPhotos.isEmpty()) {
+                    if (displayedPhotos.isEmpty()) {
                         Text(
                             text = if (onUploadPhoto != null) {
                                 "No community photos yet. Share the first one!"
@@ -381,7 +403,7 @@ fun SpotDetailBottomSheet(
                             modifier = Modifier.padding(vertical = 6.dp)
                         )
                     } else {
-                        visibleSpotPhotos.forEach { photo ->
+                        displayedPhotos.forEach { photo ->
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -439,6 +461,68 @@ fun SpotDetailBottomSheet(
                             text = uploadStatusMessage!!,
                             style = MaterialTheme.typography.bodySmall,
                             color = Secondary,
+                            fontSize = 11.sp,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+
+                    if (canLoadMorePhotos && onLoadOlderPhotos != null) {
+                        OutlinedButton(
+                            onClick = {
+                                if (isLoadingOlderPhotos) return@OutlinedButton
+                                scope.launch {
+                                    isLoadingOlderPhotos = true
+                                    olderPhotosStatusMessage = null
+                                    // Continue strictly after the oldest photo fetched
+                                    // so far — including moderation-hidden ones, so the
+                                    // cursor never skips a photo that is still behind it.
+                                    val oldestTimestamp = (livePhotos.asSequence() + olderPhotos.asSequence())
+                                        .map { it.timestamp }
+                                        .minOrNull()
+                                        ?: Long.MAX_VALUE
+                                    val result = onLoadOlderPhotos.invoke(spot.id, oldestTimestamp)
+                                    isLoadingOlderPhotos = false
+                                    if (result == null) {
+                                        olderPhotosStatusMessage = "Loading older photos is unavailable."
+                                        return@launch
+                                    }
+                                    if (result.isFailure) {
+                                        olderPhotosStatusMessage = result.exceptionOrNull()?.message
+                                            ?: "Could not load older photos. Please try again."
+                                        return@launch
+                                    }
+                                    val page = result.getOrThrow()
+                                    lastOlderPageWasFull = page.size >= PhotoModerationRepository.PHOTOS_PAGE_SIZE
+                                    // Append without duplicating photos already present
+                                    // in the live page or an earlier older page.
+                                    olderPhotos = olderPhotos + page.filter { p ->
+                                        livePhotos.none { it.id == p.id } && olderPhotos.none { it.id == p.id }
+                                    }
+                                }
+                            },
+                            enabled = !isLoadingOlderPhotos,
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier
+                                .padding(top = 4.dp)
+                                .testTag("load_older_photos_btn")
+                        ) {
+                            if (isLoadingOlderPhotos) {
+                                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                            } else {
+                                Text(
+                                    text = "Show older photos",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+
+                    if (olderPhotosStatusMessage != null) {
+                        Text(
+                            text = olderPhotosStatusMessage!!,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = BrandCoral,
                             fontSize = 11.sp,
                             modifier = Modifier.padding(top = 4.dp)
                         )

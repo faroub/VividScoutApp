@@ -22,6 +22,10 @@ const MAX_IMAGE_URL_LENGTH = 2048;
 const MAX_REQUEST_ID_LENGTH = 128;
 const TTL_DURATION_MS = 30 * 24 * 3600 * 1000; // 30-day maximum lifetime
 
+// Canonical category policy shared with the Android app (ScoutCategory): spot
+// categories are normalized to exactly one of these ids before persistence.
+const ALLOWED_CATEGORIES = ["sights", "eats", "history", "shortcut"];
+
 const TRIP_COLLECTION = "shared_trips";
 const PUBLISH_REQUEST_COLLECTION = "shared_trip_publish_requests";
 const SHAREABLE_LINK_BASE = "https://vividscout.app/trip/";
@@ -44,7 +48,10 @@ const invalid = (message) => new HttpsError("invalid-argument", message);
 /**
  * Validates a shared-trip waypoint exactly as serialized by SharedTripManager:
  * all six fields present and of the permitted type/length, coordinates within
- * range and not null-island.
+ * range and not null-island. User-provided strings are trimmed before validation
+ * and persistence, categories must match the canonical category policy, and a
+ * non-empty imageUrl must be a valid https URL. The empty string is the Android
+ * serializer's deliberate representation of a missing image and is permitted.
  */
 function validateSharedTripSpot(spot) {
   if (!isPlainObject(spot)) {
@@ -60,14 +67,32 @@ function validateSharedTripSpot(spot) {
       throw invalid(`Missing mandatory field '${key}' in shared trip spot.`);
     }
   }
-  if (typeof spot.spotId !== "string" || spot.spotId.length > MAX_SPOT_ID_LENGTH) {
-    throw invalid(`Shared trip spot 'spotId' must be a string of at most ${MAX_SPOT_ID_LENGTH} characters.`);
+
+  // Trim user-provided strings before validation and persistence so surrounding
+  // whitespace can never smuggle a blank or oversized value through.
+  if (typeof spot.spotId !== "string") {
+    throw invalid("Shared trip spot 'spotId' must be a string.");
   }
-  if (typeof spot.title !== "string" || spot.title.length === 0 || spot.title.length > MAX_TITLE_LENGTH) {
-    throw invalid(`Shared trip spot 'title' must be a non-empty string of at most ${MAX_TITLE_LENGTH} characters.`);
+  const spotId = spot.spotId.trim();
+  if (spotId.length === 0 || spotId.length > MAX_SPOT_ID_LENGTH) {
+    throw invalid(`Shared trip spot 'spotId' must be a non-blank string of at most ${MAX_SPOT_ID_LENGTH} characters.`);
   }
-  if (typeof spot.category !== "string" || spot.category.length > MAX_CATEGORY_LENGTH) {
-    throw invalid(`Shared trip spot 'category' must be a string of at most ${MAX_CATEGORY_LENGTH} characters.`);
+  if (typeof spot.title !== "string") {
+    throw invalid("Shared trip spot 'title' must be a string.");
+  }
+  const title = spot.title.trim();
+  if (title.length === 0 || title.length > MAX_TITLE_LENGTH) {
+    throw invalid(`Shared trip spot 'title' must be a non-blank string of at most ${MAX_TITLE_LENGTH} characters.`);
+  }
+  if (typeof spot.category !== "string") {
+    throw invalid("Shared trip spot 'category' must be a string.");
+  }
+  const category = spot.category.trim().toLowerCase();
+  if (category.length === 0 || category.length > MAX_CATEGORY_LENGTH) {
+    throw invalid(`Shared trip spot 'category' must be a non-blank string of at most ${MAX_CATEGORY_LENGTH} characters.`);
+  }
+  if (!ALLOWED_CATEGORIES.includes(category)) {
+    throw invalid(`Shared trip spot 'category' must be one of: ${ALLOWED_CATEGORIES.join(", ")}.`);
   }
   if (!isFiniteNumber(spot.latitude) || spot.latitude < -90 || spot.latitude > 90) {
     throw invalid("Shared trip spot 'latitude' must be a finite number between -90 and 90.");
@@ -78,17 +103,35 @@ function validateSharedTripSpot(spot) {
   if (spot.latitude === 0 && spot.longitude === 0) {
     throw invalid("Shared trip spot coordinates may not both be zero.");
   }
-  if (typeof spot.imageUrl !== "string" || spot.imageUrl.length > MAX_IMAGE_URL_LENGTH) {
+
+  if (typeof spot.imageUrl !== "string") {
+    throw invalid("Shared trip spot 'imageUrl' must be a string.");
+  }
+  const imageUrl = spot.imageUrl.trim();
+  if (imageUrl.length > MAX_IMAGE_URL_LENGTH) {
     throw invalid(`Shared trip spot 'imageUrl' must be a string of at most ${MAX_IMAGE_URL_LENGTH} characters.`);
+  }
+  if (imageUrl.length > 0) {
+    // Only the empty string (missing image) is exempt; every other value must be a
+    // well-formed https URL so shared trips can never carry arbitrary link targets.
+    let parsed;
+    try {
+      parsed = new URL(imageUrl);
+    } catch {
+      throw invalid("Shared trip spot 'imageUrl' must be a valid https URL.");
+    }
+    if (parsed.protocol !== "https:") {
+      throw invalid("Shared trip spot 'imageUrl' must be an https URL.");
+    }
   }
 
   return {
-    spotId: spot.spotId,
-    title: spot.title,
-    category: spot.category,
+    spotId,
+    title,
+    category,
     latitude: spot.latitude,
     longitude: spot.longitude,
-    imageUrl: spot.imageUrl,
+    imageUrl,
   };
 }
 
@@ -128,8 +171,8 @@ function validateSharedTripPublishPayload(data) {
   }
 
   const title = data.title;
-  if (typeof title !== "string" || title.length === 0 || title.length > MAX_TITLE_LENGTH) {
-    throw invalid(`'title' must be a non-empty string of at most ${MAX_TITLE_LENGTH} characters.`);
+  if (typeof title !== "string" || title.trim().length === 0 || title.length > MAX_TITLE_LENGTH) {
+    throw invalid(`'title' must be a non-blank string of at most ${MAX_TITLE_LENGTH} characters.`);
   }
 
   if (!Array.isArray(data.spots)) {
@@ -143,7 +186,7 @@ function validateSharedTripPublishPayload(data) {
   }
   const spots = data.spots.map(validateSharedTripSpot);
 
-  return { requestId, title, spots };
+  return { requestId, title: title.trim(), spots };
 }
 
 /**
@@ -248,10 +291,14 @@ async function publishSharedTripDocument(db, ownerUid, data, options = {}) {
 module.exports = {
   MAX_SPOTS,
   MAX_TITLE_LENGTH,
+  MAX_SPOT_ID_LENGTH,
+  MAX_CATEGORY_LENGTH,
+  MAX_IMAGE_URL_LENGTH,
   TTL_DURATION_MS,
   SHAREABLE_LINK_BASE,
   TRIP_COLLECTION,
   PUBLISH_REQUEST_COLLECTION,
+  ALLOWED_CATEGORIES,
   validateSharedTripPublishPayload,
   validateSharedTripSpot,
   buildSharedTripDocument,

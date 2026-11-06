@@ -27,8 +27,11 @@ const {
   TTL_DURATION_MS,
   MAX_SPOTS,
   MAX_TITLE_LENGTH,
+  MAX_SPOT_ID_LENGTH,
+  MAX_IMAGE_URL_LENGTH,
   TRIP_COLLECTION,
   PUBLISH_REQUEST_COLLECTION,
+  ALLOWED_CATEGORIES,
 } = require("./sharedTrips");
 
 const PROJECT_ID = "vividscout-rules-emulator";
@@ -62,7 +65,7 @@ const DAY_MS = 24 * 3600 * 1000;
 const validSpot = (index) => ({
   spotId: `spot-${index}`,
   title: `Waypoint ${index}`,
-  category: "viewpoints",
+  category: "sights",
   latitude: 38.71 + index * 0.001,
   longitude: -9.12 - index * 0.001,
   imageUrl: "",
@@ -130,9 +133,17 @@ describe("validateSharedTripPublishPayload", () => {
     }
   });
 
-  it("rejects an empty or oversized title", () => {
+  it("rejects an empty, oversized, or whitespace-only title", () => {
     expectInvalid(validPublishPayload("req-t1", { title: "" }));
     expectInvalid(validPublishPayload("req-t2", { title: "x".repeat(MAX_TITLE_LENGTH + 1) }));
+    expectInvalid(validPublishPayload("req-t3", { title: "     " }));
+  });
+
+  it("trims the trip title before persistence", () => {
+    const validated = validateSharedTripPublishPayload(
+      validPublishPayload("req-trim", { title: "  Alfama Sunrise Walk  " })
+    );
+    assert.strictEqual(validated.title, "Alfama Sunrise Walk");
   });
 
   it("rejects an invalid requestId", () => {
@@ -174,9 +185,99 @@ describe("validateSharedTripPublishPayload", () => {
 });
 
 describe("validateSharedTripSpot", () => {
+  const expectSpotInvalid = (spot) => {
+    assert.throws(() => validateSharedTripSpot(spot), (error) => {
+      assert.strictEqual(error.code, "invalid-argument", `expected invalid-argument, got ${error.code}`);
+      return true;
+    });
+  };
+
   it("accepts a fully valid spot and normalizes its fields", () => {
     const spot = validSpot(7);
     assert.deepStrictEqual(validateSharedTripSpot(spot), spot);
+  });
+
+  it("trims user-provided string fields before persistence", () => {
+    const spot = validateSharedTripSpot({
+      ...validSpot(3),
+      spotId: "  padded-id  ",
+      title: "  Padded Title  ",
+      category: "  Sights  ",
+      imageUrl: "  https://example.com/img.jpg  ",
+    });
+    assert.strictEqual(spot.spotId, "padded-id");
+    assert.strictEqual(spot.title, "Padded Title");
+    assert.strictEqual(spot.category, "sights");
+    assert.strictEqual(spot.imageUrl, "https://example.com/img.jpg");
+  });
+
+  it("accepts every canonical category", () => {
+    for (const category of ALLOWED_CATEGORIES) {
+      const spot = validateSharedTripSpot({ ...validSpot(1), category });
+      assert.strictEqual(spot.category, category);
+    }
+  });
+
+  it("rejects a whitespace-only title, spot id, or category", () => {
+    expectSpotInvalid({ ...validSpot(1), title: "   " });
+    expectSpotInvalid({ ...validSpot(1), spotId: "   " });
+    expectSpotInvalid({ ...validSpot(1), category: "   " });
+  });
+
+  it("rejects an empty or unknown category", () => {
+    expectSpotInvalid({ ...validSpot(1), category: "" });
+    expectSpotInvalid({ ...validSpot(1), category: "restaurant" });
+    expectSpotInvalid({ ...validSpot(1), category: "touristic" });
+    expectSpotInvalid({ ...validSpot(1), category: "unknown" });
+  });
+
+  it("rejects non-string field values", () => {
+    expectSpotInvalid({ ...validSpot(1), spotId: 42 });
+    expectSpotInvalid({ ...validSpot(1), title: 42 });
+    expectSpotInvalid({ ...validSpot(1), category: 42 });
+    expectSpotInvalid({ ...validSpot(1), imageUrl: 42 });
+    expectSpotInvalid({ ...validSpot(1), imageUrl: null });
+  });
+
+  it("rejects NaN and infinite coordinates", () => {
+    expectSpotInvalid({ ...validSpot(1), latitude: NaN });
+    expectSpotInvalid({ ...validSpot(1), longitude: NaN });
+    expectSpotInvalid({ ...validSpot(1), latitude: Infinity });
+    expectSpotInvalid({ ...validSpot(1), longitude: -Infinity });
+  });
+
+  it("rejects invalid image URLs", () => {
+    expectSpotInvalid({ ...validSpot(1), imageUrl: "http://example.com/img.jpg" });
+    expectSpotInvalid({ ...validSpot(1), imageUrl: "not-a-url" });
+    expectSpotInvalid({ ...validSpot(1), imageUrl: "javascript:alert(1)" });
+    expectSpotInvalid({ ...validSpot(1), imageUrl: "file:///etc/passwd" });
+    expectSpotInvalid({ ...validSpot(1), imageUrl: "x".repeat(MAX_IMAGE_URL_LENGTH + 1) });
+  });
+
+  it("accepts the empty image URL as the missing-image representation", () => {
+    const spot = validateSharedTripSpot({ ...validSpot(1), imageUrl: "" });
+    assert.strictEqual(spot.imageUrl, "");
+  });
+
+  it("accepts values at the permitted boundaries", () => {
+    const minBoundary = validateSharedTripSpot({
+      spotId: "x".repeat(MAX_SPOT_ID_LENGTH),
+      title: "x".repeat(MAX_TITLE_LENGTH),
+      category: "shortcut",
+      latitude: -90,
+      longitude: -180,
+      imageUrl: "",
+    });
+    assert.strictEqual(minBoundary.spotId.length, MAX_SPOT_ID_LENGTH);
+    assert.strictEqual(minBoundary.title.length, MAX_TITLE_LENGTH);
+
+    const maxBoundary = validateSharedTripSpot({
+      ...validSpot(2),
+      latitude: 90,
+      longitude: 180,
+    });
+    assert.strictEqual(maxBoundary.latitude, 90);
+    assert.strictEqual(maxBoundary.longitude, 180);
   });
 });
 

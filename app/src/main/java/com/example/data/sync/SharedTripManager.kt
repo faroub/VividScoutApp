@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import com.example.R
 import com.example.data.local.ScoutSpotEntity
+import com.example.data.model.ScoutCategory
 import com.example.util.SafeLog
 import com.google.firebase.FirebaseApp
 import com.google.firebase.Timestamp
@@ -104,7 +105,9 @@ object SharedTripManager {
             SharedSpotItem(
                 spotId = spot.id.take(128),
                 title = spot.title.trim().take(120),
-                category = spot.category.take(32),
+                // Publish the canonical category id: the publishSharedTrip Cloud Function
+                // enforces the exact shared category policy server-side.
+                category = ScoutCategory.normalize(spot.category),
                 latitude = spot.latitude,
                 longitude = spot.longitude,
                 imageUrl = spot.imageUrl?.take(2048)

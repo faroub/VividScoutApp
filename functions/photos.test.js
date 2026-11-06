@@ -19,7 +19,10 @@ const admin = require("firebase-admin");
 const {
   parseStorageObjectPath,
   finalizePhotoUploadDocument,
+  reapUnregisteredPhotoObjects,
   PHOTOS_COLLECTION,
+  REAP_MIN_AGE_MS,
+  REAP_MAX_OBJECTS_PER_RUN,
 } = require("./photos");
 
 const PROJECT_ID = "vividscout-rules-emulator";
@@ -347,5 +350,144 @@ describe("finalizePhotoUploadDocument (emulator persistence)", () => {
         }, { shouldRateLimit }),
       "resource-exhausted"
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// reapUnregisteredPhotoObjects (scheduled orphan cleanup)
+// ---------------------------------------------------------------------------
+
+describe("reapUnregisteredPhotoObjects (orphan cleanup)", () => {
+  const HOUR_MS = 3600 * 1000;
+  const NOW_MS = 10 * HOUR_MS;
+
+  const candidate = (objectPath, ageMs, ownerUid = "alice-uid") => ({
+    name: objectPath,
+    createdMs: NOW_MS - ageMs,
+    ownerUidFromMetadata: ownerUid,
+  });
+
+  /**
+   * Runs the REAL reaper decision logic against the genuine Firestore emulator, with
+   * candidate objects supplied through the test seam (the age gate, ownership gate,
+   * reference gate, and delete call all execute in production code).
+   */
+  const setupReap = () => {
+    const deleted = [];
+    const deleteFailures = new Set();
+    const fakeBucket = {
+      file: (name) => ({
+        delete: async () => {
+          if (deleteFailures.has(name)) {
+            throw new Error("storage temporarily unavailable");
+          }
+          deleted.push(name);
+        },
+      }),
+    };
+    const reap = (entries, options = {}) =>
+      reapUnregisteredPhotoObjects(db, fakeBucket, {
+        nowMs: NOW_MS,
+        minAgeMs: HOUR_MS,
+        listCandidates: async (limit) => entries.slice(0, limit),
+        ...options,
+      });
+    return { deleted, deleteFailures, reap };
+  };
+
+  const nextOrphanPath = (() => {
+    let n = 0;
+    return () => `spot_photos/alice-uid/spot-reap-${++n}/orphan-${TIMESTAMP}.jpg`;
+  })();
+
+  it("deletes an old unregistered object", async () => {
+    const orphan = nextOrphanPath();
+    const { deleted, reap } = setupReap();
+    const result = await reap([candidate(orphan, 2 * HOUR_MS)]);
+
+    assert.deepStrictEqual(result, { processed: 1, deleted: 1, kept: 0 });
+    assert.deepStrictEqual(deleted, [orphan]);
+  });
+
+  it("never deletes an object referenced by a registered photo record", async () => {
+    // Register a real photo through the production finalization, then present its exact
+    // path to the reaper: the Firestore reference gate must keep it.
+    const objectPath = nextObjectPath(ALICE, "spot-reap-kept");
+    await seedObject(objectPath);
+    await finalizePhotoUploadDocument(db, bucket, ALICE, {
+      spotId: "spot-reap-kept",
+      filename: objectPath.split("/").pop(),
+      photoUrl: tokenUrlFor(objectPath),
+    });
+
+    const { deleted, reap } = setupReap();
+    const result = await reap([candidate(objectPath, 2 * HOUR_MS)]);
+
+    assert.deepStrictEqual(result, { processed: 1, deleted: 0, kept: 1 });
+    assert.deepStrictEqual(deleted, []);
+  });
+
+  it("keeps young objects so in-flight uploads are never deleted", async () => {
+    const freshObject = nextOrphanPath();
+    const { deleted, reap } = setupReap();
+    const result = await reap([candidate(freshObject, 30 * 60 * 1000)]);
+
+    assert.deepStrictEqual(result, { processed: 1, deleted: 0, kept: 1 });
+    assert.deepStrictEqual(deleted, []);
+    assert.ok(
+      REAP_MIN_AGE_MS >= HOUR_MS,
+      "the default reaper safety window is at least one hour"
+    );
+  });
+
+  it("keeps malformed paths and objects whose ownerUid metadata disagrees with the path", async () => {
+    const malformedPath = "spot_photos/unstructured-object.jpg";
+    const mismatched = candidate(
+      "spot_photos/alice-uid/spot-x/smuggled.jpg",
+      2 * HOUR_MS,
+      "bob-uid"
+    );
+    const { deleted, reap } = setupReap();
+    const result = await reap([
+      candidate(malformedPath, 2 * HOUR_MS),
+      mismatched,
+    ]);
+
+    assert.deepStrictEqual(result, { processed: 2, deleted: 0, kept: 2 });
+    assert.deepStrictEqual(deleted, []);
+  });
+
+  it("bounds the objects processed per run", async () => {
+    const orphans = [1, 2, 3].map(() => candidate(nextOrphanPath(), 2 * HOUR_MS));
+    const { deleted, reap } = setupReap();
+    const result = await reap(orphans, { maxObjects: 2 });
+
+    assert.deepStrictEqual(result, { processed: 2, deleted: 2, kept: 0 });
+    assert.strictEqual(deleted.length, 2);
+    assert.ok(REAP_MAX_OBJECTS_PER_RUN > 0, "a bounded per-run cap is configured");
+  });
+
+  it("continues after a failing delete so the next scheduled run can retry it", async () => {
+    const failingOrphan = nextOrphanPath();
+    const healthyOrphan = nextOrphanPath();
+    const { deleted, deleteFailures, reap } = setupReap();
+    deleteFailures.add(failingOrphan);
+
+    const result = await reap([
+      candidate(failingOrphan, 2 * HOUR_MS),
+      candidate(healthyOrphan, 2 * HOUR_MS),
+    ]);
+
+    assert.deepStrictEqual(result, { processed: 2, deleted: 1, kept: 1 });
+    assert.deepStrictEqual(deleted, [healthyOrphan]);
+  });
+
+  it("never deletes a candidate without a verifiable creation timestamp", async () => {
+    const unageable = { name: nextOrphanPath(), createdMs: NaN, ownerUidFromMetadata: "alice-uid" };
+    const { deleted, reap } = setupReap();
+    const result = await reap([unageable]);
+
+    assert.deepStrictEqual(result, { processed: 1, deleted: 0, kept: 1 });
+    assert.deepStrictEqual(deleted, []);
   });
 });

@@ -25,6 +25,12 @@ const MAX_PHOTO_URL_LENGTH = 2048;
 const MAX_OBJECT_SIZE_BYTES = 5 * 1024 * 1024; // mirrors storage.rules
 const PERMITTED_CONTENT_TYPES = ["image/jpeg", "image/png"];
 const PHOTO_FINALIZE_RATE_LIMIT_MAX_PER_HOUR = 30;
+// An object unregistered this long can never still be part of an upload whose
+// client-side retry is in flight — it is a confirmed orphan.
+const REAP_MIN_AGE_MS = 24 * 3600 * 1000;
+// Bounded work per scheduled run: keeps each invocation cheap and lets the hourly
+// schedule drain the backlog naturally.
+const REAP_MAX_OBJECTS_PER_RUN = 200;
 
 const invalid = (message) => new HttpsError("invalid-argument", message);
 
@@ -236,12 +242,109 @@ async function finalizePhotoUploadDocument(db, bucket, ownerUid, data, options =
   };
 }
 
+/**
+ * Lists candidate Storage objects under the photo path prefix via the Admin SDK and
+ * maps each to a plain descriptor. Objects whose creation timestamp cannot be
+ * determined are dropped: the reaper never deletes what it cannot age-verify.
+ */
+async function defaultListCandidateObjects(bucket, maxObjects) {
+  const [files] = await bucket.getFiles({ prefix: STORAGE_PATH_PREFIX, maxResults: maxObjects });
+  return files
+    .map((file) => {
+      const meta = file.metadata || {};
+      const createdMs = meta.timeCreated ? Date.parse(meta.timeCreated) : NaN;
+      if (!Number.isFinite(createdMs)) {
+        return null;
+      }
+      const custom = meta.metadata || {};
+      return {
+        name: file.name,
+        createdMs,
+        ownerUidFromMetadata: typeof custom.ownerUid === "string" ? custom.ownerUid : null,
+      };
+    })
+    .filter((candidate) => candidate !== null);
+}
+
+/**
+ * The scheduled server-side cleanup of orphaned photo uploads: Storage objects under
+ * spot_photos/ that were never registered as photos (client crashed, network lost
+ * between upload and finalization, or registration was definitively rejected). Safety
+ * guarantees:
+ *   - age: objects younger than [options.minAgeMs] (default 24 h) are always kept, so
+ *     an upload whose finalization is still being retried is never deleted;
+ *   - ownership: only objects following the ownership-aware structure
+ *     spot_photos/{uid}/{spotId}/{filename} are considered, and only when the ownerUid
+ *     custom metadata written at upload matches the path owner;
+ *   - reference: objects referenced by an existing spot_photos Firestore record
+ *     (matched by exact photoPath) are always kept — valid photos are never deleted;
+ *   - deletion is best-effort: a failing delete is logged and retried by the next run.
+ * A single-field index on photoPath (auto-created by Firestore) serves the lookup.
+ *
+ * Returns { processed, deleted, kept } diagnostics.
+ */
+async function reapUnregisteredPhotoObjects(db, bucket, options = {}) {
+  const nowMs = options.nowMs ?? Date.now();
+  const minAgeMs = options.minAgeMs ?? REAP_MIN_AGE_MS;
+  const maxObjects = options.maxObjects ?? REAP_MAX_OBJECTS_PER_RUN;
+  const listCandidates =
+    options.listCandidates ?? ((limit) => defaultListCandidateObjects(bucket, limit));
+
+  const candidates = await listCandidates(maxObjects);
+  const result = { processed: candidates.length, deleted: 0, kept: 0 };
+
+  for (const candidate of candidates) {
+    // 1. Age gate: recent uploads may still be finalized by a retrying client. Objects
+    //    whose age cannot be determined are always kept — never delete what cannot be
+    //    age-verified.
+    const ageMs = nowMs - candidate.createdMs;
+    if (!Number.isFinite(ageMs) || ageMs < minAgeMs) {
+      result.kept += 1;
+      continue;
+    }
+
+    // 2. Ownership gate: only a well-formed ownership-aware path whose uploaded
+    //    ownerUid metadata matches the path owner may be reaped.
+    const segments = candidate.name.split("/");
+    const pathUid = segments.length === 4 ? segments[1] : null;
+    if (!pathUid || (candidate.ownerUidFromMetadata && candidate.ownerUidFromMetadata !== pathUid)) {
+      result.kept += 1;
+      continue;
+    }
+
+    // 3. Reference gate: never delete an object claimed by a valid photo record.
+    const registered = await db
+      .collection(PHOTOS_COLLECTION)
+      .where("photoPath", "==", candidate.name)
+      .limit(1)
+      .get();
+    if (!registered.empty) {
+      result.kept += 1;
+      continue;
+    }
+
+    try {
+      await bucket.file(candidate.name).delete();
+      result.deleted += 1;
+    } catch (err) {
+      // Logged without private user content; the next scheduled run retries.
+      console.warn(`[reapOrphanedPhotoUploads] delete failed for an unreferenced object: ${err.message}`);
+      result.kept += 1;
+    }
+  }
+
+  return result;
+}
+
 module.exports = {
   PHOTOS_COLLECTION,
   STORAGE_PATH_PREFIX,
   MAX_OBJECT_SIZE_BYTES,
   PERMITTED_CONTENT_TYPES,
   PHOTO_FINALIZE_RATE_LIMIT_MAX_PER_HOUR,
+  REAP_MIN_AGE_MS,
+  REAP_MAX_OBJECTS_PER_RUN,
   parseStorageObjectPath,
   finalizePhotoUploadDocument,
+  reapUnregisteredPhotoObjects,
 };

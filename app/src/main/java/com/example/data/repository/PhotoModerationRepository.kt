@@ -5,6 +5,7 @@ import android.net.Uri
 import com.example.util.PhotoProcessor
 import com.example.util.SafeLog
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Query
@@ -52,13 +53,14 @@ sealed interface SpotPhotosState {
 /**
  * Photo workflow surface: real photo upload from an Android Photo Picker [Uri],
  * atomic reporting of an existing photo document by its real Firestore document ID,
- * and a live stream of a spot's non-moderated photos that distinguishes loaded data,
- * an empty result, and listener failure.
+ * and a bounded live stream of a spot's newest photos that distinguishes loaded
+ * data, an empty result, and listener failure.
  */
 interface SpotPhotoRepository {
     suspend fun uploadPhoto(context: Context, spotId: String, uri: Uri): Result<SpotPhotoData>
     suspend fun reportPhoto(photoId: String): Result<Int>
     fun photosForSpotFlow(spotId: String): Flow<SpotPhotosState>
+    suspend fun getOlderPhotos(spotId: String, beforeTimestamp: Long): Result<List<SpotPhotoData>>
 }
 
 /**
@@ -74,16 +76,26 @@ class PhotoModerationRepository(
     companion object {
         private const val TAG = "PhotoModerationRepo"
         private const val PHOTOS_COLLECTION = "spot_photos"
+        // Page size bounding every photo query. Opening a spot must never download its
+        // entire photo history; older photos are paged in explicitly by the UI via
+        // getOlderPhotos(). Exposed so the UI can tell a full page ("more may exist")
+        // from a partial page ("everything is loaded").
+        const val PHOTOS_PAGE_SIZE = 20
     }
 
     override suspend fun uploadPhoto(context: Context, spotId: String, uri: Uri): Result<SpotPhotoData> =
         storageService.uploadSpotPhotoFromUri(spotId = spotId, context = context, uri = uri)
 
     /**
-     * Streams the photo metadata documents of one spot, mapped from Firestore snapshots.
-     * Documents are mapped field-by-field (Firestore cannot reflect into Kotlin data
-     * classes); photos hidden by the real moderation state are filtered by callers via
-     * [SpotPhotoData.isHidden].
+     * Streams the newest photo metadata documents of one spot, mapped from Firestore
+     * snapshots. Documents are mapped field-by-field (Firestore cannot reflect into
+     * Kotlin data classes); photos hidden by the real moderation state are filtered
+     * by callers via [SpotPhotosData.isHidden].
+     *
+     * The query is bounded to the newest [PHOTOS_PAGE_SIZE] photos so opening a
+     * popular spot never downloads its full history; older photos are fetched
+     * explicitly through [getOlderPhotos]. Real-time behavior for newly added photos
+     * is preserved as long as they land inside the visible page.
      *
      * The query requires the composite index declared in firestore.indexes.json
      * (spotId ASC, timestamp DESC). A listener failure — e.g. a missing index in a
@@ -95,28 +107,43 @@ class PhotoModerationRepository(
         val registration = firestore.collection(PHOTOS_COLLECTION)
             .whereEqualTo("spotId", spotId)
             .orderBy("timestamp", Query.Direction.DESCENDING)
+            .limit(PhotoModerationRepository.PHOTOS_PAGE_SIZE.toLong())
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
                     SafeLog.w(TAG, "Photo stream for spot '$spotId' failed: ${error.message}")
                     trySend(SpotPhotosState.Error(error))
                     return@addSnapshotListener
                 }
-                val photos = snapshot?.documents?.mapNotNull { document ->
-                    val photoUrl = document.getString("photoUrl") ?: return@mapNotNull null
-                    val ownerUid = document.getString("ownerUid") ?: return@mapNotNull null
-                    SpotPhotoData(
-                        id = document.id,
-                        spotId = document.getString("spotId") ?: spotId,
-                        photoUrl = photoUrl,
-                        ownerUid = ownerUid,
-                        reportsCount = document.getLong("reportsCount")?.toInt() ?: 0,
-                        timestamp = document.getLong("timestamp") ?: 0L
-                    )
-                } ?: emptyList()
-                trySend(SpotPhotosState.Loaded(photos))
+                trySend(SpotPhotosState.Loaded(snapshot?.documents?.mapNotNull { it.toSpotPhotoData(spotId) } ?: emptyList()))
             }
         awaitClose { registration.remove() }
     }
+
+    /**
+     * One-shot pagination query for the photos older than the ones already shown.
+     * Uses the same ordering and the same composite index (spotId ASC, timestamp DESC)
+     * as [photosForSpotFlow], continuing strictly after [beforeTimestamp] — typically
+     * the oldest timestamp of the already loaded set. Returns at most
+     * [PHOTOS_PAGE_SIZE] documents; a page smaller than the bound tells the caller the
+     * history is exhausted. A query failure returns a failed Result so the UI can
+     * distinguish "no older photos" from "the query failed".
+     */
+    override suspend fun getOlderPhotos(spotId: String, beforeTimestamp: Long): Result<List<SpotPhotoData>> =
+        withContext(Dispatchers.IO) {
+            try {
+                val snapshot = firestore.collection(PHOTOS_COLLECTION)
+                    .whereEqualTo("spotId", spotId)
+                    .orderBy("timestamp", Query.Direction.DESCENDING)
+                    .startAfter(beforeTimestamp)
+                    .limit(PhotoModerationRepository.PHOTOS_PAGE_SIZE.toLong())
+                    .get()
+                    .await()
+                Result.success(snapshot.documents.mapNotNull { it.toSpotPhotoData(spotId) })
+            } catch (e: Exception) {
+                SafeLog.w(TAG, "Older-photos query for spot '$spotId' failed: ${e.message}")
+                Result.failure(e)
+            }
+        }
 
     /**
      * Executes atomic photo report creation and counter increment in a single transaction.
@@ -201,4 +228,22 @@ class PhotoModerationRepository(
     fun isPhotoHidden(reportsCount: Int): Boolean {
         return PhotoProcessor.isPhotoHiddenByReports(reportsCount)
     }
+}
+
+/**
+ * Maps one Firestore photo metadata document to [SpotPhotoData], or null when the
+ * document lacks the mandatory photoUrl/ownerUid fields (the query stream and the
+ * pagination query share this single mapping).
+ */
+private fun DocumentSnapshot.toSpotPhotoData(spotId: String): SpotPhotoData? {
+    val photoUrl = getString("photoUrl") ?: return null
+    val ownerUid = getString("ownerUid") ?: return null
+    return SpotPhotoData(
+        id = id,
+        spotId = getString("spotId") ?: spotId,
+        photoUrl = photoUrl,
+        ownerUid = ownerUid,
+        reportsCount = getLong("reportsCount")?.toInt() ?: 0,
+        timestamp = getLong("timestamp") ?: 0L
+    )
 }

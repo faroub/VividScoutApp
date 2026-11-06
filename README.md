@@ -119,7 +119,7 @@ VividScout includes an automated GitHub Actions CI workflow in `.github/workflow
 
 ### Firestore Composite Indexes
 
-The community photo stream queries `spot_photos` with `whereEqualTo("spotId", spotId)` followed by `orderBy("timestamp", Query.Direction.DESCENDING)`. This composite query requires an index declared in `firestore.indexes.json` and wired into `firebase.json`; a fresh Firebase project without it rejects the listener with `FAILED_PRECONDITION` (the app surfaces this as an explicit photo-stream error, never as an empty photo grid).
+The community photo stream queries `spot_photos` with `whereEqualTo("spotId", spotId)` followed by `orderBy("timestamp", Query.Direction.DESCENDING)`, bounded to the newest 20 photos (`PhotoModerationRepository.PHOTOS_PAGE_SIZE`). Opening a spot therefore never downloads its full photo history; older photos are loaded on demand through the "Show older photos" action, which issues the same ordering continued with `startAfter(<oldest loaded timestamp>)`. Both queries use the same composite index declared in `firestore.indexes.json` and wired into `firebase.json`; a fresh Firebase project without it rejects the listener with `FAILED_PRECONDITION` (the app surfaces this as an explicit photo-stream error, never as an empty photo grid, and a failed older-photos page surfaces as an error message rather than being mistaken for "no older photos exist").
 
 Deploy all declared indexes to your Firebase project:
 
@@ -128,6 +128,24 @@ firebase deploy --only firestore:indexes
 ```
 
 Index building is asynchronous — a query executed immediately after deployment may still report missing-index until the index finishes building (usually a few minutes; watch the Firebase Console → Firestore → Indexes tab). During that window the app shows the listener error state and retries automatically on the next snapshot, so no manual action is required.
+
+### Firestore Database ID
+
+The Android app may target a named Firestore database through the `firestore_database_id` string resource (`app/src/main/res/values/strings.xml`, empty by default): when non-blank, `SharedTripManager` and `FirestoreSyncManager` open `FirebaseFirestore.getInstance(app, databaseId)` instead of the default database. Cloud Functions are configured to the **same** database through the `FIRESTORE_DATABASE_ID` parameter (`functions/firestoreDatabase.js`): it accepts the same value at deploy time or via the environment variable, and canonicalizes both the empty string and `"(default)"` to the default database — so the shipped default configuration addresses one consistent database on both sides. If the two ends are ever configured with different IDs, publishing a shared trip would write to one database while the app reads from another — keep them in sync. The contract is enforced by `functions/firestoreDatabase.test.js`, and `functions/index.js` resolves its single Firestore instance (`getFirestore(app, firestoreDatabaseId())`) exclusively through it.
+
+### Shared-Trip TTL Policy (Physical Deletion)
+
+Published shared trips live for exactly 30 days: the trusted `publishSharedTrip` Cloud Function generates `createdAt` and `expireAt` from the server clock (client-supplied timestamps are rejected), and Firestore security rules deny public reads as soon as `expireAt <= request.time`. **Access expiration is enforced by the rules at the exact expiry time and does not wait for physical deletion.**
+
+Physical removal of expired documents is handled by the Firestore TTL policy on `shared_trips.expireAt`. TTL policies are a server-side Firestore feature — they are **not** part of `firebase.json` (which deploys only rules and indexes) — so the policy must be configured once per Firebase project. The repository ships an idempotent script that configures the policy and verifies it is active:
+
+```bash
+./scripts/configure-shared-trips-ttl.sh [PROJECT_ID]
+```
+
+It runs `gcloud firestore fields ttl update expireAt --collection-group shared_trips` followed by `gcloud firestore fields ttl describe expireAt --collection-group shared_trips` to verify, and requires the gcloud CLI with access to the project. Equivalent configuration is also available in the Google Cloud Console under Firestore → TTL policy.
+
+Firestore TTL deletion is **asynchronous and best-effort**: expired documents are typically removed within 24 hours of expiry, but deletion is not guaranteed to happen at the exact expiration timestamp. This is safe by design — expired links are already unreadable through the security rules at expiry, so the app never depends on immediate deletion for access control. Deleting a document with an active TTL policy is not supported; the `update` command is re-runnable and reflects the current policy.
 
 ### Local Regression Test Commands
 

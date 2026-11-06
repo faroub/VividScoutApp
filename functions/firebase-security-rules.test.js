@@ -41,6 +41,8 @@ const {
   runTransaction,
   increment,
   orderBy,
+  limit,
+  startAfter,
   Timestamp,
 } = require('firebase/firestore');
 const {
@@ -798,7 +800,8 @@ describe('spot_photos', () => {
       query(
         collection(reader, 'spot_photos'),
         where('spotId', '==', spotId),
-        orderBy('timestamp', 'desc')
+        orderBy('timestamp', 'desc'),
+        limit(20)
       )
     );
     assert.strictEqual(snapshot.size, 3, 'returns exactly the spot photos');
@@ -806,6 +809,62 @@ describe('spot_photos', () => {
       snapshot.docs.map((d) => d.id),
       [...photoIds].reverse(),
       'descending timestamp order'
+    );
+  });
+
+  it('bounds the photo query to the newest page and pages older photos with startAfter', async () => {
+    // The exact bounded query shapes of PhotoModerationRepository: the live stream is
+    // limit(20) newest-first, and older history is paged with startAfter(oldest loaded
+    // timestamp). A spot with 25 photos must expose only the newest 20, then the
+    // remaining 5 — and nothing else — via the pager.
+    const spotId = nextId('spot');
+    const photoIds = [];
+    for (let i = 0; i < 25; i += 1) {
+      const id = nextId('photo');
+      photoIds.push(id);
+      await admin.firestore().collection('spot_photos').doc(id).create({
+        id,
+        spotId,
+        photoPath: `spot_photos/${ALICE}/${spotId}/photo-${id}.jpg`,
+        photoUrl: `https://firebasestorage.googleapis.com/v0/b/vividscout-rules-emulator.appspot.com/o/spot_photos%2F${ALICE}%2F${spotId}%2Fphoto-${id}.jpg`,
+        ownerUid: ALICE,
+        reportsCount: 0,
+        timestamp: 1_700_000_000_000 + i * 1000,
+      });
+    }
+    const newestFirst = [...photoIds].reverse(); // photoIds[24] has the newest timestamp
+
+    const reader = dbAs(null);
+    const firstPage = await getDocs(
+      query(
+        collection(reader, 'spot_photos'),
+        where('spotId', '==', spotId),
+        orderBy('timestamp', 'desc'),
+        limit(20)
+      )
+    );
+    assert.strictEqual(firstPage.size, 20, 'the live stream is bounded to one page');
+    assert.deepStrictEqual(
+      firstPage.docs.map((d) => d.id),
+      newestFirst.slice(0, 20),
+      'the page holds the 20 newest photos in descending timestamp order'
+    );
+
+    const oldestLoadedTimestamp = firstPage.docs[19].data().timestamp;
+    const remaining = await getDocs(
+      query(
+        collection(reader, 'spot_photos'),
+        where('spotId', '==', spotId),
+        orderBy('timestamp', 'desc'),
+        startAfter(oldestLoadedTimestamp),
+        limit(20)
+      )
+    );
+    assert.strictEqual(remaining.size, 5, 'the pager returns the 5 older photos');
+    assert.deepStrictEqual(
+      remaining.docs.map((d) => d.id),
+      newestFirst.slice(20),
+      'no duplicates of the first page, nothing skipped'
     );
   });
 });

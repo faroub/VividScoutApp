@@ -31,4 +31,7 @@ class SpotPhotoViewModel(
 
     fun photosForSpotFlow(spotId: String): Flow<SpotPhotosState> =
         photoRepository.photosForSpotFlow(spotId)
+
+    suspend fun loadOlderPhotos(spotId: String, beforeTimestamp: Long): Result<List<SpotPhotoData>> =
+        photoRepository.getOlderPhotos(spotId = spotId, beforeTimestamp = beforeTimestamp)
 }

@@ -50,6 +50,9 @@ class SpotPhotoViewModelTest {
         var reportResult: Result<Int> = Result.success(1)
         var reportedPhotoIds = mutableListOf<String>()
         val photosFlow = MutableStateFlow<SpotPhotosState>(SpotPhotosState.Loaded(emptyList()))
+        var lastOlderPhotosSpotId: String? = null
+        var lastOlderPhotosBeforeTimestamp: Long? = null
+        var olderPhotosResult: Result<List<SpotPhotoData>> = Result.success(emptyList())
 
         override suspend fun uploadPhoto(
             context: android.content.Context,
@@ -66,6 +69,12 @@ class SpotPhotoViewModelTest {
         }
 
         override fun photosForSpotFlow(spotId: String): Flow<SpotPhotosState> = photosFlow
+
+        override suspend fun getOlderPhotos(spotId: String, beforeTimestamp: Long): Result<List<SpotPhotoData>> {
+            lastOlderPhotosSpotId = spotId
+            lastOlderPhotosBeforeTimestamp = beforeTimestamp
+            return olderPhotosResult
+        }
     }
 
     @Test
@@ -174,6 +183,41 @@ class SpotPhotoViewModelTest {
         val state = viewModel.photosForSpotFlow("spot-1").first()
 
         assertTrue(state is SpotPhotosState.Error)
+    }
+
+    @Test
+    fun loadOlderPhotos_delegatesWithSpotIdAndOldestTimestampCursor() = runTest {
+        val fake = FakeSpotPhotoRepository().apply {
+            olderPhotosResult = Result.success(listOf(uploadedPhoto.copy(id = "photo-older", timestamp = 1_699_999_000_000)))
+        }
+        val viewModel = SpotPhotoViewModel(photoRepository = fake)
+
+        val result = viewModel.loadOlderPhotos("spot-1", 1_700_000_000_000)
+
+        assertTrue("Older-photos page must surface success", result.isSuccess)
+        assertEquals("spot-1", fake.lastOlderPhotosSpotId)
+        assertEquals(1_700_000_000_000, fake.lastOlderPhotosBeforeTimestamp)
+        val page = result.getOrThrow()
+        assertEquals(1, page.size)
+        assertEquals("photo-older", page[0].id)
+    }
+
+    @Test
+    fun loadOlderPhotos_queryFailure_propagatesErrorWithoutEmptySuccess() = runTest {
+        val fake = FakeSpotPhotoRepository().apply {
+            olderPhotosResult = Result.failure(IllegalStateException("The query requires an index"))
+        }
+        val viewModel = SpotPhotoViewModel(photoRepository = fake)
+
+        val result = viewModel.loadOlderPhotos("spot-1", 1_700_000_000_000)
+
+        // A failed page query must not become a synthetic empty page the UI would
+        // interpret as "no older photos exist".
+        assertTrue("Query failure must surface as failure", result.isFailure)
+        assertNull(result.getOrNull())
+        assertTrue(
+            result.exceptionOrNull()?.message?.contains("The query requires an index") == true
+        )
     }
 
     @Test
