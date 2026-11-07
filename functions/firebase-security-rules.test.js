@@ -1195,6 +1195,12 @@ describe("shared_trips", () => {
       setDoc(doc(dbAs(ALICE), "photo_cleanup_claims", claimId), { expiresAt: 1 })
     );
     await assertFails(deleteDoc(doc(dbAs(ALICE), "photo_cleanup_claims", claimId)));
+
+    // Remove the internal bookkeeping fixtures: node --test runs this suite concurrently
+    // with photos.test.js in the same emulator, and leaving the claim behind perturbs the
+    // reaper's exact claim assertions there.
+    await adminDb.collection("photo_cleanup_state").doc(stateId).delete();
+    await adminDb.collection("photo_cleanup_claims").doc(claimId).delete();
   });
 });
 

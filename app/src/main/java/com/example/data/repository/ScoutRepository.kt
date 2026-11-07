@@ -4,22 +4,37 @@ import com.example.data.local.DiscoveredGemDao
 import com.example.data.local.DiscoveredGemEntity
 import com.example.data.local.ScoutDao
 import com.example.data.local.ScoutSpotEntity
+import com.example.data.local.UserPointsDao
+import com.example.data.local.UserPointsEntity
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import java.util.UUID
 
 import com.example.data.local.AchievementDao
 import com.example.data.local.AchievementEntity
 import com.example.data.location.DefaultLocationConfig
+import com.example.util.SafeLog
 
 open class ScoutRepository(
     private val scoutDao: ScoutDao,
     private val discoveredGemDao: DiscoveredGemDao? = null,
     private val achievementDao: AchievementDao? = null,
-    private val context: android.content.Context? = null
+    private val context: android.content.Context? = null,
+    private val userPointsDao: UserPointsDao? = null
 ) {
+
+    companion object {
+        private const val TAG = "ScoutRepository"
+
+        // Scout Points awarded for a photo-verified spot submission. This mirrors the
+        // "+15 Scout Points" bonus label shown next to the photo-verification dropzone
+        // (see scoutPointsBonus in Localization.kt); keep the two in sync.
+        const val POINTS_PER_PHOTO_VERIFIED_SPOT = 15
+    }
 
     private val achievementEvaluator = achievementDao?.let { AchievementEvaluator(scoutDao, it) }
 
@@ -33,7 +48,12 @@ open class ScoutRepository(
         achievementDao?.getAllAchievements() ?: emptyFlow()
     val unlockedAchievementsCount: Flow<Int> =
         achievementDao?.getUnlockedCount() ?: emptyFlow()
-    val userPoints: Flow<Int> = kotlinx.coroutines.flow.flowOf(150)
+    // Scout Points are derived only from the persisted user_points ledger (sum of all
+    // awards), so the displayed total reflects real user activity, survives restarts,
+    // and stays correct offline. The legacy hardcoded placeholder (150 for everyone)
+    // is gone. Users without any awards read 0.
+    val userPoints: Flow<Int> = userPointsDao?.observeTotalPoints()
+        ?: kotlinx.coroutines.flow.flowOf(0)
 
     suspend fun getAllSpotsSync(): List<ScoutSpotEntity> = withContext(Dispatchers.IO) {
         scoutDao.getAllSpotsSync()
@@ -100,6 +120,21 @@ open class ScoutRepository(
         )
         scoutDao.insertSpot(newSpot)
 
+        // Award the photo-verification Scout Points bonus. The award is keyed on the
+        // draft id, so a retry or replay of the same submission collides on the ledger's
+        // primary key and is ignored — the bonus is never awarded twice for one spot.
+        if (!photoUri.isNullOrBlank()) {
+            userPointsDao?.awardPoints(
+                UserPointsEntity(
+                    awardId = "photo_verified_$newId",
+                    points = POINTS_PER_PHOTO_VERIFIED_SPOT,
+                    reason = "photo_verified_spot",
+                    referenceId = newId,
+                    timestamp = System.currentTimeMillis()
+                )
+            )
+        }
+
         // Also record in discovered_gems table if DAO is present
         discoveredGemDao?.insertDiscoveredGem(
             DiscoveredGemEntity(
@@ -126,35 +161,62 @@ open class ScoutRepository(
         discoveredGemDao?.deleteGemById(spot.id)
     }
 
-    suspend fun syncDraft(spot: ScoutSpotEntity) = withContext(Dispatchers.IO) {
+    /**
+     * Syncs a single offline draft to the cloud.
+     *
+     * Success and failure handling is owned entirely by
+     * FirestoreSyncManager.syncDraftSpotToCloud (via [uploadDraftToCloud]): it returns
+     * true only after BOTH the public submission and the private note reached Firestore,
+     * and it marks the local spot ("Synced to Cloud") and its discovered gem as synced.
+     * A false outcome — auth failure, Firestore failure, or a lost private note — means
+     * the cloud does not have this draft, so the local row is left exactly as it was:
+     * isOfflineDraft stays true, the status badge never claims a successful sync, the
+     * discovered gem stays unsynced, and the draft remains in the retry queue of
+     * [syncAllDraftsToCloud]. A missing application context is treated the same way:
+     * nothing is falsely reported as synced.
+     *
+     * Retries are safe: the cloud writes are keyed on the spot id with set-merge, so
+     * repeated attempts update the same documents instead of creating duplicates.
+     *
+     * Returns the cloud upload outcome (false when no upload was possible) so callers
+     * can distinguish retryable failure from success.
+     */
+    suspend fun syncDraft(spot: ScoutSpotEntity): Boolean = withContext(Dispatchers.IO) {
         val appCtx = context
-        if (appCtx != null) {
-            val uploaded = com.example.data.sync.FirestoreSyncManager.syncDraftSpotToCloud(
-                appCtx, spot, scoutDao, discoveredGemDao
-            )
-            if (!uploaded) {
-                val synced = spot.copy(
-                    isOfflineDraft = false,
-                    statusBadge = "Synced Offline"
-                )
-                scoutDao.updateSpot(synced)
-                discoveredGemDao?.markAsSynced(spot.id)
-            }
-        } else {
-            val synced = spot.copy(
-                isOfflineDraft = false,
-                statusBadge = "Just Synced"
-            )
-            scoutDao.updateSpot(synced)
-            discoveredGemDao?.markAsSynced(spot.id)
+        if (appCtx == null) {
+            SafeLog.w(TAG, "Cannot sync draft '${spot.id}': application context unavailable; keeping it queued for retry")
+            return@withContext false
         }
+        uploadDraftToCloud(appCtx, spot)
     }
 
+    /**
+     * Delegation point for [syncDraft]. Protected and open so deterministic tests can
+     * substitute the cloud outcome without a Firebase connection. The real
+     * FirestoreSyncManager owns both halves of the contract: on true it has already
+     * updated the local spot ("Synced to Cloud", isOfflineDraft = false) and marked the
+     * discovered gem synced; on false it has changed nothing.
+     */
+    protected open suspend fun uploadDraftToCloud(
+        context: android.content.Context,
+        spot: ScoutSpotEntity
+    ): Boolean = com.example.data.sync.FirestoreSyncManager.syncDraftSpotToCloud(
+        context, spot, scoutDao, discoveredGemDao
+    )
+
+    /**
+     * Uploads every queued offline draft through the same [syncDraft] path used for
+     * single-draft syncs, and returns how many succeeded. Failed drafts are left
+     * untouched in the queue for the next sweep.
+     */
     suspend fun syncAllDraftsToCloud(): Int = withContext(Dispatchers.IO) {
-        val appCtx = context ?: return@withContext 0
-        com.example.data.sync.FirestoreSyncManager.syncAllOfflineDrafts(
-            appCtx, scoutDao, discoveredGemDao
-        )
+        var successCount = 0
+        for (draft in scoutDao.getOfflineDrafts().first()) {
+            if (syncDraft(draft)) {
+                successCount++
+            }
+        }
+        successCount
     }
 
     private val overpassRetrofitClient = com.example.data.network.OverpassRetrofitClient()
@@ -172,6 +234,8 @@ open class ScoutRepository(
                 scoutDao.insertSpots(spots)
             }
             Result.success(spots.size)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         }

@@ -22,9 +22,10 @@ import kotlinx.coroutines.launch
         CommunityTipEntity::class,
         TipVoteEntity::class,
         CachedPlaceEntity::class,
-        PlaceCoverageEntity::class
+        PlaceCoverageEntity::class,
+        UserPointsEntity::class
     ],
-    version = 14,
+    version = 15,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -38,6 +39,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun tipVoteDao(): TipVoteDao
     abstract fun cachedPlaceDao(): com.example.data.places.CachedPlaceDao
     abstract fun placeCoverageDao(): com.example.data.places.PlaceCoverageDao
+    abstract fun userPointsDao(): UserPointsDao
 
     companion object {
         @Volatile

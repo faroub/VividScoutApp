@@ -52,6 +52,7 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.data.local.ScoutSpotEntity
 import com.example.data.local.computedDistanceString
+import com.example.data.local.isDemoFallbackSpot
 import com.example.ui.theme.BrandTeal
 import com.example.ui.theme.LocalAppStrings
 import com.example.ui.theme.Primary
@@ -192,7 +193,11 @@ fun ScoutSpotCard(
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
-                                imageVector = if (spot.audioDuration != null) Icons.Default.Headphones else Icons.Default.Verified,
+                                imageVector = when {
+                                    spot.audioDuration != null -> Icons.Default.Headphones
+                                    spot.isDemoFallbackSpot -> Icons.Default.Lightbulb
+                                    else -> Icons.Default.Verified
+                                },
                                 contentDescription = null,
                                 tint = if (spot.audioDuration != null) Tertiary else Secondary,
                                 modifier = Modifier.size(12.dp)

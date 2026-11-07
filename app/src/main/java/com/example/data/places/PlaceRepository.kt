@@ -4,6 +4,7 @@ import com.example.util.Geo
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -113,6 +114,8 @@ class PlaceRepository(
                     }
                     fetchOutcomes.addAll(fetchJobs.awaitAll())
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (_: Exception) {
                 // A structural failure of the fan-out itself: treat all uncovered
                 // providers as failed; the stale-cache fallback below applies.

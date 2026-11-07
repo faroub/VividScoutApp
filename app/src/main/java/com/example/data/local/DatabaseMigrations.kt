@@ -311,6 +311,29 @@ object DatabaseMigrations {
         }
     }
 
+    /**
+     * Migration from version 14 to version 15:
+     * Creates the user_points ledger table for Scout Points. Points are derived only
+     * from this table; no existing user data is touched and no points are invented for
+     * existing installations (users without awards read a total of zero).
+     */
+    val MIGRATION_14_15 = object : Migration(14, 15) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `user_points` (
+                    `awardId` TEXT NOT NULL,
+                    `points` INTEGER NOT NULL,
+                    `reason` TEXT NOT NULL,
+                    `referenceId` TEXT NOT NULL,
+                    `timestamp` INTEGER NOT NULL,
+                    PRIMARY KEY(`awardId`)
+                )
+                """.trimIndent()
+            )
+        }
+    }
+
     val ALL_MIGRATIONS: Array<Migration> = arrayOf(
         MIGRATION_1_2,
         MIGRATION_2_3,
@@ -324,6 +347,7 @@ object DatabaseMigrations {
         MIGRATION_10_11,
         MIGRATION_11_12,
         MIGRATION_12_13,
-        MIGRATION_13_14
+        MIGRATION_13_14,
+        MIGRATION_14_15
     )
 }

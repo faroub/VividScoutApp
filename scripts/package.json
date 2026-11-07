@@ -4,7 +4,7 @@
   "description": "Migration scripts and tests for VividScout",
   "main": "migrate_legacy_upvotes.js",
   "scripts": {
-    "test": "node --test scripts/__tests__/*.test.js"
+    "test": "node --test __tests__/*.test.js"
   },
   "private": true
 }

@@ -4,6 +4,7 @@ import com.example.util.SafeLog
 import com.example.data.local.ScoutSpotEntity
 import com.example.data.places.PlaceCandidate
 import com.example.data.places.PlaceSource
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -50,6 +51,8 @@ class WikidataSearchService(
                 )
             }
             Result.success(candidates)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -170,6 +173,8 @@ class WikidataSearchService(
                     )
                 )
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             SafeLog.e(TAG, "Wikidata SPARQL Phase error", e)
         }
@@ -249,6 +254,8 @@ class WikidataSearchService(
                         "$trimmed..."
                     }
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 SafeLog.d(TAG, "WikipediaApi secondary summary fetch on $lang handled for '$title': ${e.message}")
             }

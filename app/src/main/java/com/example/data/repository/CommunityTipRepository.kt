@@ -14,6 +14,7 @@ import com.example.data.p2p.PeerMeshSyncResult
 import com.example.data.sync.FirestoreSyncManager
 import com.example.data.sync.FirestoreTipUpvoteCloud
 import com.example.data.sync.TipUpvoteCloud
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -104,6 +105,8 @@ class CommunityTipRepository(
         // 2. Call cloud transaction first
         val cloudSuccess = try {
             cloudService.incrementTipUpvote(tipId)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             runCatching { SafeLog.w("CommunityTipRepo", "Cloud upvote threw exception: ${e.message}") }
             false

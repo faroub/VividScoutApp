@@ -41,6 +41,9 @@ jobs:
       - name: Run Cloud Function Validation Tests
         run: node functions/nearbyPlaces.test.js
 
+      - name: Run Repository Scripts Tests
+        run: npm --prefix scripts test
+
       - name: Cache Firebase Emulator Binaries
         uses: actions/cache@v4
         with:

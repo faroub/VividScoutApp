@@ -1,8 +1,11 @@
 package com.example.data
 
+import com.example.data.local.ScoutSpotEntity
+import com.example.data.local.isDemoFallbackSpot
 import com.example.data.network.OverpassRetrofitClient
 import com.example.data.network.model.OverpassElement
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -160,6 +163,64 @@ class OverpassRetrofitClientTest {
         assertEquals(0, mapped.size)
         assertEquals(1, dropReasons.size)
         assertTrue("Drop reason should indicate missing official name tag", dropReasons[0].contains("Missing official name tag"))
+    }
+
+    @Test
+    fun generateNearbyFallbackSpots_marksEverySpotAsIllustrativeDemo() {
+        val spots = client.generateNearbyFallbackSpots(38.7112, -9.1423, 6)
+
+        assertEquals(6, spots.size)
+        spots.forEach { spot ->
+            assertTrue(
+                "Every generated fallback spot must be classifiable as a demo record",
+                spot.isDemoFallbackSpot
+            )
+            assertTrue("Demo ids must carry the osm_fallback_ machine prefix", spot.id.startsWith("osm_fallback_"))
+            assertEquals(
+                "The visible badge must say it is an offline demo, not a verified place",
+                "Offline Demo Spot",
+                spot.statusBadge
+            )
+            assertTrue("tagsRaw must tag the record as an offline demo", spot.tagsRaw.contains("Offline Demo"))
+            assertTrue(
+                "The description must disclose the illustrative nature",
+                spot.description.contains("Illustrative demo spot", ignoreCase = true)
+            )
+            assertEquals(
+                "Demo records are attributed to the offline fallback generator, not a person",
+                "@offline_fallback",
+                spot.contributor
+            )
+            assertFalse(
+                "Demo records must never enter the offline-draft upload queue",
+                spot.isOfflineDraft
+            )
+            assertTrue(
+                "Demo coordinates must be placed near the requested center",
+                com.example.data.location.LocationTracker.distanceBetween(
+                    38.7112, -9.1423, spot.latitude, spot.longitude
+                ) < 2000f
+            )
+        }
+    }
+
+    @Test
+    fun mapElementsToEntities_realOsmSpotsAreNotClassifiedAsDemo() {
+        val elements = listOf(
+            OverpassElement(
+                type = "node",
+                id = 501L,
+                lat = 38.7120,
+                lon = -9.1400,
+                tags = mapOf("tourism" to "viewpoint", "name" to "Miradouro Real")
+            )
+        )
+
+        val spots = client.mapElementsToEntities(elements, 38.7112, -9.1423)
+
+        assertEquals(1, spots.size)
+        assertFalse("A real mapped OSM node must not be classified as a demo spot", spots[0].isDemoFallbackSpot)
+        assertEquals("Live OSM Scout", spots[0].statusBadge)
     }
 
     @Test

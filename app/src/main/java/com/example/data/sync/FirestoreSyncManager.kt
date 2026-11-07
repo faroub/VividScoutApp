@@ -8,6 +8,7 @@ import com.example.data.local.CommunityTipEntity
 import com.example.data.local.DiscoveredGemDao
 import com.example.data.local.ScoutDao
 import com.example.data.local.ScoutSpotEntity
+import com.example.data.local.isDemoFallbackSpot
 import com.example.data.local.TipVoteDao
 import com.example.data.local.TipVoteEntity
 import com.example.data.model.ScoutCategory
@@ -22,6 +23,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.SetOptions
 import com.google.firebase.firestore.firestore
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
@@ -79,6 +81,8 @@ object FirestoreSyncManager {
                 SafeLog.d(TAG, "Successfully authenticated Firebase user anonymously (${SafeLog.sanitizeUid(auth.currentUser?.uid)})")
             }
             auth.currentUser != null
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             SafeLog.d(TAG, "Firebase Auth sign-in skipped: ${e.message}")
             false
@@ -101,6 +105,13 @@ object FirestoreSyncManager {
         scoutDao: ScoutDao,
         discoveredGemDao: DiscoveredGemDao?
     ): Boolean = withContext(Dispatchers.IO) {
+        // Trusted boundary: illustrative offline-demo records (every Overpass mirror
+        // failed or returned nothing) must never be published to Firestore as genuine
+        // community submissions. They are not real places.
+        if (spot.isDemoFallbackSpot) {
+            SafeLog.w(TAG, "Refusing to sync illustrative demo spot '${spot.id}' as a community submission")
+            return@withContext false
+        }
         if (!ensureFirebaseAuth(context)) {
             SafeLog.w(TAG, "Cannot sync draft '${spot.id}': Firebase Auth required for Firestore writes")
             return@withContext false
@@ -144,6 +155,8 @@ object FirestoreSyncManager {
             discoveredGemDao?.markAsSynced(spot.id)
             SafeLog.i(TAG, "Successfully synced spot '${spot.title}' to cloud Firestore")
             true
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             SafeLog.e(TAG, "Failed to sync draft spot '${spot.id}' to Firestore: ${e.message}", e)
             false
@@ -181,6 +194,8 @@ object FirestoreSyncManager {
                 .set(noteData, SetOptions.merge())
                 .await()
             true
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             SafeLog.e(TAG, "Failed to sync private note for spot '$spotId': ${e.message}", e)
             false
@@ -208,12 +223,20 @@ object FirestoreSyncManager {
     /**
      * Posts a community tip or status update to the Firestore 'community_tips' collection.
      * Idempotent: On retries, preserves existing cloud upvotes and legacyUpvotes fields.
+     *
+     * Sample/demo tips (seed tips, simulated peer-mesh gossip) are refused: they are
+     * illustrative content authored by the app, never real community contributions,
+     * so they must never reach Firestore under a real user's identity.
      */
     suspend fun postCommunityTipToCloud(
         context: Context,
         tip: CommunityTipEntity,
         tipDao: CommunityTipDao? = null
     ): Boolean = withContext(Dispatchers.IO) {
+        if (tip.isSampleContent) {
+            SafeLog.w(TAG, "Refusing to upload sample tip '${tip.id}' as a real community contribution")
+            return@withContext false
+        }
         if (!ensureFirebaseAuth(context)) {
             SafeLog.w(TAG, "Cannot post tip '${tip.id}': Firebase Auth required for Firestore writes")
             return@withContext false
@@ -259,6 +282,8 @@ object FirestoreSyncManager {
             tipDao?.markTipAsSynced(tip.id)
             SafeLog.i(TAG, "Posted community tip '${tip.id}' to cloud Firestore")
             true
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             SafeLog.e(TAG, "Failed to post community tip to Firestore: ${e.message}", e)
             false
@@ -316,6 +341,8 @@ object FirestoreSyncManager {
                 SafeLog.i(TAG, "Successfully recorded vote from user '${SafeLog.sanitizeUid(currentUid)}' for tip '$tipId'")
             }
             voteSuccess
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             SafeLog.w(TAG, "Failed to execute upvote transaction for tip '$tipId': ${e.message}")
             false
@@ -346,6 +373,8 @@ object FirestoreSyncManager {
                 }
                 return@withContext true
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             SafeLog.w(TAG, "Reconciliation check failed for tip '$tipId': ${e.message}")
         }
@@ -559,6 +588,8 @@ object FirestoreSyncManager {
             // whose local Room note is still blank — local edits always win, so an
             // offline-first user never loses a note written on this device.
             syncOwnPrivateNotesDown(context, scoutDao)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             SafeLog.e(TAG, "Error synchronizing remote content from Firestore: ${e.message}", e)
         }
@@ -597,6 +628,8 @@ object FirestoreSyncManager {
                 scoutDao.updateUserNotes(spotId, notes)
                 restoredCount++
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             SafeLog.w(TAG, "Failed to restore private spot notes: ${e.message}")
         }

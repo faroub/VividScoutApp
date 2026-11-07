@@ -1,23 +1,12 @@
 package com.example
 
-import android.Manifest
 import android.app.Activity
-import android.content.Intent
-import android.net.Uri
-import android.os.Build
 import android.os.Bundle
-import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -26,7 +15,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -39,38 +27,23 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.data.model.GlobalCityCatalog
-import com.example.data.sync.SharedTrip
-import com.example.data.sync.SharedTripManager
-import com.example.ui.components.OfflineSyncStatus
 import com.example.engine.ScoutVectorEngine
 import com.example.ui.components.ARNavigationOverlay
 import com.example.ui.components.BottomNavigationDock
 import com.example.ui.components.RoutePlannerSheet
 import com.example.ui.components.VividScoutTopBar
-import com.example.ui.dialogs.CacheHealthDialog
-import com.example.ui.dialogs.ClearCacheConfirmationDialog
+import com.example.ui.deeplink.rememberSharedTripDeepLinkHandler
+import com.example.ui.dialogs.AppDialogLayer
 import com.example.ui.dialogs.GlobalCitySelectionDialog
-import com.example.ui.dialogs.LanguageSelectionDialog
-import com.example.ui.dialogs.LocationPermissionRationaleDialog
-import com.example.ui.dialogs.LocationPermissionSettingsDialog
-import com.example.ui.dialogs.OfflineQueueDialog
 import com.example.ui.dialogs.OfflineTrailBottomSheet
-import com.example.ui.dialogs.OverpassDiagnosticDialog
-import com.example.ui.dialogs.RegionDownloadDialog
 import com.example.ui.dialogs.SharedTripDialog
 import com.example.ui.dialogs.SpotDetailBottomSheet
-import com.example.ui.screens.CommunityFeedScreen
-import com.example.ui.screens.ExploreScreen
+import com.example.ui.permissions.rememberLocationPermissionActions
+import com.example.ui.screens.MainTabContent
 import com.example.ui.screens.OnboardingScreen
-import com.example.ui.screens.ProfileScreen
-import com.example.ui.screens.SavedScreen
 import com.example.ui.screens.SpotGemModal
 import com.example.ui.screens.StartupGpsLocatingScreen
-import com.example.ui.viewmodel.GpsAcquisitionStatus
 import com.example.ui.theme.AppStrings
 import com.example.ui.theme.LocalAppLanguage
 import com.example.ui.theme.LocalAppStrings
@@ -86,7 +59,6 @@ import com.example.ui.viewmodel.OfflineMapsViewModel
 import com.example.ui.viewmodel.ProfileViewModel
 import com.example.ui.viewmodel.SpotPhotoViewModel
 import com.example.util.configureAppCheck
-import com.example.util.SafeLog
 
 class MainActivity : ComponentActivity() {
 
@@ -135,7 +107,6 @@ fun VividScoutApp(
     spotPhotoViewModel: SpotPhotoViewModel
 ) {
     val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
 
     // Collect 1 immutable UI-state per feature ViewModel
     val mainState by mainViewModel.uiState.collectAsState()
@@ -145,18 +116,12 @@ fun VividScoutApp(
     val offlineMapsState by offlineMapsViewModel.uiState.collectAsState()
     val profileState by profileViewModel.uiState.collectAsState()
 
-    // Automatically refresh permission state when returning to the app from System Settings
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                locationViewModel.refreshLocationPermissions()
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-        }
-    }
+    // Location permission plumbing (system launcher, startup prompt, refresh-on-resume)
+    val permissionActions = rememberLocationPermissionActions(
+        locationViewModel = locationViewModel,
+        hasLocationPermission = locationState.hasLocationPermission,
+        locationDeniedCount = locationState.locationDeniedCount
+    )
 
     // Automatically sync active location to ExploreViewModel for proximity sorting & auto-discovery
     LaunchedEffect(locationState.userCoordinates) {
@@ -165,81 +130,13 @@ fun VividScoutApp(
         exploreViewModel.updateUserLocation(lat, lng, context)
     }
 
-    val locationPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissions ->
-        val fineGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] ?: false
-        val coarseGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] ?: false
-        locationViewModel.onPermissionResult(fineGranted, coarseGranted)
-    }
-
-    val notificationPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { _ -> }
-
-    // Automatically check and prompt for location permissions on startup
-    LaunchedEffect(Unit) {
-        if (!locationState.hasLocationPermission) {
-            locationPermissionLauncher.launch(
-                arrayOf(
-                    Manifest.permission.ACCESS_FINE_LOCATION,
-                    Manifest.permission.ACCESS_COARSE_LOCATION
-                )
-            )
-        }
-    }
-
-    val openAppSettings: () -> Unit = {
-        try {
-            val intent = Intent(
-                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                Uri.fromParts("package", context.packageName, null)
-            )
-            context.startActivity(intent)
-        } catch (e: Exception) {
-            // Safe recovery: System Settings activity launch failed, log telemetry
-            SafeLog.w("MainActivity", "Failed to launch application details settings intent", e)
-        }
-    }
-
-    val requestLocationPermission = {
-        if (locationState.hasLocationPermission) {
-            locationViewModel.refreshLocationPermissions()
-        } else if (locationState.locationDeniedCount >= 2) {
-            locationViewModel.openLocationSettingsDialog()
-        } else {
-            locationViewModel.openLocationRationaleDialog()
-        }
-    }
-
     var isArModeActive by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
-
-    var activeSharedTrip by remember { mutableStateOf<SharedTrip?>(null) }
-    var activeSharedTripError by remember { mutableStateOf<String?>(null) }
-    var showSharedTripDialog by remember { mutableStateOf(false) }
-
-    val handleDeepLinkIntent: (Intent?) -> Unit = { deepIntent ->
-        val dataUri = deepIntent?.dataString
-        val tripId = SharedTripManager.parseTripIdFromUri(dataUri)
-        if (!tripId.isNullOrBlank()) {
-            coroutineScope.launch {
-                val fetchResult = SharedTripManager.fetchSharedTripFromFirestore(context, tripId)
-                if (fetchResult.isSuccess) {
-                    activeSharedTrip = fetchResult.getOrNull()
-                    activeSharedTripError = null
-                } else {
-                    activeSharedTrip = null
-                    activeSharedTripError = fetchResult.exceptionOrNull()?.message ?: "Shared itinerary not found or expired."
-                }
-                showSharedTripDialog = true
-            }
-        }
-    }
+    val deepLinkHandler = rememberSharedTripDeepLinkHandler(context, coroutineScope)
 
     val currentActivity = context as? Activity
     LaunchedEffect(currentActivity?.intent) {
-        handleDeepLinkIntent(currentActivity?.intent)
+        deepLinkHandler.handleIntent(currentActivity?.intent)
     }
 
     CompositionLocalProvider(
@@ -253,15 +150,8 @@ fun VividScoutApp(
                 StartupGpsLocatingScreen(
                     status = locationState.gpsStatus,
                     detectedCity = locationState.detectedCityName,
-                    onRequestPermission = {
-                        locationPermissionLauncher.launch(
-                            arrayOf(
-                                Manifest.permission.ACCESS_FINE_LOCATION,
-                                Manifest.permission.ACCESS_COARSE_LOCATION
-                            )
-                        )
-                    },
-                    onOpenSettings = openAppSettings,
+                    onRequestPermission = { permissionActions.launchSystemRequest() },
+                    onOpenSettings = permissionActions.openAppSettings,
                     onRetry = { locationViewModel.retryLocationAcquisition() },
                     onManualCityClick = { exploreViewModel.openGlobalCityDialog() }
                 )
@@ -324,178 +214,21 @@ fun VividScoutApp(
                             .padding(innerPadding)
                             .background(MaterialTheme.colorScheme.background)
                     ) {
-                        AnimatedContent(
-                            targetState = mainState.currentTab,
-                            transitionSpec = { fadeIn() togetherWith fadeOut() },
-                            label = "tab_navigation_transition"
-                        ) { tab ->
-                            when (tab) {
-                                MainTab.EXPLORE -> {
-                                    ExploreScreen(
-                                        spots = exploreState.filteredSpots,
-                                        selectedCategory = exploreState.selectedCategory,
-                                        searchQuery = exploreState.searchQuery,
-                                        headerStyle = exploreState.exploreHeaderStyle,
-                                        isOfflineBannerVisible = profileState.isOfflineBannerVisible,
-                                        offlineDraftCount = offlineMapsState.offlineDrafts.size,
-                                        playingAudioId = exploreState.playingAudioId,
-                                        activeMapLayers = exploreState.activeMapLayers,
-                                        onToggleMapLayer = { exploreViewModel.toggleMapLayer(it) },
-                                        onSetAllMapLayers = { exploreViewModel.setAllMapLayers(it) },
-                                        userLocation = locationState.userLocation,
-                                        userCoordinates = locationState.safeCoordinates,
-                                        hasLocationPermission = locationState.hasLocationPermission,
-                                        isUsingGpsLocation = locationState.isUsingGpsLocation,
-                                        selectedGlobalCity = exploreState.selectedGlobalCity,
-                                        onGpsClick = { exploreViewModel.openGlobalCityDialog() },
-                                        onRequestLocationPermission = { requestLocationPermission() },
-                                        onCategorySelected = { exploreViewModel.setCategory(it) },
-                                        onSearchQueryChange = { exploreViewModel.setSearchQuery(it) },
-                                        onToggleSave = { exploreViewModel.toggleSave(it) },
-                                        onUpvote = { exploreViewModel.upvote(it) },
-                                        onToggleAudioLore = { exploreViewModel.toggleAudioLore(it) },
-                                        onSpotClick = { mainViewModel.selectSpotForDetail(it) },
-                                        onAddSpotClick = { mainViewModel.openSubmitModal() },
-                                        onPlanRouteClick = { offlineMapsViewModel.openRoutePlanner() },
-                                        onDismissOfflineBanner = { profileViewModel.toggleOfflineBanner() },
-                                        onOpenQueueDialog = { offlineMapsViewModel.openQueueDialog() },
-                                        syncStatus = OfflineSyncStatus(totalLocalGems = exploreState.allSpots.size, pendingDraftsCount = offlineMapsState.offlineDrafts.size, isSyncing = exploreState.isScrapingOsm),
-                                        onOpenDiagnostics = { offlineMapsViewModel.openDiagnosticDialog() },
-                                        cacheHealth = offlineMapsState.vicinityCacheHealth,
-                                        onOpenCacheHealth = { offlineMapsViewModel.openCacheHealthDialog() },
-                                        isDiscovering = exploreState.isScrapingOsm,
-                                        discoveryMessage = exploreState.osmScrapeMessage,
-                                        onTriggerDiscover = {
-                                            exploreViewModel.scrapeOsmGems(
-                                                locationState.safeCoordinates.first,
-                                                locationState.safeCoordinates.second,
-                                                category = exploreState.selectedCategory
-                                            )
-                                        },
-                                        preScoutState = exploreState.preScoutBannerState,
-                                        onDismissPreScout = { exploreViewModel.dismissPreScoutBanner() },
-                                        onViewPreScout = { exploreViewModel.filterPreScoutedSpots() },
-                                        onOpenTouristicSources = { exploreViewModel.openTouristicSourcesModal() },
-                                        recentSearches = exploreState.recentSearches,
-                                        onDeleteRecentSearch = { exploreViewModel.deleteRecentSearch(it) },
-                                        onClearAllRecentSearches = { exploreViewModel.clearAllRecentSearches() }
-                                    )
-                                }
-
-                                MainTab.COMMUNITY -> {
-                                    CommunityFeedScreen(
-                                        tips = communityState.tips,
-                                        spots = exploreState.allSpots,
-                                        syncPhase = communityState.syncPhase,
-                                        lastSyncResult = communityState.lastSyncResult,
-                                        onTriggerSync = { communityViewModel.triggerSync() },
-                                        onUpvoteTip = { communityViewModel.upvoteTip(it) },
-                                        onPostTip = { spotId, spotTitle, content, isStatus, category ->
-                                            communityViewModel.postTip(spotId, spotTitle, content, isStatus, category)
-                                        },
-                                        onSpotClick = { spotId ->
-                                            exploreState.allSpots.find { it.id == spotId }?.let {
-                                                mainViewModel.selectSpotForDetail(it)
-                                            }
-                                        },
-                                        userCoordinates = locationState.safeCoordinates,
-                                        successMessage = communityState.postTipSuccessMessage
-                                    )
-                                }
-
-                                MainTab.SAVED -> {
-                                    SavedScreen(
-                                        savedSpots = exploreState.savedSpots,
-                                        discoveredSpots = exploreState.discoveredSpots,
-                                        onToggleSave = { exploreViewModel.toggleSave(it) },
-                                        onToggleDiscovered = { exploreViewModel.toggleDiscovered(it) },
-                                        onSpotClick = { mainViewModel.selectSpotForDetail(it) },
-                                        onPlanWalkingTrail = {
-                                            offlineMapsViewModel.openRoutePlanner()
-                                        },
-                                        onPlanRouteToSpot = { spot ->
-                                            offlineMapsViewModel.openRoutePlanner(destination = spot)
-                                        }
-                                    )
-                                }
-
-                                MainTab.PROFILE -> {
-                                    ProfileScreen(
-                                        userPoints = profileState.userPoints,
-                                        discoveredCount = exploreState.discoveredSpots.size,
-                                        offlineDraftCount = offlineMapsState.offlineDrafts.size,
-                                        isOfflineBannerVisible = profileState.isOfflineBannerVisible,
-                                        onToggleOfflineBanner = { profileViewModel.toggleOfflineBanner() },
-                                        onOpenQueue = { offlineMapsViewModel.openQueueDialog() },
-                                        onAddSpotClick = { mainViewModel.openSubmitModal() },
-                                        onReturnToOnboarding = { mainViewModel.navigateToScreen(AppScreen.Onboarding) },
-                                        onOpenLanguageDialog = { profileViewModel.openLanguageDialog() },
-                                        hasLocationPermission = locationState.hasLocationPermission,
-                                        isPreciseLocation = locationState.isPreciseLocation,
-                                        userCoordinates = locationState.safeCoordinates,
-                                        isUsingGpsLocation = locationState.isUsingGpsLocation,
-                                        selectedGlobalCity = exploreState.selectedGlobalCity,
-                                        onRequestLocationPermission = { requestLocationPermission() },
-                                        offlineMapPacks = offlineMapsState.offlineMapPacks,
-                                        totalOfflineStorageBytes = offlineMapsState.offlineStorageBytes,
-                                        onDownloadOfflinePack = { packId ->
-                                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                                            }
-                                            offlineMapsViewModel.downloadOfflinePack(packId)
-                                        },
-                                        onDeleteOfflinePack = { packId -> offlineMapsViewModel.deleteOfflinePack(packId) },
-                                        onDownloadCurrentGpsPack = {
-                                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                                            }
-                                            offlineMapsViewModel.downloadCurrentGpsPack()
-                                        },
-                                        customRegions = offlineMapsState.downloadedRegions,
-                                        onDeleteCustomRegion = { offlineMapsViewModel.deleteCustomRegion(it) },
-                                        onOpenDiagnostics = { offlineMapsViewModel.openDiagnosticDialog() },
-                                        totalSpotsCount = exploreState.allSpots.size,
-                                        savedCount = exploreState.savedSpots.size,
-                                        databaseSizeBytes = offlineMapsState.databaseSizeBytes,
-                                        onClearCacheClick = { profileViewModel.openClearCacheDialog() },
-                                        achievements = profileState.achievements,
-                                        unlockedAchievementsCount = profileState.unlockedAchievementsCount,
-                                        isPrefetchActive = profileState.isPrefetchServiceRunning,
-                                        isPrefetching = profileState.isPrefetching,
-                                        prefetchVector = profileState.activePrefetchVector,
-                                        prefetchedGemsCount = profileState.prefetchedGemsCount,
-                                        prefetchStatusMessage = profileState.prefetchStatusMessage,
-                                        activePowerMode = profileState.activePowerMode,
-                                        batteryStatus = profileState.prefetchBatteryStatus,
-                                        prefetchSpeedKmh = profileState.prefetchSpeedKmh,
-                                        onTogglePrefetch = { active ->
-                                            if (active) {
-                                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                                                }
-                                                profileViewModel.startProximityPrefetch(
-                                                    context,
-                                                    locationState.safeCoordinates.first,
-                                                    locationState.safeCoordinates.second
-                                                )
-                                            } else {
-                                                profileViewModel.stopProximityPrefetch(context)
-                                            }
-                                        },
-                                        onTriggerManualPrefetch = {
-                                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                                            }
-                                            profileViewModel.triggerManualPrefetch(
-                                                context,
-                                                locationState.safeCoordinates.first,
-                                                locationState.safeCoordinates.second
-                                            )
-                                        }
-                                    )
-                                }
-                            }
-                        }
+                        MainTabContent(
+                            mainViewModel = mainViewModel,
+                            exploreViewModel = exploreViewModel,
+                            communityViewModel = communityViewModel,
+                            offlineMapsViewModel = offlineMapsViewModel,
+                            profileViewModel = profileViewModel,
+                            mainState = mainState,
+                            exploreState = exploreState,
+                            communityState = communityState,
+                            offlineMapsState = offlineMapsState,
+                            profileState = profileState,
+                            locationState = locationState,
+                            requestLocationPermission = { permissionActions.requestLocationPermission() },
+                            context = context
+                        )
                     }
                 }
 
@@ -598,112 +331,19 @@ fun VividScoutApp(
                     )
                 }
 
-                // Offline Queue Dialog
-                if (offlineMapsState.showQueueDialog) {
-                    OfflineQueueDialog(
-                        drafts = offlineMapsState.offlineDrafts,
-                        onSyncAll = { offlineMapsViewModel.syncAllDrafts() },
-                        onDismiss = { offlineMapsViewModel.dismissQueueDialog() },
-                        onOpenDiagnostics = { offlineMapsViewModel.openDiagnosticDialog() }
-                    )
-                }
-
-                // Overpass API Diagnostics Dialog
-                if (offlineMapsState.showDiagnosticDialog) {
-                    OverpassDiagnosticDialog(
-                        log = offlineMapsState.diagnosticLog,
-                        isRunning = offlineMapsState.isDiagnosticRunning,
-                        onDismiss = { offlineMapsViewModel.dismissDiagnosticDialog() },
-                        onRerunQuery = { offlineMapsViewModel.runDiagnosticQuery() }
-                    )
-                }
-
-                // Cache Health & Vicinity Diagnostic Dialog
-                if (offlineMapsState.showCacheHealthDialog) {
-                    CacheHealthDialog(
-                        health = offlineMapsState.vicinityCacheHealth,
-                        onDismiss = { offlineMapsViewModel.dismissCacheHealthDialog() },
-                        onPreCacheVicinity = { offlineMapsViewModel.prefetchVicinityCache() },
-                        onOpenDiagnostics = {
-                            offlineMapsViewModel.dismissCacheHealthDialog()
-                            offlineMapsViewModel.openDiagnosticDialog()
-                        }
-                    )
-                }
-
-                // Touristic Place Sources Modal Dialog
-                if (exploreState.showTouristicSourcesModal) {
-                    com.example.ui.dialogs.TouristicSourcesModal(
-                        onDismiss = { exploreViewModel.dismissTouristicSourcesModal() },
-                        onSyncSource = { sourceId -> exploreViewModel.syncTouristicSource(sourceId) },
-                        onSyncAllSources = { exploreViewModel.syncAllTouristicSources() },
-                        isSyncing = exploreState.isSyncingTouristicSources
-                    )
-                }
-
-                // Language Selection Dialog
-                if (profileState.showLanguageDialog) {
-                    LanguageSelectionDialog(
-                        currentLanguage = profileState.appLanguage,
-                        onSelectLanguage = { lang -> profileViewModel.setAppLanguage(lang) },
-                        onDismiss = { profileViewModel.closeLanguageDialog() }
-                    )
-                }
-
-                // Location Permission Rationale Dialog
-                if (locationState.showLocationRationaleDialog) {
-                    LocationPermissionRationaleDialog(
-                        onAllowClick = {
-                            locationViewModel.dismissLocationRationale()
-                            locationPermissionLauncher.launch(
-                                arrayOf(
-                                    Manifest.permission.ACCESS_FINE_LOCATION,
-                                    Manifest.permission.ACCESS_COARSE_LOCATION
-                                )
-                            )
-                        },
-                        onDismiss = { locationViewModel.dismissLocationRationale() }
-                    )
-                }
-
-                // Location Permission Settings Dialog
-                if (locationState.showLocationSettingsDialog) {
-                    LocationPermissionSettingsDialog(
-                        onOpenSettingsClick = {
-                            locationViewModel.dismissLocationSettings()
-                            openAppSettings()
-                        },
-                        onDismiss = { locationViewModel.dismissLocationSettings() }
-                    )
-                }
-
-                // Custom Region Downloader Confirmation Dialog
-                if (offlineMapsState.showRegionDownloadDialog && offlineMapsState.activeSelectionBounds != null) {
-                    val bounds = offlineMapsState.activeSelectionBounds!!
-                    val spotsCount = exploreState.allSpots.count { bounds.contains(it.latitude, it.longitude) }
-                    RegionDownloadDialog(
-                        bounds = bounds,
-                        spotsInBoundsCount = spotsCount,
-                        isDownloading = offlineMapsState.isDownloadingRegion,
-                        onConfirmDownload = { name -> offlineMapsViewModel.downloadCurrentSelectedRegion(name) },
-                        onDismiss = { offlineMapsViewModel.dismissRegionDownloadDialog() }
-                    )
-                }
-
-                // Clear Cache Confirmation Dialog
-                if (profileState.showClearCacheDialog) {
-                    val permanentCount = (exploreState.savedSpots.size + exploreState.discoveredSpots.size)
-                        .coerceAtMost(exploreState.allSpots.size)
-                    val transientCount = (exploreState.allSpots.size - permanentCount - offlineMapsState.offlineDrafts.size)
-                        .coerceAtLeast(0)
-                    ClearCacheConfirmationDialog(
-                        transientCount = transientCount,
-                        savedCount = exploreState.savedSpots.size,
-                        discoveredCount = exploreState.discoveredSpots.size,
-                        onConfirm = { profileViewModel.confirmClearCache() },
-                        onDismiss = { profileViewModel.dismissClearCacheDialog() }
-                    )
-                }
+                // The conditional dialog layer (queue, diagnostics, cache health,
+                // language, location permission, region download, clear cache, ...)
+                AppDialogLayer(
+                    exploreViewModel = exploreViewModel,
+                    offlineMapsViewModel = offlineMapsViewModel,
+                    profileViewModel = profileViewModel,
+                    locationViewModel = locationViewModel,
+                    exploreState = exploreState,
+                    offlineMapsState = offlineMapsState,
+                    profileState = profileState,
+                    locationState = locationState,
+                    permissionActions = permissionActions
+                )
             }
         }
 
@@ -721,7 +361,7 @@ fun VividScoutApp(
                     locationViewModel.enableGpsMode()
                     exploreViewModel.dismissGlobalCityDialog()
                     if (!locationState.hasLocationPermission) {
-                        requestLocationPermission()
+                        permissionActions.requestLocationPermission()
                     }
                 },
                 onDismiss = { exploreViewModel.dismissGlobalCityDialog() }
@@ -729,17 +369,17 @@ fun VividScoutApp(
         }
 
         // Shared Read-Only Itinerary Dialog
-        if (showSharedTripDialog) {
+        if (deepLinkHandler.showSharedTripDialog) {
             SharedTripDialog(
-                trip = activeSharedTrip,
-                errorMessage = activeSharedTripError,
-                onDismiss = { showSharedTripDialog = false },
+                trip = deepLinkHandler.activeSharedTrip,
+                errorMessage = deepLinkHandler.activeSharedTripError,
+                onDismiss = { deepLinkHandler.dismiss() },
                 onNavigateToSpot = { lat, lng ->
-                    showSharedTripDialog = false
+                    deepLinkHandler.dismiss()
                     locationViewModel.setManualCoordinates(lat, lng)
                 }
             )
         }
+        }
     }
-}
 }

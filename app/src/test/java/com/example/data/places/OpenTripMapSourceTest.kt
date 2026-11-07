@@ -1,5 +1,10 @@
 package com.example.data.places
 
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -150,5 +155,33 @@ class OpenTripMapSourceTest {
             "Unclassified network exceptions default to temporary",
             result.exceptionOrNull() is PlaceSourceFailure.TemporaryFailure
         )
+    }
+
+    @Test
+    fun fetchNear_cancelledMidCall_propagatesCancellationInsteadOfSwallowingIt() = runBlocking {
+        // The provider suspends "on the network" forever. Cancelling the caller must
+        // surface as CancellationException at the suspension point; it must never be
+        // caught by the broad Exception handler and converted into a
+        // Result.failure / typed-failure / empty-success fallback.
+        val neverCompletes = CompletableDeferred<Map<String, Any?>>()
+        val enteredProvider = CompletableDeferred<Unit>()
+        val source = OpenTripMapSource(callableProvider = {
+            enteredProvider.complete(Unit)
+            neverCompletes.await()
+        })
+
+        val scope = CoroutineScope(Dispatchers.IO)
+        val deferred = scope.async { source.fetchNear(38.7112, -9.1423, 3000) }
+        enteredProvider.await() // Deterministic: the call has reached the backend suspension point.
+
+        scope.cancel()
+        try {
+            deferred.await()
+            org.junit.Assert.fail(
+                "fetchNear must propagate cancellation to the caller, not return a failure or empty result"
+            )
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            // Expected: the coroutine was cancelled while suspended on the network call.
+        }
     }
 }

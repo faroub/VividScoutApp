@@ -3,6 +3,7 @@ package com.example.data.places
 import com.example.util.SafeLog
 import com.google.firebase.functions.FirebaseFunctions
 import com.google.firebase.functions.FirebaseFunctionsException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
@@ -126,6 +127,8 @@ class OpenTripMapSource(
                 }
             }
             Result.failure(failure)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             SafeLog.w(TAG, "Network or parsing error querying OpenTripMap: ${e.message}")
             Result.failure(PlaceSourceFailure.TemporaryFailure())

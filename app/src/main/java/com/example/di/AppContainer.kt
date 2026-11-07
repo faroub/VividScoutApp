@@ -45,7 +45,8 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
             database.scoutDao(),
             database.discoveredGemDao(),
             database.achievementDao(),
-            context
+            context,
+            database.userPointsDao()
         )
     }
 

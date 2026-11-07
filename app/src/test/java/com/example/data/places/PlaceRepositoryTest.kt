@@ -4,11 +4,17 @@ import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.example.data.local.AppDatabase
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -751,5 +757,35 @@ class PlaceRepositoryTest {
         assertEquals(ProviderFailureKind.TEMPORARY, kindsByProvider["provider_temp"])
         assertEquals(ProviderFailureKind.AUTH_CONFIG, kindsByProvider["provider_auth"])
         assertEquals(ProviderFailureKind.RATE_LIMITED, kindsByProvider["provider_rate"])
+    }
+
+    @Test
+    fun cancelledDuringProviderFanOut_propagatesCancellationInsteadOfAFallbackResult() = runBlocking {
+        // The repository fans out to providers via coroutineScope { ... awaitAll() }.
+        // A cancellation arriving mid-fan-out must propagate to the caller; the broad
+        // Exception handler around the fan-out must not convert it into a
+        // stale-cache / empty successful-looking result.
+        val neverCompletes = CompletableDeferred<Result<List<PlaceCandidate>>>()
+        val enteredSource = CompletableDeferred<Unit>()
+        val hangingSource = object : PlaceSource {
+            override val sourceId: String = "provider_hanging"
+            override suspend fun fetchNear(lat: Double, lon: Double, radiusMeters: Int): Result<List<PlaceCandidate>> {
+                enteredSource.complete(Unit)
+                return neverCompletes.await()
+            }
+        }
+        val repository = PlaceRepository(dao, listOf(hangingSource))
+
+        val scope = CoroutineScope(Dispatchers.IO)
+        val deferred = scope.async { repository.getNearbyPlaces(38.7112, -9.1423, 3000) }
+        enteredSource.await() // Deterministic: the fan-out has suspended inside the provider.
+
+        scope.cancel()
+        try {
+            deferred.await()
+            fail("getNearbyPlaces must propagate cancellation to the caller, not a fallback result")
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            // Expected: cancellation surfaced instead of a stale-cache or empty result.
+        }
     }
 }

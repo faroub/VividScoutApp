@@ -440,4 +440,46 @@ class AppDatabaseTest {
 
         db.close()
     }
+
+    @Test
+    @Throws(IOException::class)
+    fun testMigration14To15CreatesUserPointsLedgerAndPreservesData() {
+        // Seed a place_coverage row at version 14 (stands in for pre-existing user data).
+        var db = helper.createDatabase(TEST_DB, 14).apply {
+            execSQL(
+                """
+                INSERT INTO place_coverage (providerId, centerLat, centerLon, radiusMeters, status, fetchedAt)
+                VALUES ('open_trip_map', 38.7112, -9.1423, 3000, 'success', 1700000000000)
+                """.trimIndent()
+            )
+            close()
+        }
+
+        db = helper.runMigrationsAndValidate(TEST_DB, 15, true, DatabaseMigrations.MIGRATION_14_15)
+
+        // Pre-existing user data must survive untouched.
+        val coverageCursor = db.query("SELECT * FROM place_coverage WHERE providerId = 'open_trip_map'")
+        assertTrue("place_coverage data must survive the migration", coverageCursor.moveToFirst())
+        coverageCursor.close()
+
+        // The user_points ledger must exist and be writable; it starts empty (no points
+        // are invented for existing installations).
+        val emptyCursor = db.query("SELECT COUNT(*) AS total FROM user_points")
+        assertTrue(emptyCursor.moveToFirst())
+        assertEquals(0, emptyCursor.getInt(emptyCursor.getColumnIndexOrThrow("total")))
+        emptyCursor.close()
+
+        db.execSQL(
+            """
+            INSERT INTO user_points (awardId, points, reason, referenceId, timestamp)
+            VALUES ('photo_verified_draft_1', 15, 'photo_verified_spot', 'draft_1', 1700000000000)
+            """.trimIndent()
+        )
+        val pointsCursor = db.query("SELECT COALESCE(SUM(points), 0) AS total FROM user_points")
+        assertTrue(pointsCursor.moveToFirst())
+        assertEquals(15, pointsCursor.getInt(pointsCursor.getColumnIndexOrThrow("total")))
+        pointsCursor.close()
+
+        db.close()
+    }
 }

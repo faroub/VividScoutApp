@@ -901,18 +901,21 @@ describe("reapUnregisteredPhotoObjects (orphan cleanup)", () => {
     const first = await reap([candidate(orphan, 2 * HOUR_MS)]);
     assert.strictEqual(first.failed, 1);
 
-    // The claim survived the failed delete; phase 1 of the next run retries it.
+    // The claim survived the failed delete; phase 1 of the next run retries it. Read the
+    // claim by its deterministic document id (a claim shares the document id derived
+    // from the object path), not with a collection scan: node --test runs this suite
+    // concurrently with the security-rules suite in the same emulator, whose own
+    // claim fixtures must not perturb this assertion.
     deleteFailures.delete(orphan);
-    const claims = await db.collection(CLEANUP_CLAIM_COLLECTION).limit(10).get();
-    assert.strictEqual(claims.size, 1, "the failed deletion must leave exactly one claim");
+    const claimRef = db.collection(CLEANUP_CLAIM_COLLECTION).doc(photoDocumentIdFor(orphan));
+    assert.ok((await claimRef.get()).exists, "the failed deletion must leave exactly one claim");
 
     const second = await reap([candidate(orphan, 2 * HOUR_MS)]);
     assert.strictEqual(second.deleted, 1);
     assert.strictEqual(second.retried, 1);
     assert.deepStrictEqual(deleted, [orphan]);
 
-    const claimsAfter = await db.collection(CLEANUP_CLAIM_COLLECTION).limit(10).get();
-    assert.strictEqual(claimsAfter.size, 0, "a successful delete releases its claim");
+    assert.ok(!(await claimRef.get()).exists, "a successful delete releases its claim");
   });
 
   it("resumes the listing from the persisted cursor across runs and resets at the end", async () => {

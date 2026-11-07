@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import com.example.R
 import com.example.data.local.ScoutSpotEntity
+import com.example.data.local.isDemoFallbackSpot
 import com.example.data.model.ScoutCategory
 import com.example.util.SafeLog
 import com.google.firebase.FirebaseApp
@@ -12,6 +13,7 @@ import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.functions.FirebaseFunctions
 import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
@@ -95,6 +97,7 @@ object SharedTripManager {
         currentTimeMs: Long = System.currentTimeMillis()
     ): SharedTrip {
         val validSpots = spots.filter { spot ->
+            !spot.isDemoFallbackSpot &&
             !spot.latitude.isNaN() && !spot.longitude.isNaN() &&
             spot.latitude in -90.0..90.0 && spot.longitude in -180.0..180.0 &&
             !(spot.latitude == 0.0 && spot.longitude == 0.0) &&
@@ -216,6 +219,8 @@ object SharedTripManager {
                 SafeLog.i(TAG, "Published shared trip '$serverTripId' via Cloud Function")
                 Result.success(PublishedSharedTrip(tripId = serverTripId, shareableLink = serverLink))
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             SafeLog.w(TAG, "Failed to publish shared trip to Firestore: ${e.message}")
             Result.failure(e)
@@ -296,6 +301,8 @@ object SharedTripManager {
             )
 
             Result.success(trip)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             SafeLog.w(TAG, "Failed to fetch shared trip '$tripId': ${e.message}")
             Result.failure(e)
