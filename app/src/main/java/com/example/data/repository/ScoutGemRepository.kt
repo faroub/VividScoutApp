@@ -507,6 +507,15 @@ open class ScoutGemRepository(
                 } else {
                     SafeLog.i(TAG, "Multi-source pipeline returned no places for $requestedPipelineIds")
                 }
+                placeResult.providerFailures.forEach { failure ->
+                    // A provider outage is not "no places here": report it so partial
+                    // results are never mistaken for complete coverage.
+                    SafeLog.w(
+                        TAG,
+                        "Place provider ${failure.providerId} did not answer (kind=${failure.kind}); " +
+                            "result is partial=${placeResult.isPartial}"
+                    )
+                }
                 totalFetched += mergedEntities.size
             } catch (e: Exception) {
                 // One failing provider must never discard the other providers' results.

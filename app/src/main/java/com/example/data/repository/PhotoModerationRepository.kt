@@ -6,6 +6,7 @@ import com.example.util.PhotoProcessor
 import com.example.util.SafeLog
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.DocumentSnapshot
+import com.google.firebase.firestore.FieldPath
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Query
@@ -22,10 +23,16 @@ data class SpotPhotoData(
     val photoUrl: String,
     val ownerUid: String,
     val reportsCount: Int = 0,
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    val moderationState: String? = null
 ) {
+    /**
+     * A photo is hidden from the UI when it crossed the report threshold OR when the
+     * trusted backend moderation sweep removed it (authoritative state, not a UI-only
+     * filter: the removal deletes the Storage object, so the URL stops serving too).
+     */
     val isHidden: Boolean
-        get() = PhotoProcessor.isPhotoHiddenByReports(reportsCount)
+        get() = moderationState == "removed" || PhotoProcessor.isPhotoHiddenByReports(reportsCount)
 }
 
 /**
@@ -46,9 +53,40 @@ class PhotoNotFoundException(message: String) : Exception(message)
  */
 sealed interface SpotPhotosState {
     data object Loading : SpotPhotosState
-    data class Loaded(val photos: List<SpotPhotoData>) : SpotPhotosState
+    data class Loaded(
+        val photos: List<SpotPhotoData>,
+        /**
+         * Cursor positioned at the OLDEST document of this bounded page. It is the
+         * starting point for the first older-photos page. A compound (timestamp +
+         * document id) cursor keeps the ordering deterministic even when several photos
+         * share one timestamp: Firestore resolves the query position against both
+         * ordering fields, so equal timestamps neither skip nor repeat documents.
+         * Hidden photos are among the candidates, so the cursor is derived from the raw
+         * page — never from the filtered display list.
+         */
+        val pageCursor: PhotoPageCursor? = null
+    ) : SpotPhotosState
     data class Error(val throwable: Throwable) : SpotPhotosState
 }
+
+/**
+ * Compound pagination cursor for the photo ordering (timestamp DESC, document id DESC):
+     * the position of the last fetched document. Using both fields (not the timestamp
+     * alone) disambiguates equal timestamps, so pages never skip or repeat photos.
+     */
+data class PhotoPageCursor(val timestamp: Long, val documentId: String)
+
+/**
+ * One page of older photos. [nextCursor] is null when the page was shorter than the page
+ * size (the history is exhausted — there is provably nothing older), and non-null when a
+ * full page was returned (a further page may exist). The cursor of the page's last
+ * document lets the next query resume at an unambiguous position, even when several
+ * photos share the same timestamp.
+ */
+data class OlderPhotosPage(
+    val photos: List<SpotPhotoData>,
+    val nextCursor: PhotoPageCursor?
+)
 
 /**
  * Photo workflow surface: real photo upload from an Android Photo Picker [Uri],
@@ -60,7 +98,7 @@ interface SpotPhotoRepository {
     suspend fun uploadPhoto(context: Context, spotId: String, uri: Uri): Result<SpotPhotoData>
     suspend fun reportPhoto(photoId: String): Result<Int>
     fun photosForSpotFlow(spotId: String): Flow<SpotPhotosState>
-    suspend fun getOlderPhotos(spotId: String, beforeTimestamp: Long): Result<List<SpotPhotoData>>
+    suspend fun getOlderPhotos(spotId: String, cursor: PhotoPageCursor?): Result<OlderPhotosPage>
 }
 
 /**
@@ -90,7 +128,7 @@ class PhotoModerationRepository(
      * Streams the newest photo metadata documents of one spot, mapped from Firestore
      * snapshots. Documents are mapped field-by-field (Firestore cannot reflect into
      * Kotlin data classes); photos hidden by the real moderation state are filtered
-     * by callers via [SpotPhotosData.isHidden].
+     * by callers via [SpotPhotoData.isHidden].
      *
      * The query is bounded to the newest [PHOTOS_PAGE_SIZE] photos so opening a
      * popular spot never downloads its full history; older photos are fetched
@@ -107,6 +145,7 @@ class PhotoModerationRepository(
         val registration = firestore.collection(PHOTOS_COLLECTION)
             .whereEqualTo("spotId", spotId)
             .orderBy("timestamp", Query.Direction.DESCENDING)
+            .orderBy(FieldPath.documentId(), Query.Direction.DESCENDING)
             .limit(PhotoModerationRepository.PHOTOS_PAGE_SIZE.toLong())
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
@@ -114,7 +153,9 @@ class PhotoModerationRepository(
                     trySend(SpotPhotosState.Error(error))
                     return@addSnapshotListener
                 }
-                trySend(SpotPhotosState.Loaded(snapshot?.documents?.mapNotNull { it.toSpotPhotoData(spotId) } ?: emptyList()))
+                val documents = snapshot?.documents ?: emptyList()
+                val photos = documents.mapNotNull { it.toSpotPhotoData(spotId) }
+                trySend(SpotPhotosState.Loaded(photos, documents.lastOrNull()?.toPhotoPageCursor()))
             }
         awaitClose { registration.remove() }
     }
@@ -122,23 +163,43 @@ class PhotoModerationRepository(
     /**
      * One-shot pagination query for the photos older than the ones already shown.
      * Uses the same ordering and the same composite index (spotId ASC, timestamp DESC)
-     * as [photosForSpotFlow], continuing strictly after [beforeTimestamp] — typically
-     * the oldest timestamp of the already loaded set. Returns at most
-     * [PHOTOS_PAGE_SIZE] documents; a page smaller than the bound tells the caller the
-     * history is exhausted. A query failure returns a failed Result so the UI can
-     * distinguish "no older photos" from "the query failed".
+     * as [photosForSpotFlow], continuing strictly AFTER the given [cursor] — the
+     * compound (timestamp, document id) position of the oldest photo fetched so far.
+     * A compound cursor resolves ties between equal timestamps unambiguously (the
+     * ordering includes document id), so pages never skip or repeat photos.
+     *
+     * Returns at most [PHOTOS_PAGE_SIZE] documents; the page's cursor is null when the
+     * page was shorter than the page bound, which tells the caller the history is
+     * exhausted. A query failure returns a failed Result so the UI can distinguish
+     * "no older photos" from "the query failed".
      */
-    override suspend fun getOlderPhotos(spotId: String, beforeTimestamp: Long): Result<List<SpotPhotoData>> =
+    override suspend fun getOlderPhotos(spotId: String, cursor: PhotoPageCursor?): Result<OlderPhotosPage> =
         withContext(Dispatchers.IO) {
             try {
-                val snapshot = firestore.collection(PHOTOS_COLLECTION)
+                val baseQuery = firestore.collection(PHOTOS_COLLECTION)
                     .whereEqualTo("spotId", spotId)
                     .orderBy("timestamp", Query.Direction.DESCENDING)
-                    .startAfter(beforeTimestamp)
+                    .orderBy(FieldPath.documentId(), Query.Direction.DESCENDING)
+                val query = if (cursor != null) {
+                    baseQuery.startAfter(cursor.timestamp, cursor.documentId)
+                } else {
+                    baseQuery
+                }
+                val snapshot = query
                     .limit(PhotoModerationRepository.PHOTOS_PAGE_SIZE.toLong())
                     .get()
                     .await()
-                Result.success(snapshot.documents.mapNotNull { it.toSpotPhotoData(spotId) })
+                val documents = snapshot.documents
+                val photos = documents.mapNotNull { it.toSpotPhotoData(spotId) }
+                // The completion signal is derived from the RAW page size (hidden and
+                // malformed-mapping documents included) — never from the filtered list,
+                // which would misreport an exhausted page.
+                val nextCursor = if (documents.size >= PhotoModerationRepository.PHOTOS_PAGE_SIZE) {
+                    documents.lastOrNull()?.toPhotoPageCursor()
+                } else {
+                    null
+                }
+                Result.success(OlderPhotosPage(photos, nextCursor))
             } catch (e: Exception) {
                 SafeLog.w(TAG, "Older-photos query for spot '$spotId' failed: ${e.message}")
                 Result.failure(e)
@@ -233,7 +294,9 @@ class PhotoModerationRepository(
 /**
  * Maps one Firestore photo metadata document to [SpotPhotoData], or null when the
  * document lacks the mandatory photoUrl/ownerUid fields (the query stream and the
- * pagination query share this single mapping).
+ * pagination query share this single mapping). The authoritative moderationState
+ * field is carried through so [SpotPhotoData.isHidden] reflects backend removal as
+ * well as the local report threshold.
  */
 private fun DocumentSnapshot.toSpotPhotoData(spotId: String): SpotPhotoData? {
     val photoUrl = getString("photoUrl") ?: return null
@@ -244,6 +307,15 @@ private fun DocumentSnapshot.toSpotPhotoData(spotId: String): SpotPhotoData? {
         photoUrl = photoUrl,
         ownerUid = ownerUid,
         reportsCount = getLong("reportsCount")?.toInt() ?: 0,
-        timestamp = getLong("timestamp") ?: 0L
+        timestamp = getLong("timestamp") ?: 0L,
+        moderationState = getString("moderationState")
     )
 }
+
+/**
+ * The compound cursor describing this document's position in the query's ordering
+ * (timestamp DESC, document id DESC). Derived from the raw document — including
+ * moderation-hidden ones — so paging continues at the true last position.
+ */
+private fun DocumentSnapshot.toPhotoPageCursor(): PhotoPageCursor =
+    PhotoPageCursor(timestamp = getLong("timestamp") ?: 0L, documentId = id)

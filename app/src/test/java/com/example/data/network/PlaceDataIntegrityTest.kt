@@ -126,7 +126,9 @@ class PlaceDataIntegrityTest {
             )
         )
 
-        val fakeGeonamesSource = GeonamesSource(callableProvider = { rawCandidates })
+        val fakeGeonamesSource = GeonamesSource(
+            callableProvider = { mapOf("places" to rawCandidates, "providerStatus" to mapOf("geonames" to "ok")) }
+        )
         val geonamesService = GeonamesService(geonamesSource = fakeGeonamesSource)
         val verifiedSpots = geonamesService.fetchNearbyGeonamesPOIs(38.7112, -9.1423, radiusMeters = 3000)
 

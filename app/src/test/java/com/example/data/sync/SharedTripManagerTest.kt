@@ -83,4 +83,27 @@ class SharedTripManagerTest {
         val queryScheme = "vividscout://trip?id=abcd-1234-efgh-5678"
         assertEquals("abcd-1234-efgh-5678", SharedTripManager.parseTripIdFromUri(queryScheme))
     }
+
+    @Test
+    fun parseTripIdFromUri_rejectsMalformedAndUnrelatedLinks() {
+        // Malformed input must never yield a trip id that would be used to query Firestore.
+        assertEquals(null, SharedTripManager.parseTripIdFromUri(null))
+        assertEquals(null, SharedTripManager.parseTripIdFromUri(""))
+        assertEquals(null, SharedTripManager.parseTripIdFromUri("   "))
+        assertEquals(null, SharedTripManager.parseTripIdFromUri("not a uri at all"))
+        assertEquals(null, SharedTripManager.parseTripIdFromUri("https://vividscout.app"))
+        assertEquals(null, SharedTripManager.parseTripIdFromUri("vividscout://other"))
+        // Note: the query-parameter form (vividscout://<any>?id=...) reads the id on
+        // any host by design — the manifest intent filter is what restricts delivery
+        // to the vividscout://trip and https://vividscout.app/trip/ forms.
+    }
+
+    @Test
+    fun parseTripIdFromUri_returnsBlankIdForEmptyPathSegments() {
+        // "/trip/" with nothing after it parses to an empty id — the deep-link handler
+        // must check for blank before fetching (it does), so a bare link cannot be
+        // used to probe arbitrary document IDs.
+        val parsed = SharedTripManager.parseTripIdFromUri("https://vividscout.app/trip/")
+        assertTrue(parsed.isNullOrBlank())
+    }
 }

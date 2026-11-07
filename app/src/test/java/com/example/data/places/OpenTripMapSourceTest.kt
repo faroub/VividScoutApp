@@ -13,21 +13,31 @@ import org.robolectric.annotation.Config
 @Config(sdk = [33])
 class OpenTripMapSourceTest {
 
+    private fun backendResponse(
+        places: List<Map<String, Any?>> = emptyList(),
+        providerStatus: String = "ok"
+    ): Map<String, Any?> = mapOf(
+        "places" to places,
+        "providerStatus" to mapOf("opentripmap" to providerStatus)
+    )
+
     @Test
     fun fetchNear_successfulNormalizedResults_returnsMappedPlaceCandidates() = runBlocking {
-        val rawMap = listOf(
-            mapOf(
-                "sourceName" to "OpenTripMap API",
-                "sourceId" to "otm_W12345",
-                "name" to "Carmo Convent Ruins",
-                "latitude" to 38.7120,
-                "longitude" to -9.1402,
-                "category" to "history",
-                "description" to "Gothic church ruins in Lisbon.",
-                "imageUrl" to "https://images.unsplash.com/photo-1",
-                "sourceUrl" to "https://opentripmap.com/en/card/W12345",
-                "license" to "ODbL",
-                "languageCode" to "en"
+        val rawMap = backendResponse(
+            listOf(
+                mapOf(
+                    "sourceName" to "OpenTripMap API",
+                    "sourceId" to "otm_W12345",
+                    "name" to "Carmo Convent Ruins",
+                    "latitude" to 38.7120,
+                    "longitude" to -9.1402,
+                    "category" to "history",
+                    "description" to "Gothic church ruins in Lisbon.",
+                    "imageUrl" to "https://images.unsplash.com/photo-1",
+                    "sourceUrl" to "https://opentripmap.com/en/card/W12345",
+                    "license" to "ODbL",
+                    "languageCode" to "en"
+                )
             )
         )
 
@@ -49,11 +59,22 @@ class OpenTripMapSourceTest {
     }
 
     @Test
+    fun fetchNear_successfulEmptyAnswer_staysASuccessfulEmptyResult() = runBlocking {
+        // A provider that ANSWERED with zero places is a success: the absence of
+        // places near the user is real data, not a provider failure.
+        val source = OpenTripMapSource(callableProvider = { backendResponse() })
+        val result = source.fetchNear(38.7112, -9.1423, 3000)
+
+        assertTrue("An empty successful answer must not become a failure", result.isSuccess)
+        assertTrue(result.getOrThrow().isEmpty())
+    }
+
+    @Test
     fun fetchNear_invalidCoordinates_returnsEmptyListWithoutCallingBackend() = runBlocking {
         var called = false
         val source = OpenTripMapSource(callableProvider = {
             called = true
-            emptyList()
+            backendResponse()
         })
 
         val resultNaN = source.fetchNear(Double.NaN, -9.1423, 3000)
@@ -71,7 +92,7 @@ class OpenTripMapSourceTest {
         var called = false
         val source = OpenTripMapSource(callableProvider = {
             called = true
-            emptyList()
+            backendResponse()
         })
 
         val resultNegative = source.fetchNear(38.7112, -9.1423, -500)
@@ -85,13 +106,49 @@ class OpenTripMapSourceTest {
     }
 
     @Test
-    fun fetchNear_backendError_handlesExceptionGracefully() = runBlocking {
+    fun fetchNear_providerTransientFailure_isATypedTemporaryFailureNotAnEmptySuccess() = runBlocking {
+        val source = OpenTripMapSource(callableProvider = { backendResponse(providerStatus = "transient") })
+        val result = source.fetchNear(38.7112, -9.1423, 3000)
+
+        assertTrue("A provider outage must surface as failure", result.isFailure)
+        assertTrue(
+            "The failure must be classified as temporary",
+            result.exceptionOrNull() is PlaceSourceFailure.TemporaryFailure
+        )
+    }
+
+    @Test
+    fun fetchNear_providerAuthConfigFailure_isATypedAuthConfigurationFailure() = runBlocking {
+        val source = OpenTripMapSource(callableProvider = { backendResponse(providerStatus = "auth-config") })
+        val result = source.fetchNear(38.7112, -9.1423, 3000)
+
+        assertTrue(result.isFailure)
+        assertTrue(
+            "Missing or rejected credentials are a configuration failure, not retryable noise",
+            result.exceptionOrNull() is PlaceSourceFailure.AuthConfigFailure
+        )
+    }
+
+    @Test
+    fun fetchNear_providerRateLimit_isATypedRateLimitedFailure() = runBlocking {
+        val source = OpenTripMapSource(callableProvider = { backendResponse(providerStatus = "rate-limit") })
+        val result = source.fetchNear(38.7112, -9.1423, 3000)
+
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull() is PlaceSourceFailure.RateLimited)
+    }
+
+    @Test
+    fun fetchNear_backendError_isATemporaryFailureNotAnEmptySuccess() = runBlocking {
         val source = OpenTripMapSource(callableProvider = {
             throw IllegalStateException("Simulated backend exception")
         })
 
         val result = source.fetchNear(38.7112, -9.1423, 3000)
-        assertTrue("Backend exceptions must be handled gracefully returning success with empty list", result.isSuccess)
-        assertTrue(result.getOrThrow().isEmpty())
+        assertTrue("Backend exceptions must surface as failures, not empty successes", result.isFailure)
+        assertTrue(
+            "Unclassified network exceptions default to temporary",
+            result.exceptionOrNull() is PlaceSourceFailure.TemporaryFailure
+        )
     }
 }

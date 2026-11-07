@@ -516,4 +516,240 @@ class PlaceRepositoryTest {
         assertEquals(1, result.places.size)
         assertEquals("Stale A Spot", result.places.first().primaryName)
     }
+
+    // ------------------------------------------------------------------
+    // Explicit geographic cache coverage (PlaceCoverageEntity)
+    // ------------------------------------------------------------------
+
+    private fun coverageRepository(
+        vararg sources: PlaceSource
+    ): PlaceRepository = PlaceRepository(dao, sources.toList(), db.placeCoverageDao())
+
+    @Test
+    fun coverage_successfulEmptyAnswer_isCachedAsCoverage() = runBlocking {
+        val now = System.currentTimeMillis()
+        val fetches = java.util.concurrent.atomic.AtomicInteger(0)
+        val emptySource = source("provider_a", emptyList(), fetches)
+        val repository = coverageRepository(emptySource)
+
+        // First request: the provider answers "no places here" — a valid success.
+        var result = repository.getNearbyPlaces(
+            testLat, testLon, radiusMeters = 3000, currentTimeMs = now,
+            sourceIds = setOf("provider_a")
+        )
+        assertFalse("A successful empty answer is not stale", result.isStale)
+        assertTrue(result.places.isEmpty())
+        assertEquals(1, fetches.get())
+
+        // Second identical request: the recorded coverage proves the area was queried,
+        // so the provider must NOT be fetched again.
+        result = repository.getNearbyPlaces(
+            testLat, testLon, radiusMeters = 3000, currentTimeMs = now,
+            sourceIds = setOf("provider_a")
+        )
+        assertFalse(result.isStale)
+        assertTrue(result.places.isEmpty())
+        assertEquals(
+            "A successful empty answer must produce coverage, avoiding a refetch", 1, fetches.get()
+        )
+
+        val rows = db.placeCoverageDao().getAll()
+        assertEquals(1, rows.size)
+        assertEquals("provider_a", rows.first().providerId)
+        assertEquals("success", rows.first().status)
+    }
+
+    @Test
+    fun coverage_providerFailure_isNotCachedAsCoverage() = runBlocking {
+        val now = System.currentTimeMillis()
+        val fetches = java.util.concurrent.atomic.AtomicInteger(0)
+        val flakySource = object : PlaceSource {
+            override val sourceId: String = "provider_a"
+            override suspend fun fetchNear(lat: Double, lon: Double, radiusMeters: Int): Result<List<PlaceCandidate>> {
+                fetches.incrementAndGet()
+                return Result.failure(PlaceSourceFailure.TemporaryFailure("provider down"))
+            }
+        }
+        val repository = coverageRepository(flakySource)
+
+        repository.getNearbyPlaces(
+            testLat, testLon, radiusMeters = 3000, currentTimeMs = now,
+            sourceIds = setOf("provider_a")
+        )
+        assertEquals(1, fetches.get())
+        assertTrue(
+            "A failed provider must never record coverage",
+            db.placeCoverageDao().getAll().isEmpty()
+        )
+
+        // The second request must refetch: the outage was not "no places here".
+        repository.getNearbyPlaces(
+            testLat, testLon, radiusMeters = 3000, currentTimeMs = now,
+            sourceIds = setOf("provider_a")
+        )
+        assertEquals("A failed request must not produce coverage, so it must refetch", 2, fetches.get())
+    }
+
+    @Test
+    fun coverage_shiftedCenter_doesNotReuseIncompleteCache() = runBlocking {
+        val now = System.currentTimeMillis()
+        val fetches = java.util.concurrent.atomic.AtomicInteger(0)
+        val repository = coverageRepository(source("provider_a", emptyList(), fetches))
+
+        repository.getNearbyPlaces(
+            testLat, testLon, radiusMeters = 3000, currentTimeMs = now,
+            sourceIds = setOf("provider_a")
+        )
+        assertEquals(1, fetches.get())
+
+        // Move the center ~200m north: the recorded 3000m circle no longer contains
+        // the new request (distance + radius exceeds the recorded radius).
+        val shiftedLat = testLat + 0.0018
+        repository.getNearbyPlaces(
+            shiftedLat, testLon, radiusMeters = 3000, currentTimeMs = now,
+            sourceIds = setOf("provider_a")
+        )
+        assertEquals("A request outside the recorded coverage must refetch", 2, fetches.get())
+    }
+
+    @Test
+    fun coverage_largerRadius_doesNotReuseIncompleteCache() = runBlocking {
+        val now = System.currentTimeMillis()
+        val fetches = java.util.concurrent.atomic.AtomicInteger(0)
+        val repository = coverageRepository(source("provider_a", emptyList(), fetches))
+
+        repository.getNearbyPlaces(
+            testLat, testLon, radiusMeters = 3000, currentTimeMs = now,
+            sourceIds = setOf("provider_a")
+        )
+        assertEquals(1, fetches.get())
+
+        repository.getNearbyPlaces(
+            testLat, testLon, radiusMeters = 5000, currentTimeMs = now,
+            sourceIds = setOf("provider_a")
+        )
+        assertEquals("A larger radius than the recorded coverage must refetch", 2, fetches.get())
+    }
+
+    @Test
+    fun coverage_smallerRadius_reusesContainingCache() = runBlocking {
+        val now = System.currentTimeMillis()
+        val fetches = java.util.concurrent.atomic.AtomicInteger(0)
+        val repository = coverageRepository(source("provider_a", emptyList(), fetches))
+
+        repository.getNearbyPlaces(
+            testLat, testLon, radiusMeters = 3000, currentTimeMs = now,
+            sourceIds = setOf("provider_a")
+        )
+        assertEquals(1, fetches.get())
+
+        repository.getNearbyPlaces(
+            testLat, testLon, radiusMeters = 1000, currentTimeMs = now,
+            sourceIds = setOf("provider_a")
+        )
+        assertEquals(
+            "A smaller radius fully inside the recorded coverage must not refetch", 1, fetches.get()
+        )
+    }
+
+    @Test
+    fun coverage_expiredCoverage_triggersRefetch() = runBlocking {
+        val now = System.currentTimeMillis()
+        val fetches = java.util.concurrent.atomic.AtomicInteger(0)
+        val repository = coverageRepository(source("provider_a", emptyList(), fetches))
+
+        repository.getNearbyPlaces(
+            testLat, testLon, radiusMeters = 3000, currentTimeMs = now,
+            sourceIds = setOf("provider_a")
+        )
+        assertEquals(1, fetches.get())
+
+        // 8 days later — older than CACHE_EXPIRATION_MS (7 days).
+        repository.getNearbyPlaces(
+            testLat, testLon, radiusMeters = 3000,
+            currentTimeMs = now + 8 * 24 * 3600 * 1000L,
+            sourceIds = setOf("provider_a")
+        )
+        assertEquals("Expired coverage must not satisfy the request", 2, fetches.get())
+    }
+
+    @Test
+    fun coverage_onlyProviderA_userRequestsB_fetchesB() = runBlocking {
+        val now = System.currentTimeMillis()
+        val aFetches = java.util.concurrent.atomic.AtomicInteger(0)
+        val bFetches = java.util.concurrent.atomic.AtomicInteger(0)
+        val repository = coverageRepository(
+            source("provider_a", emptyList(), aFetches),
+            source("provider_b", emptyList(), bFetches)
+        )
+
+        repository.getNearbyPlaces(
+            testLat, testLon, radiusMeters = 3000, currentTimeMs = now,
+            sourceIds = setOf("provider_a")
+        )
+        assertEquals(1, aFetches.get())
+
+        repository.getNearbyPlaces(
+            testLat, testLon, radiusMeters = 3000, currentTimeMs = now,
+            sourceIds = setOf("provider_b")
+        )
+        assertEquals(
+            "Provider A's coverage must never satisfy a provider B request", 1, bFetches.get()
+        )
+    }
+
+    @Test
+    fun coverage_oneProviderFails_anotherSucceeds_partialResultPreserved() = runBlocking {
+        val repository = coverageRepository(
+            source("provider_a", listOf(candidate("provider_a", "Alfama Overlook"))),
+            failingSource("provider_b")
+        )
+        val result = repository.getNearbyPlaces(
+            testLat, testLon, radiusMeters = 3000,
+            sourceIds = setOf("provider_a", "provider_b")
+        )
+
+        assertFalse(result.isStale)
+        assertEquals("Provider B's failure must not discard provider A's results", 1, result.places.size)
+        assertEquals("Alfama Overlook", result.places.first().primaryName)
+
+        assertTrue("The failed provider must be reported as a partial result", result.isPartial)
+        assertEquals(1, result.providerFailures.size)
+        assertEquals("provider_b", result.providerFailures.first().providerId)
+        assertEquals(ProviderFailureKind.TEMPORARY, result.providerFailures.first().kind)
+
+        // Only the succeeding provider recorded coverage.
+        val covered = db.placeCoverageDao().getAll().map { it.providerId }
+        assertEquals(listOf("provider_a"), covered)
+    }
+
+    @Test
+    fun coverage_failureKinds_mappedToProviderFailureKinds() = runBlocking {
+        val repository = coverageRepository(
+            object : PlaceSource {
+                override val sourceId: String = "provider_temp"
+                override suspend fun fetchNear(lat: Double, lon: Double, radiusMeters: Int): Result<List<PlaceCandidate>> =
+                    Result.failure(PlaceSourceFailure.TemporaryFailure())
+            },
+            object : PlaceSource {
+                override val sourceId: String = "provider_auth"
+                override suspend fun fetchNear(lat: Double, lon: Double, radiusMeters: Int): Result<List<PlaceCandidate>> =
+                    Result.failure(PlaceSourceFailure.AuthConfigFailure())
+            },
+            object : PlaceSource {
+                override val sourceId: String = "provider_rate"
+                override suspend fun fetchNear(lat: Double, lon: Double, radiusMeters: Int): Result<List<PlaceCandidate>> =
+                    Result.failure(PlaceSourceFailure.RateLimited())
+            }
+        )
+        val result = repository.getNearbyPlaces(
+            testLat, testLon, radiusMeters = 3000,
+            sourceIds = setOf("provider_temp", "provider_auth", "provider_rate")
+        )
+
+        val kindsByProvider = result.providerFailures.associate { it.providerId to it.kind }
+        assertEquals(ProviderFailureKind.TEMPORARY, kindsByProvider["provider_temp"])
+        assertEquals(ProviderFailureKind.AUTH_CONFIG, kindsByProvider["provider_auth"])
+        assertEquals(ProviderFailureKind.RATE_LIMITED, kindsByProvider["provider_rate"])
+    }
 }

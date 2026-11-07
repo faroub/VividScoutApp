@@ -3,6 +3,8 @@ package com.example.ui.viewmodel
 import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.ViewModel
+import com.example.data.repository.OlderPhotosPage
+import com.example.data.repository.PhotoPageCursor
 import com.example.data.repository.SpotPhotoData
 import com.example.data.repository.SpotPhotoRepository
 import com.example.data.repository.SpotPhotosState
@@ -32,6 +34,12 @@ class SpotPhotoViewModel(
     fun photosForSpotFlow(spotId: String): Flow<SpotPhotosState> =
         photoRepository.photosForSpotFlow(spotId)
 
-    suspend fun loadOlderPhotos(spotId: String, beforeTimestamp: Long): Result<List<SpotPhotoData>> =
-        photoRepository.getOlderPhotos(spotId = spotId, beforeTimestamp = beforeTimestamp)
+    /**
+     * Loads the next older-photos page for [spotId], continuing after [cursor] (the
+     * cursor of the live page for the first load, then the last page's cursor). The
+     * page's [OlderPhotosPage.nextCursor] tells the UI whether more history may exist,
+     * distinguishing a successful empty short page from a query failure.
+     */
+    suspend fun loadOlderPhotos(spotId: String, cursor: PhotoPageCursor?): Result<OlderPhotosPage> =
+        photoRepository.getOlderPhotos(spotId = spotId, cursor = cursor)
 }

@@ -63,7 +63,17 @@ data class DownloadedRoadSegment(
     val distanceMeters: Double,
     val streetName: String,
     val isPedestrian: Boolean = true,
-    val isStairs: Boolean = false
+    val isStairs: Boolean = false,
+    /**
+     * True when this segment's geometry was synthesized locally by
+     * [OfflineRegionStorage.synthesizeRoadNetworkForBounds] instead of imported
+     * from a real pedestrian-network source. Routes built from such segments are
+     * approximate: a synthetic grid does not prove that streets, crossings,
+     * footways, stairs, or pedestrian restrictions actually exist.
+     * Defaults to false so packs loaded from real imported network data are
+     * treated as genuine geometry.
+     */
+    val isSynthetic: Boolean = false
 )
 
 @Keep
@@ -135,7 +145,10 @@ class OfflineRegionStorage(private val context: Context) {
                             distanceMeters = sObj.getDouble("distanceMeters"),
                             streetName = sObj.getString("streetName"),
                             isPedestrian = sObj.optBoolean("isPedestrian", true),
-                            isStairs = sObj.optBoolean("isStairs", false)
+                            isStairs = sObj.optBoolean("isStairs", false),
+                            // Packs written before the synthetic-provenance flag default to
+                            // genuine imported geometry; only locally synthesized packs opt in.
+                            isSynthetic = sObj.optBoolean("isSynthetic", false)
                         )
                     )
                 }
@@ -200,6 +213,7 @@ class OfflineRegionStorage(private val context: Context) {
                     put("streetName", seg.streetName)
                     put("isPedestrian", seg.isPedestrian)
                     put("isStairs", seg.isStairs)
+                    put("isSynthetic", seg.isSynthetic)
                 }
                 segArray.put(sObj)
             }
@@ -228,6 +242,13 @@ class OfflineRegionStorage(private val context: Context) {
     /**
      * Synthesizes a connected vector road segment network within a bounding box.
      * Incorporates grid connections, primary thoroughfares, and pedestrian alleyways.
+     *
+     * The resulting geometry is SYNTHETIC: it is generated locally as a plausible
+     * road-like grid and does not come from a real pedestrian-network source. It
+     * carries no information about which streets, crossings, footways, stairs, or
+     * pedestrian restrictions actually exist on the ground — every segment is
+     * flagged [DownloadedRoadSegment.isSynthetic] so routing labels keep plans built
+     * from it approximate instead of claiming street-level verification.
      */
     fun synthesizeRoadNetworkForBounds(
         bounds: GeoBoundingBox,
@@ -272,7 +293,8 @@ class OfflineRegionStorage(private val context: Context) {
                         distanceMeters = dist,
                         streetName = streetName,
                         isPedestrian = r % 2 == 1,
-                        isStairs = r == gridSteps / 2
+                        isStairs = r == gridSteps / 2,
+                        isSynthetic = true
                     )
                 )
             }
@@ -297,7 +319,8 @@ class OfflineRegionStorage(private val context: Context) {
                         distanceMeters = dist,
                         streetName = streetName,
                         isPedestrian = c % 2 == 0,
-                        isStairs = false
+                        isStairs = false,
+                        isSynthetic = true
                     )
                 )
             }
@@ -332,7 +355,8 @@ class OfflineRegionStorage(private val context: Context) {
                     distanceMeters = minDist,
                     streetName = "Path to ${spot.title}",
                     isPedestrian = true,
-                    isStairs = false
+                    isStairs = false,
+                    isSynthetic = true
                 )
             )
         }

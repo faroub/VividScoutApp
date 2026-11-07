@@ -29,6 +29,8 @@ import kotlinx.coroutines.withContext
 private const val TAG = "FirestoreSyncManager"
 private const val SUBMISSIONS_COLLECTION = "community_submissions"
 private const val TIPS_COLLECTION = "community_tips"
+private const val USERS_COLLECTION = "users"
+private const val PRIVATE_NOTES_COLLECTION = "private_spot_notes"
 
 /**
  * Manages bidirectional cloud synchronization between local Room entities and Firebase Firestore.
@@ -85,6 +87,13 @@ object FirestoreSyncManager {
 
     /**
      * Uploads an individual offline draft spot to the Firestore 'community_submissions' collection.
+     *
+     * Private scout notes are NEVER written to the public submission document: Firestore has no
+     * field-level access control, so every field of a publicly readable document is world-visible.
+     * Instead the note is persisted under the owner-scoped path
+     * users/{uid}/private_spot_notes/{spotId}, written with the authenticated UID — never a
+     * caller-provided one. Both writes are idempotent (set-merge), so a retry after a partial
+     * failure cannot leak the note into the public document.
      */
     suspend fun syncDraftSpotToCloud(
         context: Context,
@@ -109,7 +118,6 @@ object FirestoreSyncManager {
                 "latitude" to spot.latitude,
                 "longitude" to spot.longitude,
                 "photoUri" to (spot.imageUrl ?: ""),
-                "userNotes" to (spot.userNotes ?: ""),
                 "contributor" to spot.contributor,
                 "timestamp" to spot.timestamp
             )
@@ -118,6 +126,15 @@ object FirestoreSyncManager {
                 .document(spot.id)
                 .set(docData, SetOptions.merge())
                 .await()
+
+            // The private note belongs under the owner-scoped collection only. A failure
+            // here fails the whole sync so the draft is retried later (both writes are
+            // idempotent); the note must never be dropped silently nor moved to the
+            // public document as a fallback.
+            if (!syncPrivateSpotNoteToCloud(context, spot.id, spot.userNotes)) {
+                SafeLog.w(TAG, "Private note for spot '${spot.id}' could not be synced; the public submission was left without it and the draft will be retried")
+                return@withContext false
+            }
 
             val syncedSpot = spot.copy(
                 isOfflineDraft = false,
@@ -129,6 +146,43 @@ object FirestoreSyncManager {
             true
         } catch (e: Exception) {
             SafeLog.e(TAG, "Failed to sync draft spot '${spot.id}' to Firestore: ${e.message}", e)
+            false
+        }
+    }
+
+    /**
+     * Persists a spot's private note under the owner-scoped path
+     * users/{authenticatedUid}/private_spot_notes/{spotId}. The collection path key is the
+     * authenticated UID — a caller cannot target another user's notes — and the public
+     * submission documents never receive this field.
+     */
+    suspend fun syncPrivateSpotNoteToCloud(
+        context: Context,
+        spotId: String,
+        notes: String?
+    ): Boolean = withContext(Dispatchers.IO) {
+        if (!ensureFirebaseAuth(context)) {
+            SafeLog.w(TAG, "Cannot sync private note for '$spotId': Firebase Auth required")
+            return@withContext false
+        }
+        val firestore = getFirestore(context) ?: return@withContext false
+        val currentUid = FirebaseAuth.getInstance().currentUser?.uid ?: return@withContext false
+        try {
+            val noteData = hashMapOf(
+                "spotId" to spotId,
+                "ownerUid" to currentUid,
+                "notes" to (notes ?: ""),
+                "updatedAt" to System.currentTimeMillis()
+            )
+            firestore.collection(USERS_COLLECTION)
+                .document(currentUid)
+                .collection(PRIVATE_NOTES_COLLECTION)
+                .document(spotId)
+                .set(noteData, SetOptions.merge())
+                .await()
+            true
+        } catch (e: Exception) {
+            SafeLog.e(TAG, "Failed to sync private note for spot '$spotId': ${e.message}", e)
             false
         }
     }
@@ -499,10 +553,53 @@ object FirestoreSyncManager {
                 scoutDao.insertSpots(remoteSpots)
                 newGemsCount = remoteSpots.size
             }
+
+            // 3. Restore this user's own private notes from the owner-scoped collection
+            // users/{uid}/private_spot_notes. Notes are only ever filled into spots
+            // whose local Room note is still blank — local edits always win, so an
+            // offline-first user never loses a note written on this device.
+            syncOwnPrivateNotesDown(context, scoutDao)
         } catch (e: Exception) {
             SafeLog.e(TAG, "Error synchronizing remote content from Firestore: ${e.message}", e)
         }
 
         Pair(newTipsCount, newGemsCount)
+    }
+
+    /**
+     * Downloads the authenticated user's own private spot notes and fills any local
+     * Room note that is still blank. Other users' notes are unreachable: the collection
+     * path key is the authenticated UID and the Firestore rules deny every access from
+     * anyone else (see users/{uid}/private_spot_notes in firestore.rules).
+     */
+    private suspend fun syncOwnPrivateNotesDown(
+        context: Context,
+        scoutDao: ScoutDao
+    ): Int = withContext(Dispatchers.IO) {
+        if (!ensureFirebaseAuth(context)) return@withContext 0
+        val firestore = getFirestore(context) ?: return@withContext 0
+        val currentUid = FirebaseAuth.getInstance().currentUser?.uid ?: return@withContext 0
+
+        var restoredCount = 0
+        try {
+            val snapshot = firestore.collection(USERS_COLLECTION)
+                .document(currentUid)
+                .collection(PRIVATE_NOTES_COLLECTION)
+                .get()
+                .await()
+
+            for (noteDoc in snapshot.documents) {
+                val spotId = noteDoc.getString("spotId") ?: continue
+                val notes = noteDoc.getString("notes") ?: continue
+                if (notes.isBlank()) continue
+                val localSpot = scoutDao.getSpotById(spotId) ?: continue
+                if (!localSpot.userNotes.isNullOrBlank()) continue
+                scoutDao.updateUserNotes(spotId, notes)
+                restoredCount++
+            }
+        } catch (e: Exception) {
+            SafeLog.w(TAG, "Failed to restore private spot notes: ${e.message}")
+        }
+        restoredCount
     }
 }

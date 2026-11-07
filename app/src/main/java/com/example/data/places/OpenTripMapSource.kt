@@ -10,15 +10,21 @@ import kotlinx.coroutines.withContext
 /**
  * OpenTripMap place data source routed through secure Firebase Callable Cloud Function (nearbyPlaces).
  * Ensures zero API keys are embedded in the Android APK.
+ *
+ * The callable returns the provider outcome contract: "ok" (the provider answered — even
+ * with zero places, which is a valid answer), or a failure kind (transient / auth-config /
+ * rate-limit). A failure is surfaced as a typed [PlaceSourceFailure] instead of an empty
+ * success list, so the repository never treats a provider outage as "no places here".
  */
 class OpenTripMapSource(
-    private val callableProvider: (suspend (HashMap<String, Any>) -> List<Map<String, Any?>>)? = null
+    private val callableProvider: (suspend (HashMap<String, Any>) -> Map<String, Any?>)? = null
 ) : PlaceSource {
 
     override val sourceId: String = "open_trip_map"
 
     companion object {
         private const val TAG = "OpenTripMapSource"
+        private const val PROVIDER_KEY = "opentripmap"
     }
 
     override suspend fun fetchNear(
@@ -46,7 +52,7 @@ class OpenTripMapSource(
                 "sources" to listOf("opentripmap")
             )
 
-            val rawList = if (callableProvider != null) {
+            val raw = if (callableProvider != null) {
                 callableProvider.invoke(payload)
             } else {
                 val functions = try {
@@ -57,7 +63,29 @@ class OpenTripMapSource(
                 }
                 val result = functions.getHttpsCallable("nearbyPlaces").call(payload).await()
                 @Suppress("UNCHECKED_CAST")
-                (result.data as? List<Map<String, Any?>>).orEmpty()
+                (result.data as? Map<String, Any?>).orEmpty()
+            }
+
+            @Suppress("UNCHECKED_CAST")
+            val rawList = (raw["places"] as? List<Map<String, Any?>>).orEmpty()
+            @Suppress("UNCHECKED_CAST")
+            val providerStatus = (raw["providerStatus"] as? Map<String, Any?>)?.get(PROVIDER_KEY) as? String
+
+            when (providerStatus) {
+                "transient" -> {
+                    SafeLog.w(TAG, "OpenTripMap provider temporarily unavailable")
+                    return@withContext Result.failure(PlaceSourceFailure.TemporaryFailure())
+                }
+                "auth-config" -> {
+                    SafeLog.w(TAG, "OpenTripMap provider credentials are missing or rejected")
+                    return@withContext Result.failure(PlaceSourceFailure.AuthConfigFailure())
+                }
+                "rate-limit" -> {
+                    SafeLog.w(TAG, "OpenTripMap provider rate limited the request")
+                    return@withContext Result.failure(PlaceSourceFailure.RateLimited())
+                }
+                // "ok", or an older backend not yet reporting provider status.
+                else -> Unit
             }
 
             val candidates = rawList.mapNotNull { item ->
@@ -83,21 +111,24 @@ class OpenTripMapSource(
 
             Result.success(candidates)
         } catch (e: FirebaseFunctionsException) {
-            when (e.code) {
+            val failure = when (e.code) {
                 FirebaseFunctionsException.Code.RESOURCE_EXHAUSTED -> {
                     SafeLog.w(TAG, "Rate limit exceeded (max 60/hr/UID) querying OpenTripMap via nearbyPlaces")
+                    PlaceSourceFailure.RateLimited()
                 }
                 FirebaseFunctionsException.Code.UNAUTHENTICATED -> {
                     SafeLog.w(TAG, "Firebase Auth required to query OpenTripMap via nearbyPlaces")
+                    PlaceSourceFailure.AuthConfigFailure()
                 }
                 else -> {
                     SafeLog.w(TAG, "Firebase Functions error querying OpenTripMap: ${e.message}")
+                    PlaceSourceFailure.TemporaryFailure()
                 }
             }
-            Result.success(emptyList())
+            Result.failure(failure)
         } catch (e: Exception) {
             SafeLog.w(TAG, "Network or parsing error querying OpenTripMap: ${e.message}")
-            Result.success(emptyList())
+            Result.failure(PlaceSourceFailure.TemporaryFailure())
         }
     }
 }

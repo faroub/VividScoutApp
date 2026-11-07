@@ -111,9 +111,15 @@ const validSubmission = (ownerUid) => ({
   latitude: 38.7145,
   longitude: -9.1276,
   photoUri: 'https://storage.googleapis.com/vividscout/spot.jpg',
-  userNotes: '',
   contributor: 'Alice',
   timestamp: 1700000000000,
+});
+
+const validPrivateNote = (ownerUid, spotId) => ({
+  spotId,
+  ownerUid,
+  notes: 'Bring a jacket — the viewpoint gets windy after sunset.',
+  updatedAt: 1700000000000,
 });
 
 const validTip = (ownerUid) => ({
@@ -266,6 +272,164 @@ describe('community_submissions', () => {
     const id = nextId('submission');
     await assertSucceeds(setDoc(doc(dbAs(ALICE), 'community_submissions', id), validSubmission(ALICE)));
     await assertFails(deleteDoc(doc(dbAs(ALICE), 'community_submissions', id)));
+  });
+
+  it('rejects private scout notes in public submissions (creation)', async () => {
+    // firestore.rules removed "userNotes" from the allowlist: the public document
+    // must never carry a private note, because anyone can read this collection and
+    // Firestore has no field-level access control.
+    const id = nextId('submission');
+    const data = { ...validSubmission(ALICE), userNotes: 'my private note' };
+    await assertFails(setDoc(doc(dbAs(ALICE), 'community_submissions', id), data));
+  });
+
+  it('rejects smuggling private notes back in through an update', async () => {
+    const id = nextId('submission');
+    await assertSucceeds(setDoc(doc(dbAs(ALICE), 'community_submissions', id), validSubmission(ALICE)));
+    await assertFails(
+      updateDoc(doc(dbAs(ALICE), 'community_submissions', id), { userNotes: 'my private note' })
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// users/{uid}/private_spot_notes — owner-scoped private scout notes
+// ---------------------------------------------------------------------------
+
+describe('users/{uid}/private_spot_notes', () => {
+  it('allows the owner to read and write their own note', async () => {
+    const spotId = nextId('spot');
+    const noteRef = doc(dbAs(ALICE), 'users', ALICE, 'private_spot_notes', spotId);
+    await assertSucceeds(setDoc(noteRef, validPrivateNote(ALICE, spotId)));
+    const saved = await getDoc(noteRef);
+    assert.ok(saved.exists, 'the owner can read their own note');
+    assert.strictEqual(saved.get('notes'), validPrivateNote(ALICE, spotId).notes);
+  });
+
+  it('rejects reads by another user, including a get by exact ID', async () => {
+    const spotId = nextId('spot');
+    await setDoc(doc(dbAs(ALICE), 'users', ALICE, 'private_spot_notes', spotId), validPrivateNote(ALICE, spotId));
+    await assertFails(getDoc(doc(dbAs(BOB), 'users', ALICE, 'private_spot_notes', spotId)));
+  });
+
+  it('rejects unauthenticated reads', async () => {
+    const spotId = nextId('spot');
+    await setDoc(doc(dbAs(ALICE), 'users', ALICE, 'private_spot_notes', spotId), validPrivateNote(ALICE, spotId));
+    await assertFails(getDoc(doc(dbAs(null), 'users', ALICE, 'private_spot_notes', spotId)));
+  });
+
+  it('rejects another user enumerating or querying the collection', async () => {
+    const spotId = nextId('spot');
+    await setDoc(doc(dbAs(ALICE), 'users', ALICE, 'private_spot_notes', spotId), validPrivateNote(ALICE, spotId));
+    await assertFails(
+      getDocs(query(collection(dbAs(BOB), 'users', ALICE, 'private_spot_notes')))
+    );
+    // The owner themselves may list their own notes.
+    await assertSucceeds(
+      getDocs(query(collection(dbAs(ALICE), 'users', ALICE, 'private_spot_notes')))
+    );
+  });
+
+  it('rejects note creation under another user path', async () => {
+    const spotId = nextId('spot');
+    await assertFails(
+      setDoc(doc(dbAs(ALICE), 'users', BOB, 'private_spot_notes', spotId), validPrivateNote(ALICE, spotId))
+    );
+  });
+
+  it('rejects a note whose embedded ownerUid is not the signed-in user', async () => {
+    const spotId = nextId('spot');
+    const forged = { ...validPrivateNote(BOB, spotId) };
+    await assertFails(
+      setDoc(doc(dbAs(ALICE), 'users', ALICE, 'private_spot_notes', spotId), forged)
+    );
+  });
+
+  it('rejects a note with an unexpected field', async () => {
+    const spotId = nextId('spot');
+    await assertFails(
+      setDoc(
+        doc(dbAs(ALICE), 'users', ALICE, 'private_spot_notes', spotId),
+        { ...validPrivateNote(ALICE, spotId), smuggled: 'field' }
+      )
+    );
+  });
+
+  it('rejects a note with invalid field types', async () => {
+    const spotId = nextId('spot');
+    await assertFails(
+      setDoc(doc(dbAs(ALICE), 'users', ALICE, 'private_spot_notes', spotId), {
+        ...validPrivateNote(ALICE, spotId),
+        notes: 12345
+      })
+    );
+    await assertFails(
+      setDoc(doc(dbAs(ALICE), 'users', ALICE, 'private_spot_notes', spotId), {
+        ...validPrivateNote(ALICE, spotId),
+        updatedAt: 'not-a-number'
+      })
+    );
+    await assertFails(
+      setDoc(doc(dbAs(ALICE), 'users', ALICE, 'private_spot_notes', spotId), {
+        ...validPrivateNote(ALICE, spotId),
+        spotId: 12345
+      })
+    );
+  });
+
+  it('rejects an oversized note', async () => {
+    const spotId = nextId('spot');
+    await assertFails(
+      setDoc(doc(dbAs(ALICE), 'users', ALICE, 'private_spot_notes', spotId), {
+        ...validPrivateNote(ALICE, spotId),
+        notes: 'x'.repeat(2001)
+      })
+    );
+    // Exactly 2000 characters is the boundary and is accepted.
+    await assertSucceeds(
+      setDoc(doc(dbAs(ALICE), 'users', ALICE, 'private_spot_notes', spotId), {
+        ...validPrivateNote(ALICE, spotId),
+        notes: 'x'.repeat(2000)
+      })
+    );
+  });
+
+  it('allows the owner to update their own note', async () => {
+    const spotId = nextId('spot');
+    const noteRef = doc(dbAs(ALICE), 'users', ALICE, 'private_spot_notes', spotId);
+    await setDoc(noteRef, validPrivateNote(ALICE, spotId));
+    await assertSucceeds(
+      updateDoc(noteRef, { notes: 'Updated note text.', updatedAt: 1700000001000 })
+    );
+  });
+
+  it('rejects an owner changing the owner identity through an update', async () => {
+    const spotId = nextId('spot');
+    const noteRef = doc(dbAs(ALICE), 'users', ALICE, 'private_spot_notes', spotId);
+    await setDoc(noteRef, validPrivateNote(ALICE, spotId));
+    await assertFails(updateDoc(noteRef, { ownerUid: BOB }));
+    // Even writing the original owner back alongside a forged value is rejected:
+    // the embedded identity may never differ from the collection path key.
+    await assertFails(updateDoc(noteRef, { ownerUid: BOB, notes: 'hijacked' }));
+  });
+
+  it('rejects another user updating the owner note', async () => {
+    const spotId = nextId('spot');
+    await setDoc(doc(dbAs(ALICE), 'users', ALICE, 'private_spot_notes', spotId), validPrivateNote(ALICE, spotId));
+    await assertFails(
+      updateDoc(doc(dbAs(BOB), 'users', ALICE, 'private_spot_notes', spotId), { notes: 'hijacked' })
+    );
+  });
+
+  it('allows the owner to delete their own note but rejects deletion by another user', async () => {
+    const spotId = nextId('spot');
+    await setDoc(doc(dbAs(ALICE), 'users', ALICE, 'private_spot_notes', spotId), validPrivateNote(ALICE, spotId));
+    await assertFails(
+      deleteDoc(doc(dbAs(BOB), 'users', ALICE, 'private_spot_notes', spotId))
+    );
+    await assertSucceeds(
+      deleteDoc(doc(dbAs(ALICE), 'users', ALICE, 'private_spot_notes', spotId))
+    );
   });
 });
 
@@ -1005,6 +1169,33 @@ describe("shared_trips", () => {
     );
     await assertFails(deleteDoc(doc(dbAs(ALICE), "shared_trip_publish_requests", id)));
   });
+
+  it("denies all client access to the photo cleanup state and deletion claims", async () => {
+    // photo_cleanup_state (the resumable reaper cursor) and photo_cleanup_claims (which
+    // race-coordinate the reaper with photo finalization) are internal bookkeeping of
+    // the trusted backend; clients must never read, create, or tamper with them (a
+    // forged/destroyed claim could either publish a photo the reaper is deleting or
+    // block finalization of legitimate uploads).
+    const stateId = "orphan_reaper_cursor";
+    const claimId = nextId("claim");
+    const adminDb = admin.firestore();
+    await adminDb.collection("photo_cleanup_state").doc(stateId).set({ nextPageToken: null });
+    await adminDb.collection("photo_cleanup_claims").doc(claimId).set({
+      photoPath: "spot_photos/alice-uid/spot-x/f.jpg",
+      expiresAt: Date.now() + 3600 * 1000,
+    });
+
+    await assertFails(getDoc(doc(dbAs(ALICE), "photo_cleanup_state", stateId)));
+    await assertFails(getDoc(doc(dbAs(BOB), "photo_cleanup_claims", claimId)));
+    await assertFails(getDoc(doc(dbAs(null), "photo_cleanup_state", stateId)));
+    await assertFails(
+      setDoc(doc(dbAs(ALICE), "photo_cleanup_state", stateId), { nextPageToken: "forged" })
+    );
+    await assertFails(
+      setDoc(doc(dbAs(ALICE), "photo_cleanup_claims", claimId), { expiresAt: 1 })
+    );
+    await assertFails(deleteDoc(doc(dbAs(ALICE), "photo_cleanup_claims", claimId)));
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -1059,14 +1250,35 @@ describe('storage spot_photos', () => {
     );
   });
 
-  it('allows the path owner to delete their upload, rejects deletion by others', async () => {
+  it('rejects deletion of photo objects by anyone, including the path owner (immutability)', async () => {
+    // Registered photo objects are immutable to clients: storage.rules denies every
+    // delete. Removal happens only through trusted backend functions (the scheduled
+    // orphan reaper and the moderation sweep in functions/photos.js), which keep
+    // Storage and Firestore consistent — a client must never be able to delete the
+    // bytes while the photo metadata record remains publicly readable.
     const objectPath = `spot_photos/${ALICE}/spot-1/${nextId('photo')}.jpg`;
     const ownerStorage = storageAs(ALICE);
     await assertSucceeds(
       uploadBytes(ref(ownerStorage, objectPath), JPEG, { contentType: 'image/jpeg' })
     );
     await assertFails(deleteObject(ref(storageAs(BOB), objectPath)));
-    await assertSucceeds(deleteObject(ref(ownerStorage, objectPath)));
+    await assertFails(deleteObject(ref(ownerStorage, objectPath)));
+    // The object is still readable exactly as before the failed deletion attempts.
+    await assertSucceeds(getDownloadURL(ref(storageAs(null), objectPath)));
+  });
+
+  it('rejects the path owner overwriting (updating) their own uploaded object', async () => {
+    // A second uploadBytes to an existing object is a Storage "update": denied even
+    // for the owner, so the published bytes can never be swapped after the trusted
+    // backend validated them.
+    const objectPath = `spot_photos/${ALICE}/spot-1/${nextId('photo')}.jpg`;
+    const ownerStorage = storageAs(ALICE);
+    await assertSucceeds(
+      uploadBytes(ref(ownerStorage, objectPath), JPEG, { contentType: 'image/jpeg' })
+    );
+    await assertFails(
+      uploadBytes(ref(ownerStorage, objectPath), JPEG, { contentType: 'image/jpeg' })
+    );
   });
 
   it('rejects overwriting another user object (update by non-owner)', async () => {

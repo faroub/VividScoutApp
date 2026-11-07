@@ -57,7 +57,8 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
                 WikidataSearchService(),
                 OpenTripMapSource(),
                 GeonamesSource()
-            )
+            ),
+            placeCoverageDao = database.placeCoverageDao()
         )
     }
 

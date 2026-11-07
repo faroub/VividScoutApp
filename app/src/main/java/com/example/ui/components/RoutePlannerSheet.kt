@@ -430,7 +430,13 @@ fun RoutePlannerSheet(
                                 color = Color.White
                             )
                             Text(
-                                text = "${guidedWalkPlan.formattedDistance} • ${guidedWalkPlan.totalWalkingMinutes} min walk",
+                                // Approximate plans carry graph or straight-line estimates:
+                                // the summary must say so, not just the provenance line below.
+                                text = if (guidedWalkPlan.isFullyRouted) {
+                                    "${guidedWalkPlan.formattedDistance} • ${guidedWalkPlan.totalWalkingMinutes} min walk"
+                                } else {
+                                    "${guidedWalkPlan.formattedDistance} • ${guidedWalkPlan.totalWalkingMinutes} min walk (est.)"
+                                },
                                 style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                                 color = BrandTeal
                             )

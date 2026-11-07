@@ -106,7 +106,7 @@
     <string name="location_feature_radar">Radar piéton 360° pour repérer les pépites autour de vous</string>
     <string name="location_feature_distances">Calcul des distances et minutes de marche en temps réel</string>
     <string name="location_feature_bakeries">Alertes instantanées dès qu\'une fournée sort du four</string>
-    <string name="location_privacy_note">Confidentialité totale : vos coordonnées GPS restent exclusivement sur votre appareil.</string>
+    <string name="location_privacy_note">Utilisation de la localisation : pour découvrir les lieux à proximité, vos coordonnées GPS sont envoyées au cloud de VividScout et à des fournisseurs de lieux externes (OpenTripMap, GeoNames, OpenStreetMap) pour cette recherche. Elles ne sont pas stockées sur votre profil ; les journaux les arrondissent à ~1 km près.</string>
     <string name="allow_location">Autoriser l\'accès GPS</string>
     <string name="keep_default_gps">Conserver le GPS par défaut (Lisbonne)</string>
     <string name="location_denied_title">Autorisation de localisation requise</string>

@@ -12,14 +12,28 @@ import kotlinx.coroutines.withContext
 
 /**
  * Repository for spatial tile caching, fetching, merging, and serving places from external PlaceSources.
+ *
+ * Cache coverage is tracked by [PlaceCoverageEntity] rows recording, per provider, the
+ * query center + radius of each SUCCESSFUL query. A new request reuses the cache for a
+ * provider only when that provider's recorded coverage fully contains the new request
+ * (geodesic containment, not just matching geohash tiles) and the data has not expired.
+ * A provider that answered with ZERO places also produces a coverage row: an empty
+ * successful answer is valid coverage information, while a provider FAILURE never is —
+ * failures never write coverage rows, so no outage is ever mistaken for "no places here".
+ *
+ * Provider failures are isolated and reported: one failing provider never discards the
+ * other providers' results, and failing providers never clear another provider's cached
+ * data (the cache write merges previously cached rows back in).
  */
 class PlaceRepository(
     private val cachedPlaceDao: CachedPlaceDao,
-    val placeSources: List<PlaceSource> = emptyList()
+    val placeSources: List<PlaceSource> = emptyList(),
+    private val placeCoverageDao: PlaceCoverageDao? = null
 ) {
 
     companion object {
         const val CACHE_EXPIRATION_MS = 7 * 24 * 3600 * 1000L // 7 days
+        const val COVERAGE_STATUS_SUCCESS = "success"
     }
 
     private val moshi = Moshi.Builder().addLast(KotlinJsonAdapterFactory()).build()
@@ -41,24 +55,38 @@ class PlaceRepository(
         val centerTile = GeohashUtils.encode(lat, lon, precision = 5)
         val coveringTiles = GeohashUtils.getCoveringTiles(lat, lon, radiusMeters)
 
-        // 1. Cached places across covering tiles, split by age into fresh windows.
-        val cachedEntities = cachedPlaceDao.getPlacesForTiles(coveringTiles)
-        val freshCachedEntities = cachedEntities.filter {
-            (currentTimeMs - it.fetchedTimestamp) < CACHE_EXPIRATION_MS
-        }
-
-        // 2. Provider coverage of the FRESH cache: a requested provider counts as
-        // covered only when a fresh cached place carries that provider's attribution.
-        // Cache age alone never proves coverage — records left over from a previously
-        // enabled provider must never be served for a different provider selection.
-        val coveredProviderIds = freshCachedEntities
-            .flatMap { providerIdsOf(it) }
-            .intersect(requestedProviderIds)
+        // 1. Provider coverage of the FRESH cache. A provider counts as covered only
+        //    when a successful coverage record fully contains this exact request —
+        //    same or smaller area, with the query center inside — and is not expired.
+        //    Cache age alone never proves coverage: one previously fetched place does
+        //    not prove the full requested area was queried, and records left over from
+        //    a previously enabled provider must never be served for another selection.
+        val coverageRows = placeCoverageDao?.getAll().orEmpty()
+        val coveredProviderIds = requestedProviderIds.filter { providerId ->
+            coverageCovers(coverageRows, providerId, lat, lon, radiusMeters, currentTimeMs)
+        }.toSet()
         val providersNeedingFetch = activeSources.filter { it.sourceId !in coveredProviderIds }
 
-        // 3. Every requested provider is covered by fresh cache: return cached places
-        // of the requested providers only, filtered by radius. No network call.
-        if (providersNeedingFetch.isEmpty() && freshCachedEntities.isNotEmpty()) {
+        // 2. Every requested provider is covered by fresh successful coverage records:
+        //    return the cached places of the requested providers, filtered by radius.
+        //    No network call — even when the cached pages are empty, because a
+        //    successful empty coverage record genuinely means "no places in this area".
+        //    (When no coverage store is configured, fall back to the legacy
+        //    attribution-based coverage signal so behavior stays defined.)
+        val effectivelyCovered = if (placeCoverageDao == null) {
+            legacyCoveredProviderIds(currentTimeMs, coveringTiles, requestedProviderIds)
+        } else {
+            coveredProviderIds
+        }
+        val providersToFetch =
+            if (placeCoverageDao == null) activeSources.filter { it.sourceId !in effectivelyCovered }
+            else providersNeedingFetch
+
+        if (providersToFetch.isEmpty()) {
+            val cachedEntities = cachedPlaceDao.getPlacesForTiles(coveringTiles)
+            val freshCachedEntities = cachedEntities.filter {
+                (currentTimeMs - it.fetchedTimestamp) < CACHE_EXPIRATION_MS
+            }
             val cachedMerged = freshCachedEntities
                 .map { entityToMergedPlace(it) }
                 .filterRequestedProviders(requestedProviderIds)
@@ -70,46 +98,69 @@ class PlaceRepository(
             )
         }
 
-        // 4. Fetch ONLY the providers not covered by the fresh cache (one request
-        // each). A provider failure is isolated: its results are simply absent while
-        // the other providers' results survive.
+        // 3. Fetch ONLY the providers not covered by the fresh cache (one request
+        //    each). Each provider's outcome is collected individually: a provider
+        //    failure is isolated — its results are simply absent while the other
+        //    providers' results survive — and reported to the caller.
+        val fetchOutcomes = mutableListOf<Pair<String, Result<List<PlaceCandidate>>>>()
         val networkCandidates = mutableListOf<PlaceCandidate>()
-        var networkSuccess = false
 
-        if (providersNeedingFetch.isNotEmpty()) {
+        if (providersToFetch.isNotEmpty()) {
             try {
                 coroutineScope {
-                    val fetchJobs = providersNeedingFetch.map { source ->
-                        async {
-                            source.fetchNear(lat, lon, radiusMeters)
-                        }
+                    val fetchJobs = providersToFetch.map { source ->
+                        async { source.sourceId to source.fetchNear(lat, lon, radiusMeters) }
                     }
-                    val results = fetchJobs.awaitAll()
-                    results.forEach { res ->
-                        if (res.isSuccess) {
-                            networkSuccess = true
-                            networkCandidates.addAll(res.getOrNull().orEmpty())
-                        }
-                    }
+                    fetchOutcomes.addAll(fetchJobs.awaitAll())
                 }
             } catch (_: Exception) {
-                networkSuccess = false
+                // A structural failure of the fan-out itself: treat all uncovered
+                // providers as failed; the stale-cache fallback below applies.
+                providersToFetch.forEach { source ->
+                    fetchOutcomes.add(source.sourceId to Result.failure(PlaceSourceFailure.TemporaryFailure()))
+                }
             }
         }
 
-        // 5. If the missing providers delivered candidates, merge them together with
-        // the fresh cached places (ALL of their providers, so the cache write never
-        // evicts a provider's rows merely because it was not re-requested this time),
-        // update the Room cache for the tile, and return only the places that carry
-        // at least one requested provider.
+        val providerFailures = mutableListOf<ProviderFailure>()
+        val succeededProviderIds = mutableListOf<String>()
+        fetchOutcomes.forEach { (sourceId, res) ->
+            if (res.isSuccess) {
+                succeededProviderIds.add(sourceId)
+                networkCandidates.addAll(res.getOrNull().orEmpty())
+            } else {
+                providerFailures.add(ProviderFailure(sourceId, failureKindOf(res.exceptionOrNull())))
+            }
+        }
+        val networkSuccess = succeededProviderIds.isNotEmpty()
+
+        // 4. If at least one requested provider delivered an answer, merge its
+        //    candidates together with the fresh cached places (ALL of their providers,
+        //    so the cache write never evicts a provider's rows merely because it was
+        //    not re-requested this time or because another provider failed), update
+        //    the Room cache for the tile, record coverage ONLY for the providers that
+        //    actually succeeded, and return only the places that carry at least one
+        //    requested provider.
         if (networkSuccess) {
-            val cachedCandidates = freshCachedEntities
+            val cachedCandidates = freshCachedEntitiesFor(coveringTiles, currentTimeMs)
                 .map { entityToMergedPlace(it) }
                 .flatMap { mergedPlaceToCandidates(it) }
             val mergedPlaces = PlaceMerger.mergeCandidates(networkCandidates + cachedCandidates)
             val cacheEntities = mergedPlaces.map { mergedToEntity(it, centerTile, currentTimeMs) }
 
             cachedPlaceDao.replaceTilePlaces(centerTile, cacheEntities)
+            placeCoverageDao?.upsertAll(
+                succeededProviderIds.map { providerId ->
+                    PlaceCoverageEntity(
+                        providerId = providerId,
+                        centerLat = lat,
+                        centerLon = lon,
+                        radiusMeters = radiusMeters,
+                        status = COVERAGE_STATUS_SUCCESS,
+                        fetchedAt = currentTimeMs
+                    )
+                }
+            )
 
             val radiusFiltered = mergedPlaces
                 .filterRequestedProviders(requestedProviderIds)
@@ -118,13 +169,17 @@ class PlaceRepository(
             return@withContext PlaceRepositoryResult(
                 places = radiusFiltered,
                 isStale = false,
-                sourceTileKey = centerTile
+                sourceTileKey = centerTile,
+                providerFailures = providerFailures
             )
         }
 
-        // 6. Offline or every missing-provider fetch failed: serve whatever the cache
-        // holds for the requested providers, marked stale. An empty cache for the
-        // selection yields an empty stale result — never another provider's records.
+        // 5. Offline or every fetched provider failed: serve whatever the cache holds
+        //    for the requested providers, marked stale. A failed request never
+        //    overwrites previously cached places with an empty result, and empty
+        //    coverage is never recorded for a failed provider. An empty cache for the
+        //    selection yields an empty stale result — never another provider's records.
+        val cachedEntities = cachedPlaceDao.getPlacesForTiles(coveringTiles)
         val staleMerged = cachedEntities
             .map { entityToMergedPlace(it) }
             .filterRequestedProviders(requestedProviderIds)
@@ -134,15 +189,68 @@ class PlaceRepository(
             PlaceRepositoryResult(
                 places = staleMerged,
                 isStale = true,
-                sourceTileKey = centerTile
+                sourceTileKey = centerTile,
+                providerFailures = providerFailures
             )
         } else {
             PlaceRepositoryResult(
                 places = emptyList(),
                 isStale = true,
-                sourceTileKey = centerTile
+                sourceTileKey = centerTile,
+                providerFailures = providerFailures
             )
         }
+    }
+
+    /**
+     * True when [providerId]'s latest successful coverage record is fresh AND fully
+     * contains this request: the distance from the recorded center to the new center
+     * plus the new radius must not exceed the recorded radius. Exact geodesic
+     * containment — matching geohash tiles alone are not sufficient.
+     */
+    private fun coverageCovers(
+        coverageRows: List<PlaceCoverageEntity>,
+        providerId: String,
+        lat: Double,
+        lon: Double,
+        radiusMeters: Int,
+        currentTimeMs: Long
+    ): Boolean {
+        val row = coverageRows.find { it.providerId == providerId } ?: return false
+        if (row.status != COVERAGE_STATUS_SUCCESS) return false
+        if (currentTimeMs - row.fetchedAt >= CACHE_EXPIRATION_MS) return false
+        if (radiusMeters > row.radiusMeters) return false
+        val centerDistance = Geo.calculateDistanceMeters(row.centerLat, row.centerLon, lat, lon)
+        return !centerDistance.isNaN() && centerDistance + radiusMeters <= row.radiusMeters
+    }
+
+    /** Legacy coverage derivation (no coverage store configured): a fresh cached
+     *  place carrying the provider's attribution signals coverage. */
+    private suspend fun legacyCoveredProviderIds(
+        currentTimeMs: Long,
+        coveringTiles: List<String>,
+        requestedProviderIds: Set<String>
+    ): Set<String> {
+        val freshCachedEntities = cachedPlaceDao.getPlacesForTiles(coveringTiles).filter {
+            (currentTimeMs - it.fetchedTimestamp) < CACHE_EXPIRATION_MS
+        }
+        return freshCachedEntities
+            .flatMap { providerIdsOf(it) }
+            .intersect(requestedProviderIds)
+    }
+
+    private suspend fun freshCachedEntitiesFor(
+        coveringTiles: List<String>,
+        currentTimeMs: Long
+    ): List<CachedPlaceEntity> = cachedPlaceDao.getPlacesForTiles(coveringTiles).filter {
+        (currentTimeMs - it.fetchedTimestamp) < CACHE_EXPIRATION_MS
+    }
+
+    private fun failureKindOf(throwable: Throwable?): ProviderFailureKind = when (throwable) {
+        is PlaceSourceFailure.AuthConfigFailure -> ProviderFailureKind.AUTH_CONFIG
+        is PlaceSourceFailure.RateLimited -> ProviderFailureKind.RATE_LIMITED
+        is PlaceSourceFailure.TemporaryFailure -> ProviderFailureKind.TEMPORARY
+        else -> ProviderFailureKind.TEMPORARY
     }
 
     private fun providerIdsOf(entity: CachedPlaceEntity): Set<String> = try {

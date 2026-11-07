@@ -394,4 +394,50 @@ class AppDatabaseTest {
 
         db.close()
     }
+
+    @Test
+    @Throws(IOException::class)
+    fun testMigration13To14CreatesPlaceCoverageAndPreservesCachedPlaces() {
+        // Seed a cached place at version 13
+        var db = helper.createDatabase(TEST_DB, 13).apply {
+            execSQL(
+                """
+                INSERT INTO cached_places (
+                    placeId, primaryName, primaryDescription, latitude, longitude, category,
+                    imageUrl, sourceUrl, license, languageCode, sourcesJson, tileKey, fetchedTimestamp
+                ) VALUES (
+                    'cached_keep', 'Cached Monument', 'Cached desc', 38.7112, -9.1423, 'sights',
+                    NULL, NULL, NULL, 'en',
+                    '[{"sourceName":"OpenTripMap API","sourceId":"otm_1","providerId":"open_trip_map"}]',
+                    'eycqk', 1700000000000
+                )
+                """.trimIndent()
+            )
+            close()
+        }
+
+        db = helper.runMigrationsAndValidate(TEST_DB, 14, true, DatabaseMigrations.MIGRATION_13_14)
+
+        // The cached place must survive untouched.
+        val placeCursor = db.query("SELECT * FROM cached_places WHERE placeId = 'cached_keep'")
+        assertTrue("Cached place must survive the migration", placeCursor.moveToFirst())
+        assertEquals("Cached Monument", placeCursor.getString(placeCursor.getColumnIndexOrThrow("primaryName")))
+        assertEquals(38.7112, placeCursor.getDouble(placeCursor.getColumnIndexOrThrow("latitude")), 0.001)
+        placeCursor.close()
+
+        // The place_coverage table must exist and be writable.
+        db.execSQL(
+            """
+            INSERT INTO place_coverage (providerId, centerLat, centerLon, radiusMeters, status, fetchedAt)
+            VALUES ('open_trip_map', 38.7112, -9.1423, 3000, 'success', 1700000000000)
+            """.trimIndent()
+        )
+        val coverageCursor = db.query("SELECT * FROM place_coverage WHERE providerId = 'open_trip_map'")
+        assertTrue(coverageCursor.moveToFirst())
+        assertEquals("success", coverageCursor.getString(coverageCursor.getColumnIndexOrThrow("status")))
+        assertEquals(3000, coverageCursor.getInt(coverageCursor.getColumnIndexOrThrow("radiusMeters")))
+        coverageCursor.close()
+
+        db.close()
+    }
 }

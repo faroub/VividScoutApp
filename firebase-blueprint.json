@@ -13,11 +13,22 @@
         "latitude": { "type": "number" },
         "longitude": { "type": "number" },
         "photoUri": { "type": "string" },
-        "userNotes": { "type": "string" },
         "contributor": { "type": "string" },
         "timestamp": { "type": "number" }
       },
       "required": ["id", "title", "category", "latitude", "longitude", "timestamp"]
+    },
+    "PrivateSpotNote": {
+      "title": "PrivateSpotNote",
+      "description": "Private scout note for one spot, stored under the owner's own UID path and never included in public community submissions",
+      "type": "object",
+      "properties": {
+        "spotId": { "type": "string" },
+        "ownerUid": { "type": "string" },
+        "notes": { "type": "string" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["spotId", "ownerUid", "notes", "updatedAt"]
     },
     "CommunityTip": {
       "title": "CommunityTip",
@@ -35,16 +46,46 @@
         "upvotes": { "type": "number" }
       },
       "required": ["id", "spotId", "content", "timestamp"]
+    },
+    "SpotPhoto": {
+      "title": "SpotPhoto",
+      "description": "Registered community photo metadata, written only by the trusted finalizePhotoUpload Cloud Function after the referenced Storage object has been verified",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "spotId": { "type": "string" },
+        "photoPath": { "type": "string", "description": "Canonical Storage object path spot_photos/{ownerUid}/{spotId}/{filename}" },
+        "photoUrl": { "type": "string" },
+        "ownerUid": { "type": "string" },
+        "reportsCount": { "type": "number" },
+        "timestamp": { "type": "number" },
+        "moderationState": { "type": "string", "description": "Set to \"removed\" by the trusted moderateReportedPhotos scheduled sweep once the report threshold is reached" },
+        "moderatedAt": { "type": "number", "description": "Server-side wall time (ms) at which the record was marked removed" }
+      },
+      "required": ["id", "spotId", "photoPath", "photoUrl", "ownerUid", "reportsCount", "timestamp"]
     }
   },
   "firestore": {
     "/community_submissions/{submissionId}": {
       "schema": "CommunitySubmission",
-      "description": "Public community submissions and discovered hidden gems synchronized from offline drafts"
+      "description": "Public community submissions and discovered hidden gems synchronized from offline drafts. Must never contain private scout notes — Firestore has no field-level access control"
+    },
+    "/users/{uid}/private_spot_notes/{spotId}": {
+      "schema": "PrivateSpotNote",
+      "description": "Owner-scoped private scout notes: readable and writable only by the authenticated owner (uid); cross-user access is denied by firestore.rules"
     },
     "/community_tips/{tipId}": {
       "schema": "CommunityTip",
       "description": "Community tips, insights, and peer status updates for scout spots"
+    },
+    "/spot_photos/{photoId}": {
+      "schema": "SpotPhoto",
+      "description": "Publicly readable photo metadata; every client write is denied by firestore.rules — only the trusted Cloud Functions create or update these documents (registration at finalization, moderationState by the moderation sweep)"
+    }
+  },
+  "storage": {
+    "/spot_photos/{uid}/{spotId}/{filename}": {
+      "description": "Community photo objects. Publicly readable. Clients may create a new object at their own ownership path (image/jpeg or image/png, under 5 MB). Objects are immutable once written: overwrite (re-upload) is rejected by the create rule, and update and delete are denied for everyone — all removal happens through trusted backend functions (the scheduled orphan reaper and the moderation sweep), keeping Storage and Firestore consistent"
     }
   }
 }

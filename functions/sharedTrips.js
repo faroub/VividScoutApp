@@ -13,6 +13,7 @@
 
 const { HttpsError } = require("firebase-functions/v2/https");
 const { Timestamp } = require("firebase-admin/firestore");
+const { decideRateLimitInTransaction } = require("./rateLimits");
 
 const MAX_SPOTS = 50;
 const MAX_TITLE_LENGTH = 120;
@@ -210,20 +211,26 @@ const linkFor = (tripId) => `${SHAREABLE_LINK_BASE}${tripId}`;
 /**
  * The complete server-owned publishing operation used by the publishSharedTrip Cloud
  * Function. `db` is the Admin Firestore instance (bypasses rules; the function is the
- * only writer of shared_trips). Guarantees:
+ * only writer of shared_trips). The critical persistence is ONE Firestore transaction:
+ *
+ * - validation happens first, outside the transaction;
+ * - the transaction reads the idempotency request marker, and if it exists returns the
+ *   already-published trip for the same owner (replay) or rejects another owner's reuse;
+ * - the rate-limit counter is read and, when allowed, incremented inside the SAME
+ *   transaction (options.rateLimit = { ref, maxPerHour }) — so a slot is consumed
+ *   exactly when the publish commits, and a failed or contended publish consumes none;
+ * - the trip document and its idempotency record are created together in one commit, so
+ *   no invocation can ever leave an orphaned trip document.
+ *
+ * The trip document reference is allocated ONCE before the transaction: transaction
+ * callback retries reuse the same id, never generate a fresh one.
  *
  * - The document id is generated server-side (unpredictable auto-id); the client cannot
  *   choose or predict it, and cannot address an existing document.
- * - The trip document is created with create() semantics: an atomic create-only write
- *   that fails with ALREADY_EXISTS instead of overwriting an existing document.
  * - createdAt/expireAt are generated from the server's clock at publish time; the
  *   lifetime is exactly 30 days.
- * - An idempotency record maps the client requestId to the published tripId, so a
- *   duplicate request or retry after a lost response replays the ALREADY published
- *   trip instead of publishing a second one. Concurrent duplicates race on the
- *   idempotency record and all but one replay the winner.
- * - [options.shouldRateLimit] gates only NEW publishes; idempotent replays never
- *   consume publishing rate-limit budget.
+ * - Replays are idempotent and consume no rate-limit budget; concurrent duplicates of
+ *   the same requestId all resolve to the single published trip.
  *
  * Returns { tripId, shareableLink, replayed }.
  */
@@ -233,59 +240,55 @@ async function publishSharedTripDocument(db, ownerUid, data, options = {}) {
   }
   const validated = validateSharedTripPublishPayload(data);
 
-  // 1. Idempotent replay: return the trip this exact request already published.
   const requestRef = db.collection(PUBLISH_REQUEST_COLLECTION).doc(validated.requestId);
-  const existing = await requestRef.get();
-  if (existing.exists) {
-    const record = existing.data();
-    if (record.ownerUid !== ownerUid) {
-      throw new HttpsError("already-exists", "This publish request identifier is already in use.");
-    }
-    return { tripId: record.tripId, shareableLink: linkFor(record.tripId), replayed: true };
-  }
-
-  // 2. Rate limit consumes budget only for genuinely new publishes.
-  if (options.shouldRateLimit) {
-    const isAllowed = await options.shouldRateLimit();
-    if (!isAllowed) {
-      throw new HttpsError(
-        "resource-exhausted",
-        "Rate limit exceeded. Maximum 10 shared trips per hour per user."
-      );
-    }
-  }
-
-  // 3. Server-owned id + timestamps; create() never overwrites an existing document.
+  const rateLimit = options.rateLimit || null;
   const nowMs = Date.now();
-  const tripRef = db.collection(TRIP_COLLECTION).doc();
-  await tripRef.create(buildSharedTripDocument(tripRef.id, validated, nowMs));
 
-  // 4. Record the idempotency marker. A lost race means another invocation with the
-  // same requestId published first: replay its published trip instead of leaking a
-  // second document.
-  try {
-    await requestRef.create({
+  // Allocated once, before the transaction: a callback retry must not mint a new id.
+  const tripRef = db.collection(TRIP_COLLECTION).doc();
+
+  const outcome = await db.runTransaction(async (transaction) => {
+    // All reads precede all writes (Firestore transaction requirement).
+    const requestDoc = await transaction.get(requestRef);
+
+    // 1. Idempotent replay: this exact request already published a trip. Concurrent
+    //    duplicates that lost the race reach this branch after the transaction retry
+    //    re-reads the marker — they replay the winner instead of writing anything.
+    if (requestDoc.exists) {
+      const record = requestDoc.data();
+      if (record.ownerUid !== ownerUid) {
+        throw new HttpsError("already-exists", "This publish request identifier is already in use.");
+      }
+      return { tripId: record.tripId, replayed: true };
+    }
+
+    // 2. Rate limit, consumed only by genuinely new publishes, atomically with them.
+    if (rateLimit) {
+      const allowed = await decideRateLimitInTransaction(
+        transaction,
+        rateLimit.ref,
+        rateLimit.maxPerHour,
+        nowMs
+      );
+      if (!allowed) {
+        throw new HttpsError(
+          "resource-exhausted",
+          "Rate limit exceeded. Maximum 10 shared trips per hour per user."
+        );
+      }
+    }
+
+    // 3. Exactly one trip document and its idempotency record, committed together.
+    transaction.create(tripRef, buildSharedTripDocument(tripRef.id, validated, nowMs));
+    transaction.create(requestRef, {
       ownerUid,
       tripId: tripRef.id,
       createdAt: Timestamp.fromMillis(nowMs),
     });
-  } catch (err) {
-    const isAlreadyExists =
-      err.code === 6 ||
-      String(err.code).includes("already-exists") ||
-      String(err.message).toLowerCase().includes("already-exists");
-    if (!isAlreadyExists) {
-      throw err;
-    }
-    const winner = await requestRef.get();
-    const record = winner && winner.exists ? winner.data() : null;
-    if (record && record.tripId === tripRef.id) {
-      return { tripId: tripRef.id, shareableLink: linkFor(tripRef.id), replayed: false };
-    }
-    throw new HttpsError("already-exists", "This publish request was already completed.");
-  }
+    return { tripId: tripRef.id, replayed: false };
+  });
 
-  return { tripId: tripRef.id, shareableLink: linkFor(tripRef.id), replayed: false };
+  return { tripId: outcome.tripId, shareableLink: linkFor(outcome.tripId), replayed: outcome.replayed };
 }
 
 module.exports = {

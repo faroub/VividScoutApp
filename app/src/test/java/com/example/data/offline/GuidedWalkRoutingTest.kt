@@ -80,7 +80,8 @@ class GuidedWalkRoutingTest {
         // Segments injected from an offline region pack form the only graph coverage
         // here (Sintra, far outside the hand-authored Lisbon base network), so every
         // leg of the loop runs exclusively on region-pack edges and may be labeled
-        // fully routed.
+        // fully routed. These segments carry real imported pedestrian geometry
+        // (isSynthetic = false), the only provenance that qualifies as fully routed.
         val sintraLat = 38.7900
         val sintraLng = -9.3900
         VectorWalkGraph.loadCustomRegionSegments(
@@ -96,7 +97,8 @@ class GuidedWalkRoutingTest {
                     distanceMeters = 650.0,
                     streetName = "Rua das Pedras Negras Sintra",
                     isPedestrian = true,
-                    isStairs = false
+                    isStairs = false,
+                    isSynthetic = false
                 ),
                 DownloadedRoadSegment(
                     id = "p7_seg_2",
@@ -109,7 +111,8 @@ class GuidedWalkRoutingTest {
                     distanceMeters = 800.0,
                     streetName = "Calçada do Castelo dos Mouros",
                     isPedestrian = true,
-                    isStairs = true
+                    isStairs = true,
+                    isSynthetic = false
                 )
             )
         )
@@ -395,6 +398,187 @@ class GuidedWalkRoutingTest {
             "Edges injected from region packs must carry region-pack provenance",
             WalkEdgeProvenance.REGION_PACK_SEGMENT,
             packEdges.first().provenance
+        )
+    }
+
+    @Test
+    fun syntheticRegionPackLoop_isApproximateNotStreetVerified() {
+        // A locally synthesized region pack (OfflineRegionStorage.synthesizeRoadNetworkForBounds
+        // output) generates a road-like grid, not real street geometry. A loop routed
+        // over it must NOT be labeled fully routed, even though every leg is a graph path.
+        val portoLat = 41.1400
+        val portoLng = -8.6100
+        VectorWalkGraph.loadCustomRegionSegments(
+            listOf(
+                DownloadedRoadSegment(
+                    id = "syn_seg_1",
+                    fromId = "syn_origin_node",
+                    toId = "syn_mid_node",
+                    fromLat = portoLat,
+                    fromLng = portoLng,
+                    toLat = portoLat + 0.005,
+                    toLng = portoLng + 0.005,
+                    distanceMeters = 650.0,
+                    streetName = "Synthetic Way 1",
+                    isPedestrian = true,
+                    isStairs = false,
+                    isSynthetic = true
+                ),
+                DownloadedRoadSegment(
+                    id = "syn_seg_2",
+                    fromId = "syn_mid_node",
+                    toId = "syn_dest_node",
+                    fromLat = portoLat + 0.005,
+                    fromLng = portoLng + 0.005,
+                    toLat = portoLat + 0.010,
+                    toLng = portoLng + 0.010,
+                    distanceMeters = 800.0,
+                    streetName = "Synthetic Avenue A",
+                    isPedestrian = true,
+                    isStairs = true,
+                    isSynthetic = true
+                )
+            )
+        )
+
+        val waypoint = createSpot("synw", "Synthetic Hill", "sights", portoLat + 0.010, portoLng + 0.010)
+        val plan = GuidedWalkPlannerEngine.planGuidedWalk(
+            originLat = portoLat,
+            originLng = portoLng,
+            startTitle = "Synthetic Palace",
+            targetDurationMinutes = 60,
+            mood = GuidedWalkMood.SCENIC,
+            availableSpots = listOf(waypoint)
+        )
+
+        assertTrue("Loop must be circular", plan.isCircularLoop)
+        assertTrue("Synthetic-pack legs are still routed on the graph", !plan.hasStraightLineLegs)
+        assertFalse("Synthetic region-pack loops must not claim verified routing", plan.isFullyRouted)
+        assertEquals(
+            "Synthetic region-pack loops must be labeled approximate",
+            "Approximate · synthetic region-pack data, not street-verified",
+            plan.routingLabel
+        )
+        assertTrue("Routed loop must have a positive distance", plan.totalDistanceMeters > 0)
+    }
+
+    @Test
+    fun syntheticPackLoop_mixedWithStraightLineLeg_neverClaimedVerified() {
+        // A loop whose origin sits in synthetic-pack coverage but whose waypoint has
+        // no graph coverage: one leg runs on synthetic edges, the other falls back to
+        // a straight-line estimate. The plan must stay approximate under both flags.
+        val coimbraLat = 40.2100
+        val coimbraLng = -8.4200
+        VectorWalkGraph.loadCustomRegionSegments(
+            listOf(
+                DownloadedRoadSegment(
+                    id = "syn2_seg_1",
+                    fromId = "syn2_origin_node",
+                    toId = "syn2_mid_node",
+                    fromLat = coimbraLat,
+                    fromLng = coimbraLng,
+                    toLat = coimbraLat + 0.004,
+                    toLng = coimbraLng + 0.004,
+                    distanceMeters = 550.0,
+                    streetName = "Synthetic Way 2",
+                    isPedestrian = true,
+                    isStairs = false,
+                    isSynthetic = true
+                )
+            )
+        )
+
+        // Waypoint ~700m from the pack's far node: beyond the 400m snap radius of every
+        // graph node, so the outbound leg falls back to a straight-line estimate.
+        val waypoint = createSpot("syn3w", "Distant Hill", "sights", coimbraLat + 0.012, coimbraLng + 0.012)
+        val plan = GuidedWalkPlannerEngine.planGuidedWalk(
+            originLat = coimbraLat,
+            originLng = coimbraLng,
+            startTitle = "Synthetic Start",
+            targetDurationMinutes = 60,
+            mood = GuidedWalkMood.SCENIC,
+            availableSpots = listOf(waypoint)
+        )
+
+        if (plan.waypoints.isNotEmpty()) {
+            assertFalse("Mixed-provenance loops must not claim verified routing", plan.isFullyRouted)
+            assertTrue(
+                "The routing label must say approximate, never verified",
+                plan.routingLabel.startsWith("Approximate")
+            )
+        }
+    }
+
+    @Test
+    fun aStarPathfinder_syntheticPackCoverage_flagsSyntheticProvenance() {
+        VectorWalkGraph.loadCustomRegionSegments(
+            listOf(
+                DownloadedRoadSegment(
+                    id = "syn4_seg_1",
+                    fromId = "syn4_origin_node",
+                    toId = "syn4_dest_node",
+                    fromLat = 40.6400,
+                    fromLng = -8.6500,
+                    toLat = 40.6450,
+                    toLng = -8.6450,
+                    distanceMeters = 650.0,
+                    streetName = "Synthetic Way 4",
+                    isPedestrian = true,
+                    isStairs = false,
+                    isSynthetic = true
+                )
+            )
+        )
+
+        val result = AStarPathfinder.findShortestPath(
+            startLat = 40.6400,
+            startLng = -8.6500,
+            destLat = 40.6450,
+            destLng = -8.6450,
+            startName = "Synthetic Start",
+            destName = "Synthetic End"
+        )
+
+        assertFalse("Synthetic-pack routes are still graph paths", result.isDirectFallback)
+        assertFalse(
+            "Synthetic-pack paths must not claim real region-pack provenance",
+            result.usesOnlyRegionPackGeometry
+        )
+        assertTrue(
+            "Synthetic-pack paths must report their synthetic provenance",
+            result.usesSyntheticRegionPackGeometry
+        )
+    }
+
+    @Test
+    fun walkEdge_syntheticSegmentsCarrySyntheticProvenance() {
+        VectorWalkGraph.loadCustomRegionSegments(
+            listOf(
+                DownloadedRoadSegment(
+                    id = "syn5_seg_1",
+                    fromId = "syn5_origin_node",
+                    toId = "syn5_dest_node",
+                    fromLat = 39.7400,
+                    fromLng = -8.8000,
+                    toLat = 39.7450,
+                    toLng = -8.7950,
+                    distanceMeters = 650.0,
+                    streetName = "Synthetic Way 5",
+                    isPedestrian = true,
+                    isStairs = false,
+                    isSynthetic = true
+                )
+            )
+        )
+
+        val syntheticEdges = VectorWalkGraph.getEdges().filter {
+            it.fromId == "syn5_origin_node" && it.toId == "syn5_dest_node"
+        }
+        assertTrue("Injected synthetic segments must exist in the graph", syntheticEdges.isNotEmpty())
+        assertEquals(
+            "Locally synthesized segments must carry synthetic provenance",
+            WalkEdgeProvenance.SYNTHETIC_REGION_PACK,
+            syntheticEdges.first().provenance
         )
     }
 }

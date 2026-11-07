@@ -11,20 +11,31 @@
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { initializeApp } = require("firebase-admin/app");
-const { getFirestore, FieldValue, Timestamp } = require("firebase-admin/firestore");
+const { getFirestore, Timestamp } = require("firebase-admin/firestore");
 const { getStorage } = require("firebase-admin/storage");
 const axios = require("axios");
 const { validateSharedTripPublishPayload, publishSharedTripDocument } = require("./sharedTrips");
-const { finalizePhotoUploadDocument, PHOTO_FINALIZE_RATE_LIMIT_MAX_PER_HOUR, reapUnregisteredPhotoObjects } = require("./photos");
+const { finalizePhotoUploadDocument, PHOTO_FINALIZE_RATE_LIMIT_MAX_PER_HOUR, reapUnregisteredPhotoObjects, moderateReportedPhotos } = require("./photos");
 const { validateNearbyPlacesRequest } = require("./validation");
 const { firestoreDatabaseId } = require("./firestoreDatabase");
+const { decideRateLimitInTransaction, RATE_LIMIT_WINDOW_MS } = require("./rateLimits");
 
 const app = initializeApp();
 const db = getFirestore(app, firestoreDatabaseId());
 
 const RATE_LIMIT_MAX_PER_HOUR = 60;
-const RATE_LIMIT_WINDOW_MS = 3600 * 1000; // 1 hour
 const SHARED_TRIP_RATE_LIMIT_MAX_PER_HOUR = 10;
+
+// Provider outcome contract (see functions/validation.js): a successful response —
+// including a legitimate empty one — is "ok"; anything else names the failure kind so
+// the app never mistakes a provider outage for "no places around here".
+const {
+  PROVIDER_STATUS_OK: PROVIDER_OK,
+  PROVIDER_STATUS_TRANSIENT: PROVIDER_TRANSIENT,
+  PROVIDER_STATUS_AUTH_CONFIG: PROVIDER_AUTH_CONFIG,
+  PROVIDER_STATUS_RATE_LIMIT: PROVIDER_RATE_LIMIT,
+  providerStatusForError
+} = require("./validation");
 
 /**
  * Calculates Haversine geodesic distance in meters between two lat/lon pairs.
@@ -45,52 +56,34 @@ function calculateHaversineMeters(lat1, lon1, lat2, lon2) {
 
 /**
  * Enforces per-user rate limit (60 requests/UID/hour) using Firestore counter documents.
+ * The decision and increment run inside one transaction, so a slot is consumed exactly
+ * when the caller's operation is counted.
  */
 async function checkRateLimit(uid, counterKey = `nearby_places_${uid}`, maxPerHour = RATE_LIMIT_MAX_PER_HOUR) {
-  const now = Date.now();
   const rateLimitRef = db.collection("rate_limits").doc(counterKey);
-
-  return db.runTransaction(async (transaction) => {
-    const doc = await transaction.get(rateLimitRef);
-    if (!doc.exists) {
-      transaction.set(rateLimitRef, {
-        count: 1,
-        windowStart: now
-      });
-      return true;
-    }
-
-    const data = doc.data();
-    const windowStart = data.windowStart || now;
-    const currentCount = data.count || 0;
-
-    if (now - windowStart > RATE_LIMIT_WINDOW_MS) {
-      transaction.set(rateLimitRef, {
-        count: 1,
-        windowStart: now
-      });
-      return true;
-    }
-
-    if (currentCount >= maxPerHour) {
-      return false;
-    }
-
-    transaction.update(rateLimitRef, {
-      count: FieldValue.increment(1)
-    });
-    return true;
-  });
+  return db.runTransaction((transaction) =>
+    decideRateLimitInTransaction(transaction, rateLimitRef, maxPerHour, Date.now())
+  );
 }
 
 /**
- * Fetches OpenTripMap candidates
+ * Fetches OpenTripMap candidates.
+ *
+ * Returns { records, status } where status is exactly one of:
+ *   - "ok": the provider answered (records may legitimately be empty — a successful
+ *     empty response is a real coverage signal, not a failure);
+ *   - "transient": the provider timed out, was unreachable, or answered 5xx — retryable;
+ *   - "auth-config": the provider credentials are missing or rejected (401/403) — not
+ *     retryable by re-calling, the deployment must be fixed;
+ *   - "rate-limit": the provider answered 429.
+ * Failures must never be flattened into an empty "ok" result: an empty result proves
+ * "no places here" only when the provider actually answered.
  */
 async function fetchOpenTripMap(lat, lon, radiusMeters) {
   const apiKey = process.env.OPENTRIPMAP_API_KEY;
   if (!apiKey) {
     console.warn("[OpenTripMap] OPENTRIPMAP_API_KEY secret not configured in environment/Secret Manager. Skipping fetch.");
-    return [];
+    return { records: [], status: PROVIDER_AUTH_CONFIG };
   }
 
   const url = `https://api.opentripmap.com/0.1/en/places/radius?radius=${radiusMeters}&lon=${lon}&lat=${lat}&kinds=historic,cultural,architecture,natural,tourist_object&rate=2&format=json&limit=15&apikey=${apiKey}`;
@@ -99,7 +92,7 @@ async function fetchOpenTripMap(lat, lon, radiusMeters) {
     const response = await axios.get(url, { timeout: 8000 });
     const items = response.data || [];
 
-    return items
+    const records = items
       .filter((item) => item.name && item.point && !isNaN(item.point.lat) && !isNaN(item.point.lon))
       .map((item) => {
         const kinds = item.kinds || "tourist_object";
@@ -121,20 +114,23 @@ async function fetchOpenTripMap(lat, lon, radiusMeters) {
           languageCode: "en"
         };
       });
+    return { records, status: PROVIDER_OK };
   } catch (err) {
     console.warn(`[OpenTripMap] Fetch failed: ${err.message}`);
-    return [];
+    return { records: [], status: providerStatusForError(err) };
   }
 }
 
 /**
- * Fetches GeoNames candidates
+ * Fetches GeoNames candidates. Same outcome contract as [fetchOpenTripMap]: a provider
+ * failure is reported as such (transient / auth-config / rate-limit), never hidden as
+ * an empty success.
  */
 async function fetchGeonames(lat, lon, radiusMeters) {
   const username = process.env.GEONAMES_USERNAME;
   if (!username) {
     console.warn("[GeoNames] GEONAMES_USERNAME secret not configured in environment/Secret Manager. Skipping fetch.");
-    return [];
+    return { records: [], status: PROVIDER_AUTH_CONFIG };
   }
 
   const radiusKm = Math.min(Math.max(radiusMeters / 1000, 1), 30);
@@ -144,7 +140,7 @@ async function fetchGeonames(lat, lon, radiusMeters) {
     const response = await axios.get(url, { timeout: 8000 });
     const geonames = (response.data && response.data.geonames) || [];
 
-    return geonames
+    const records = geonames
       .filter((item) => item.title && !isNaN(item.lat) && !isNaN(item.lng))
       .map((item) => {
         const feature = item.feature || "landmark";
@@ -164,9 +160,10 @@ async function fetchGeonames(lat, lon, radiusMeters) {
           languageCode: item.lang || "en"
         };
       });
+    return { records, status: PROVIDER_OK };
   } catch (err) {
     console.warn(`[GeoNames] Fetch failed: ${err.message}`);
-    return [];
+    return { records: [], status: providerStatusForError(err) };
   }
 }
 
@@ -203,25 +200,33 @@ exports.nearbyPlaces = onCall(
 
     console.log(`[nearbyPlaces] Processing query for UID=${uid.substring(0, 4)}*** at coords (${lat.toFixed(2)}, ${lon.toFixed(2)}) radius=${radiusMeters}m`);
 
+    // 4. Fetch each requested provider, isolating its outcome: one provider's failure
+    //    never discards another provider's results. The per-provider status is reported
+    //    alongside the merged places so the app can distinguish a genuine "no places
+    //    here" answer from a provider outage — an empty successful response is valid
+    //    coverage data, a failed one is not.
     const rawCandidates = [];
+    const providerStatus = {};
 
     if (requestedSources.includes("opentripmap")) {
-      const otmResults = await fetchOpenTripMap(lat, lon, radiusMeters);
-      rawCandidates.push(...otmResults);
+      const otm = await fetchOpenTripMap(lat, lon, radiusMeters);
+      rawCandidates.push(...otm.records);
+      providerStatus["opentripmap"] = otm.status;
     }
 
     if (requestedSources.includes("geonames")) {
-      const geonamesResults = await fetchGeonames(lat, lon, radiusMeters);
-      rawCandidates.push(...geonamesResults);
+      const geonames = await fetchGeonames(lat, lon, radiusMeters);
+      rawCandidates.push(...geonames.records);
+      providerStatus["geonames"] = geonames.status;
     }
 
-    // 6. Enforce exact geodesic distance filtering against requested radius
+    // 5. Enforce exact geodesic distance filtering against requested radius
     const validatedCandidates = rawCandidates.filter((candidate) => {
       const distance = calculateHaversineMeters(lat, lon, candidate.latitude, candidate.longitude);
       return !isNaN(distance) && distance <= radiusMeters;
     });
 
-    return validatedCandidates;
+    return { places: validatedCandidates, providerStatus };
   }
 );
 
@@ -234,11 +239,14 @@ exports.nearbyPlaces = onCall(
  *
  * Server-authoritative persistence (see functions/sharedTrips.js): the document id is
  * an unpredictable server-generated auto-id, createdAt uses the server's clock, and
- * expireAt is exactly 30 days later — the client cannot influence any of them. The
- * trip document is created with create()-only semantics, never an unconditional
- * overwrite, and a client-supplied requestId makes retries idempotent (a replay
- * returns the already-published trip instead of publishing a second one).
- * Enforces authentication, App Check, and a per-UID publishing rate limit
+ * expireAt is exactly 30 days later — the client cannot influence any of them.
+ * Validation happens first; then ONE Firestore transaction atomically reads the
+ * idempotency marker (replaying the already-published trip for the same owner,
+ * rejecting reuse by another owner), reads and increments the per-UID rate-limit
+ * counter, and creates exactly one trip document together with its idempotency record.
+ * A slot is consumed exactly when the publish commits; concurrent duplicates of the
+ * same requestId all resolve to the single published trip, with no orphaned documents.
+ * Enforces authentication, App Check, and the per-UID publishing rate limit
  * (consumed only by genuinely new publishes).
  */
 exports.publishSharedTrip = onCall(
@@ -253,11 +261,14 @@ exports.publishSharedTrip = onCall(
       throw new HttpsError("unauthenticated", "User authentication required to publish a shared trip.");
     }
 
-    // Server-owned publishing: validation, id generation, timestamps, atomic create,
-    // idempotency replay, and the per-UID rate limit (new publishes only).
+    // Server-owned publishing: validation, id generation, timestamps, and the atomic
+    // create of exactly one trip document + its idempotency record + the per-UID rate
+    // limit (new publishes only) — all committed in a single Firestore transaction.
     return publishSharedTripDocument(db, auth.uid, request.data || {}, {
-      shouldRateLimit: () =>
-        checkRateLimit(auth.uid, `shared_trips_publish_${auth.uid}`, SHARED_TRIP_RATE_LIMIT_MAX_PER_HOUR)
+      rateLimit: {
+        ref: db.collection("rate_limits").doc(`shared_trips_publish_${auth.uid}`),
+        maxPerHour: SHARED_TRIP_RATE_LIMIT_MAX_PER_HOUR,
+      },
     });
   }
 );
@@ -268,12 +279,20 @@ exports.publishSharedTrip = onCall(
  * The only trusted writer of spot_photos metadata documents. Firestore Rules deny
  * direct client creation, so a photo becomes visible only after its Storage object has
  * been verified server-side: the object must exist in the project's bucket under the
- * authenticated caller's own ownership-aware path spot_photos/{uid}/{spotId}/{filename},
- * stay within the size limit, and be a permitted image type. The Firestore document id
- * is generated server-side; the metadata references the verified object only (an
- * arbitrary external URL is rejected). Replays of the same object are idempotent.
- * Enforces authentication, App Check, and a per-UID registration rate limit
- * (consumed only by genuinely new registrations).
+ * authenticated caller's own ownership-aware path spot_photos/{uid}/{spotId}/{filename}
+ * whose ownerUid/spotId custom metadata agrees with that path, and — above all — its
+ * ACTUAL BYTES must be genuine JPEG or PNG image data within the decompression-bomb
+ * safety bounds; the declared content type is not trusted (see
+ * validateAndNormalizeImageObject). Accepted objects are re-encoded in place into the
+ * canonical published JPEG with all metadata (including EXIF/GPS) stripped. The
+ * Firestore document id is server-derived — the SHA-256 digest of the canonical object
+ * path — and the registration itself is one Firestore transaction that atomically reads
+ * the existing registration (replaying it for the same owner, rejecting a conflicting
+ * record) and commits the photo document together with the rate-limit increment, so
+ * concurrent finalizations of the same object can never create duplicate or partial
+ * metadata. Replays of the same object are idempotent. Enforces authentication, App
+ * Check, and a per-UID registration rate limit (consumed only by genuinely new
+ * registrations).
  */
 exports.finalizePhotoUpload = onCall(
   {
@@ -287,8 +306,10 @@ exports.finalizePhotoUpload = onCall(
     }
 
     return finalizePhotoUploadDocument(db, getStorage().bucket(), auth.uid, request.data || {}, {
-      shouldRateLimit: () =>
-        checkRateLimit(auth.uid, `photo_finalize_${auth.uid}`, PHOTO_FINALIZE_RATE_LIMIT_MAX_PER_HOUR)
+      rateLimit: {
+        ref: db.collection("rate_limits").doc(`photo_finalize_${auth.uid}`),
+        maxPerHour: PHOTO_FINALIZE_RATE_LIMIT_MAX_PER_HOUR,
+      },
     });
   }
 );
@@ -300,16 +321,39 @@ exports.finalizePhotoUpload = onCall(
  * a registered photo document — a client crash or lost connection between the Storage
  * upload and the finalizePhotoUpload call otherwise leaves the object behind forever.
  * Safety: candidates must be older than 24 hours (in-flight retries are never touched),
- * follow the ownership-aware path structure with matching ownerUid metadata, and have
- * no spot_photos Firestore record referencing them (registered photos are never
- * deleted). Deletion failures are logged and retried by the next run; the operation is
- * idempotent and bounded (at most 200 objects per invocation).
+ * follow the ownership-aware path structure with an ownerUid metadata that EXACTLY
+ * matches the path owner, and be claimed for deletion inside a Firestore transaction
+ * that re-verifies the registration is missing — concurrent finalization locks on the
+ * same claim, so the reaper never deletes a photo that is being registered. The listing
+ * cursor is persisted between runs, so repeated hourly invocations advance through the
+ * whole listing instead of restarting at a head full of retained objects. Deletion
+ * failures leave a claim and are retried on later runs; the operation is idempotent and
+ * bounded (at most 200 listing objects plus 50 claim retries per invocation).
  */
 exports.reapOrphanedPhotoUploads = onSchedule("every 60 minutes", async () => {
   const result = await reapUnregisteredPhotoObjects(db, getStorage().bucket());
+  console.log(
+    `[reapOrphanedPhotoUploads] processed=${result.processed} deleted=${result.deleted} ` +
+      `kept=${result.kept} failed=${result.failed} retried=${result.retried}`
+  );
+});
+
+/**
+ * Firebase Cloud Function: moderateReportedPhotos (scheduled, every 15 minutes)
+ *
+ * Authoritative moderation of community photos. The 3-report threshold only hides a
+ * photo in the app UI; anyone who already holds the object's public download URL could
+ * still fetch the image. This sweep deletes the Storage object (revoking the download
+ * URL with it) and marks the Firestore record "removed", making a moderated photo
+ * genuinely inaccessible. Objects already gone (a concurrent reaper) are tolerated; a
+ * failed delete leaves the record unmarked so the next sweep retries. Idempotent:
+ * already-removed records are skipped.
+ */
+exports.moderateReportedPhotos = onSchedule("every 15 minutes", async () => {
+  const result = await moderateReportedPhotos(db, getStorage().bucket(), { nowMs: () => Date.now() });
   if (result.processed > 0) {
     console.log(
-      `[reapOrphanedPhotoUploads] processed=${result.processed} deleted=${result.deleted} kept=${result.kept}`
+      `[moderateReportedPhotos] processed=${result.processed} removed=${result.removed} kept=${result.kept} failed=${result.failed}`
     );
   }
 });

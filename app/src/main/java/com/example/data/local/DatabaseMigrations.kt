@@ -284,6 +284,33 @@ object DatabaseMigrations {
         }
     }
 
+    /**
+     * Migration from version 13 to version 14:
+     * Creates place_coverage table recording what each provider was successfully asked
+     * for (query center, radius, status, fetch time) so cache reuse is decided by exact
+     * geographic containment of the requested area, not by the presence of one cached
+     * place. Existing cached places and all user data are untouched.
+     */
+    val MIGRATION_13_14 = object : Migration(13, 14) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `place_coverage` (
+                    `providerId` TEXT NOT NULL,
+                    `centerLat` REAL NOT NULL,
+                    `centerLon` REAL NOT NULL,
+                    `radiusMeters` INTEGER NOT NULL,
+                    `status` TEXT NOT NULL,
+                    `fetchedAt` INTEGER NOT NULL,
+                    PRIMARY KEY(`providerId`)
+                )
+                """.trimIndent()
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_place_coverage_providerId` ON `place_coverage` (`providerId`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_place_coverage_fetchedAt` ON `place_coverage` (`fetchedAt`)")
+        }
+    }
+
     val ALL_MIGRATIONS: Array<Migration> = arrayOf(
         MIGRATION_1_2,
         MIGRATION_2_3,
@@ -296,6 +323,7 @@ object DatabaseMigrations {
         MIGRATION_9_10,
         MIGRATION_10_11,
         MIGRATION_11_12,
-        MIGRATION_12_13
+        MIGRATION_12_13,
+        MIGRATION_13_14
     )
 }

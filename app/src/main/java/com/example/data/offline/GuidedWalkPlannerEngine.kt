@@ -39,7 +39,14 @@ data class GuidedWalkPlan(
      * graph coverage exists for it. Distinguishes "partially unrouted" plans from
      * plans that are fully routed on (possibly approximate) graph paths.
      */
-    val hasStraightLineLegs: Boolean = false
+    val hasStraightLineLegs: Boolean = false,
+    /**
+     * True when at least one leg was routed over synthetic region-pack geometry
+     * (a locally generated road-like grid, not real street data). Such loops stay
+     * approximate and are labeled accordingly, distinct from loops on the
+     * hand-authored base graph.
+     */
+    val hasSyntheticPackLegs: Boolean = false
 ) {
     val formattedDistance: String
         get() = if (totalDistanceMeters >= 1000) {
@@ -53,6 +60,8 @@ data class GuidedWalkPlan(
             "Routed on offline region pack data"
         } else if (isCircularLoop && hasStraightLineLegs) {
             "Approximate · offline routing unavailable for part of this loop"
+        } else if (isCircularLoop && hasSyntheticPackLegs) {
+            "Approximate · synthetic region-pack data, not street-verified"
         } else if (isCircularLoop) {
             "Approximate · hand-authored walking graph, not street-verified"
         } else {
@@ -64,17 +73,19 @@ data class GuidedWalkPlan(
  * One leg of a guided-walk loop. [distanceMeters] is a graph path distance when
  * [isRouted] is true; otherwise it is a straight-line estimate, used only because
  * no offline routing data covers this leg. [usesOnlyRegionPackGeometry] is true
- * when the leg's path traverses only region-pack edges (plus snap connectors);
- * a routed leg on the hand-authored built-in graph is an approximate graph
- * connection, not street-verified geometry. [pathPoints] carries the leg's
- * geometry (routed polyline or straight interpolation) so distance, duration
- * and elevation all follow the same path.
+ * when the leg's path traverses only real imported region-pack edges (plus snap
+ * connectors); a routed leg on the hand-authored built-in graph or on synthetic
+ * region-pack geometry is an approximate graph connection, not street-verified
+ * geometry ([usesSyntheticRegionPackGeometry] flags the synthetic case).
+ * [pathPoints] carries the leg's geometry (routed polyline or straight
+ * interpolation) so distance, duration and elevation all follow the same path.
  */
 data class GuidedWalkLeg(
     val distanceMeters: Double,
     val isRouted: Boolean,
     val pathPoints: List<Pair<Double, Double>> = emptyList(),
-    val usesOnlyRegionPackGeometry: Boolean = false
+    val usesOnlyRegionPackGeometry: Boolean = false,
+    val usesSyntheticRegionPackGeometry: Boolean = false
 )
 
 /**
@@ -84,12 +95,13 @@ data class GuidedWalkLeg(
  * Loop distances are routed on the offline walking graph ([AStarPathfinder]) whenever
  * graph coverage exists: each leg's distance is the actual graph path length. The
  * built-in graph is hand-authored (real landmark nodes connected by straight-line
- * edges), so a loop routed only on it is an approximate graph connection, not a
- * verified street-level pedestrian route — such plans keep
- * [GuidedWalkPlan.isFullyRouted] = false and are labeled accordingly. Only loops
- * whose legs run exclusively on edges injected from offline region packs qualify as
- * fully routed. When a leg has no graph coverage at all it falls back to a
- * clearly-labeled straight-line estimate, marking the plan approximate.
+ * edges), and region packs produced locally generate synthetic road-like grids, so a
+ * loop routed on either is an approximate graph connection, not a verified
+ * street-level pedestrian route — such plans keep [GuidedWalkPlan.isFullyRouted]
+ * = false and are labeled accordingly. Only loops whose legs run exclusively on
+ * edges carrying real imported pedestrian geometry from offline region packs
+ * qualify as fully routed. When a leg has no graph coverage at all it falls back
+ * to a clearly-labeled straight-line estimate, marking the plan approximate.
  */
 object GuidedWalkPlannerEngine {
 
@@ -121,7 +133,8 @@ object GuidedWalkPlannerEngine {
             distanceMeters = result.totalDistanceMeters,
             isRouted = !result.isDirectFallback,
             pathPoints = result.pathPoints,
-            usesOnlyRegionPackGeometry = result.usesOnlyRegionPackGeometry
+            usesOnlyRegionPackGeometry = result.usesOnlyRegionPackGeometry,
+            usesSyntheticRegionPackGeometry = result.usesSyntheticRegionPackGeometry
         )
     }
 
@@ -259,7 +272,8 @@ object GuidedWalkPlannerEngine {
             isCircularLoop = true,
             elevationProfile = realElevation,
             isFullyRouted = legs.isNotEmpty() && legs.all { it.isRouted && it.usesOnlyRegionPackGeometry },
-            hasStraightLineLegs = legs.any { !it.isRouted }
+            hasStraightLineLegs = legs.any { !it.isRouted },
+            hasSyntheticPackLegs = legs.any { it.usesSyntheticRegionPackGeometry }
         )
     }
 

@@ -93,7 +93,9 @@ import com.example.data.local.AppDatabase
 import com.example.data.model.WeatherReport
 import com.example.data.repository.SpotPhotosState
 import com.example.data.repository.CommunityTipRepository
+import com.example.data.repository.OlderPhotosPage
 import com.example.data.repository.PhotoModerationRepository
+import com.example.data.repository.PhotoPageCursor
 import com.example.data.repository.SpotPhotoData
 import com.example.data.repository.WeatherRepository
 import com.example.di.AppContainer
@@ -124,7 +126,7 @@ fun SpotDetailBottomSheet(
     onReFetchImage: (spotId: String, onResult: (Boolean, String) -> Unit) -> Unit = { _, _ -> },
     onUploadPhoto: (suspend (spotId: String, uri: Uri) -> Result<SpotPhotoData>)? = null,
     onReportPhoto: (suspend (photoId: String) -> Result<Int>)? = null,
-    onLoadOlderPhotos: (suspend (spotId: String, beforeTimestamp: Long) -> Result<List<SpotPhotoData>>)? = null
+    onLoadOlderPhotos: (suspend (spotId: String, cursor: PhotoPageCursor?) -> Result<OlderPhotosPage>)? = null
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val strings = LocalAppStrings.current
@@ -162,14 +164,21 @@ fun SpotDetailBottomSheet(
 
     // The live stream is bounded to the newest PHOTOS_PAGE_SIZE photos; older photos
     // are paged in on demand. olderPhotos keeps the raw fetched page (hidden photos
-    // included, same as the live page) so the load-more cursor can use the true oldest
-    // fetched timestamp; display filters duplicates and moderation-hidden photos.
+    // included, same as the live page) so the paging cursor uses the true oldest
+    // fetched document; display filters duplicates and moderation-hidden photos.
+    // Pagination completion is tracked EXPLICITLY: a page shorter than the page bound
+    // (including an empty page) removes the load-more button instead of relying on the
+    // accumulated list being non-empty — an empty first page must not re-show the
+    // button forever.
     var olderPhotos by remember(spot.id) { mutableStateOf<List<SpotPhotoData>>(emptyList()) }
     var isLoadingOlderPhotos by remember(spot.id) { mutableStateOf(false) }
-    var lastOlderPageWasFull by remember(spot.id) { mutableStateOf(false) }
+    var hasMoreOlderPhotos by remember(spot.id) { mutableStateOf<Boolean?>(null) }
+    var olderPhotosCursor by remember(spot.id) { mutableStateOf<PhotoPageCursor?>(null) }
     var olderPhotosStatusMessage by remember(spot.id) { mutableStateOf<String?>(null) }
 
     val livePhotos = (spotPhotosState as? SpotPhotosState.Loaded)?.photos ?: emptyList()
+    // The cursor of the live page's oldest document seeds the first older-photos query.
+    val livePageCursor = (spotPhotosState as? SpotPhotosState.Loaded)?.pageCursor
     val displayedPhotos = livePhotos.asSequence()
         .filter { !it.isHidden }
         .plus(olderPhotos.asSequence().filter { older ->
@@ -183,8 +192,9 @@ fun SpotDetailBottomSheet(
         // A live page smaller than the page size means the spot's whole (visible)
         // history fits in the current page — there is nothing older to load.
         livePhotos.size < PhotoModerationRepository.PHOTOS_PAGE_SIZE -> false
-        olderPhotos.isEmpty() -> true // never paged yet, but the live page is full
-        else -> lastOlderPageWasFull // paged at least once: continue only off a full page
+        // Never paged yet, but the live page is full: more may exist.
+        hasMoreOlderPhotos == null -> true
+        else -> hasMoreOlderPhotos == true
     }
 
     val photoPickerLauncher = rememberLauncherForActivityResult(
@@ -473,14 +483,14 @@ fun SpotDetailBottomSheet(
                                 scope.launch {
                                     isLoadingOlderPhotos = true
                                     olderPhotosStatusMessage = null
-                                    // Continue strictly after the oldest photo fetched
-                                    // so far — including moderation-hidden ones, so the
-                                    // cursor never skips a photo that is still behind it.
-                                    val oldestTimestamp = (livePhotos.asSequence() + olderPhotos.asSequence())
-                                        .map { it.timestamp }
-                                        .minOrNull()
-                                        ?: Long.MAX_VALUE
-                                    val result = onLoadOlderPhotos.invoke(spot.id, oldestTimestamp)
+                                    // Continue strictly after the oldest document
+                                    // fetched so far — the cursor carries the full
+                                    // (timestamp, document id) ordering position, so
+                                    // equal timestamps neither skip nor repeat photos.
+                                    val result = onLoadOlderPhotos.invoke(
+                                        spot.id,
+                                        olderPhotosCursor ?: livePageCursor
+                                    )
                                     isLoadingOlderPhotos = false
                                     if (result == null) {
                                         olderPhotosStatusMessage = "Loading older photos is unavailable."
@@ -492,10 +502,15 @@ fun SpotDetailBottomSheet(
                                         return@launch
                                     }
                                     val page = result.getOrThrow()
-                                    lastOlderPageWasFull = page.size >= PhotoModerationRepository.PHOTOS_PAGE_SIZE
+                                    // A page shorter than the page bound (empty pages
+                                    // included) marks the history exhausted; a full page
+                                    // yields its last document's cursor for the next one.
+                                    hasMoreOlderPhotos = page.nextCursor != null
+                                    olderPhotosCursor = page.nextCursor
                                     // Append without duplicating photos already present
-                                    // in the live page or an earlier older page.
-                                    olderPhotos = olderPhotos + page.filter { p ->
+                                    // in the live page or an earlier older page (a live
+                                    // photo arriving mid-pagination).
+                                    olderPhotos = olderPhotos + page.photos.filter { p ->
                                         livePhotos.none { it.id == p.id } && olderPhotos.none { it.id == p.id }
                                     }
                                 }

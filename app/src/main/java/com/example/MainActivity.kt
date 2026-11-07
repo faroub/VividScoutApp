@@ -545,8 +545,8 @@ fun VividScoutApp(
                         onReportPhoto = { photoId ->
                             spotPhotoViewModel.reportSpotPhoto(photoId)
                         },
-                        onLoadOlderPhotos = { spotId, beforeTimestamp ->
-                            spotPhotoViewModel.loadOlderPhotos(spotId, beforeTimestamp)
+                        onLoadOlderPhotos = { spotId, cursor ->
+                            spotPhotoViewModel.loadOlderPhotos(spotId, cursor)
                         }
                     )
                 }

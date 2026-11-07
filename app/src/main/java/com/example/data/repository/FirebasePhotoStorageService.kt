@@ -17,7 +17,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import java.io.InputStream
-import java.util.UUID
+import java.security.MessageDigest
 
 /**
  * The registered result of the trusted [finalizePhotoUpload] backend verification.
@@ -33,9 +33,24 @@ data class FinalizedPhoto(val photoId: String, val photoUrl: String)
 class PhotoFinalizationException(val transient: Boolean, message: String) : Exception(message)
 
 /**
+ * Signals a photo-upload failure together with the one fact callers must not lose:
+ * whether the trusted registration call had already been attempted when the flow
+ * failed. When it was, the outcome is ambiguous — the registration may have committed
+ * on the server while its response was lost on the network — so a retry must reconcile
+ * with the server instead of assuming nothing was published. The orchestrator's
+ * content-derived Storage path makes that automatic: retrying the same photo reuses
+ * the exact registration identity and replays the already-published photo.
+ */
+class PhotoUploadException(
+    message: String,
+    cause: Throwable? = null,
+    val registrationAttempted: Boolean
+) : Exception(message, cause)
+
+/**
  * Storage and backend operations used by [FirebasePhotoStorageService]. The production
  * implementation wraps Firebase Storage and the finalizePhotoUpload callable; tests
- * inject fakes to exercise retry, idempotency, and orphan-cleanup behavior.
+ * inject fakes to exercise retry, idempotency, and ambiguity behavior.
  */
 interface PhotoUploadOperations {
     /** Stores [bytes] under the ownership-aware [path] with the given content type. */
@@ -44,8 +59,12 @@ interface PhotoUploadOperations {
     /** Returns the download URL for the object stored under [path]. */
     suspend fun getDownloadUrl(path: String): String
 
-    /** Deletes the object under [path]; a missing object must not throw. */
-    suspend fun deleteObject(path: String)
+    /**
+     * Reports whether an object already exists under [path]. Returns false on any error
+     * (a failed check safely falls back to attempting the upload; Storage rules reject
+     * an overwrite of an existing object anyway).
+     */
+    suspend fun objectExists(path: String): Boolean
 
     /**
      * Registers the uploaded object server-side. Retrying with the same arguments is
@@ -74,9 +93,16 @@ class FirebasePhotoUploadOperations(
     override suspend fun getDownloadUrl(path: String): String =
         storage.reference.child(path).downloadUrl.await().toString()
 
-    override suspend fun deleteObject(path: String) {
-        storage.reference.child(path).delete().await()
-    }
+    override suspend fun objectExists(path: String): Boolean =
+        try {
+            storage.reference.child(path).metadata.await()
+            true
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            // Any lookup failure (missing object, network error) safely falls back to
+            // attempting the upload; Storage rules reject an overwrite anyway.
+            false
+        }
 
     override suspend fun finalizeUpload(spotId: String, filename: String, photoUrl: String): FinalizedPhoto {
         val payload = mapOf<String, Any>(
@@ -114,17 +140,25 @@ class FirebasePhotoUploadOperations(
 }
 
 /**
- * Owns the complete upload → finalize → orphan-cleanup flow with no Firebase SDK
- * dependency of its own: it works against the [PhotoUploadOperations] seam, which the
- * production implementation backs with Firebase Storage and the finalizePhotoUpload
- * Cloud Function.
+ * Owns the complete upload → finalize flow with no Firebase SDK dependency of its
+ * own: it works against the [PhotoUploadOperations] seam, which the production
+ * implementation backs with Firebase Storage and the finalizePhotoUpload Cloud
+ * Function.
  *
- * Orphan control: when the upload succeeds but registration ultimately fails (or the
- * coroutine is cancelled in between), the uploaded object is deleted again so failed
- * uploads never accumulate Storage objects without a matching photo record.
- * Finalization failures classified transient are retried with backoff — always safe
- * because the backend replays an already-registered object instead of creating a
- * duplicate.
+ * Orphan control and ambiguity: community photo objects are immutable and
+ * non-deletable by clients (storage.rules denies update AND delete to everyone), so a
+ * failed upload must NOT attempt a client-side Storage deletion. Objects whose
+ * registration never completed are removed exclusively by the scheduled backend
+ * reaper (reapUnregisteredPhotoUploads) once they are older than its 24 h safety
+ * window — the same sweep that guarantees a registered photo is never touched.
+ *
+ * Ambiguous outcomes ("the server may have registered the photo after the client lost
+ * the response") are reconciled rather than guessed: the Storage path is derived from
+ * the photo content, so any retry of the same image reuses the exact object path and
+ * the backend's deterministic registration id — the finalizePhotoUpload replay returns
+ * the already-published photo instead of publishing a duplicate. The same applies when
+ * the object is already in place: the upload is skipped and registration reconciles.
+ * Finalization failures classified transient are retried with the same identity.
  */
 class PhotoUploadOrchestrator(private val operations: PhotoUploadOperations) {
 
@@ -140,25 +174,32 @@ class PhotoUploadOrchestrator(private val operations: PhotoUploadOperations) {
         photo: ProcessedPhoto,
         nowMs: () -> Long = { System.currentTimeMillis() }
     ): Result<SpotPhotoData> {
-        val filename = "${UUID.randomUUID()}.jpg"
+        // Content-derived object name: retrying the same image (including after an
+        // ambiguous finalization whose response was lost) reuses the exact Storage
+        // path — and therefore the exact registration identity.
+        val filename = "${contentSha256Hex(photo.jpegBytes)}.jpg"
         // Ownership-aware Storage path: spot_photos/{uid}/{spotId}/{filename}
         val objectPath = "spot_photos/$userUid/$spotId/$filename"
-        var objectUploaded = false
+        var registrationAttempted = false
 
         return try {
             // 1. Upload processed JPEG bytes (Storage rules enforce path ownership,
-            //    size, and image content type at the upload boundary).
-            operations.putObject(objectPath, photo.jpegBytes, photo.mimeType, userUid, spotId)
-            objectUploaded = true
+            //    size, and image content type at the upload boundary). Skip when this
+            //    exact photo object is already in place: registration below then
+            //    reconciles with whatever the server already published for it.
+            if (!operations.objectExists(objectPath)) {
+                operations.putObject(objectPath, photo.jpegBytes, photo.mimeType, userUid, spotId)
+            }
             val downloadUrl = operations.getDownloadUrl(objectPath)
 
             // 2. Register the photo through the trusted finalizePhotoUpload Cloud
             //    Function. It verifies the object exists under the caller's own path,
             //    is a permitted image, and only then creates the Firestore metadata
-            //    with a server-generated document id. The client never writes
+            //    with a deterministic document id. The client never writes
             //    spot_photos directly (firestore.rules denies client creation).
-            //    Transient failures are retried with the same path — the backend's
+            //    Transient failures are retried with the same identity — the backend's
             //    idempotent replay guarantees no duplicate photo documents.
+            registrationAttempted = true
             val finalized = finalizeWithRetry {
                 operations.finalizeUpload(spotId, filename, downloadUrl)
             }
@@ -174,15 +215,40 @@ class PhotoUploadOrchestrator(private val operations: PhotoUploadOperations) {
                 )
             )
         } catch (cancellation: CancellationException) {
-            // Cancellation must never report success; clean up the object so the
-            // interrupted upload does not leave an orphan behind, then propagate.
-            if (objectUploaded) deleteOrphanedObject(objectPath)
+            // Cancellation must never report success. The object stays in Storage for
+            // the backend reaper to clean up once older than its safety window — the
+            // client no longer has (and must not have) any deletion capability.
+            SafeLog.w(TAG, "Photo upload cancelled before registration completed; object left for the backend reaper")
             throw cancellation
         } catch (e: Exception) {
+            // The uploaded object is left in place intentionally: the registration may
+            // have committed on the server while its response was lost. When
+            // registration was attempted the failure is therefore ambiguous — the
+            // caller must retry (which reconciles through the deterministic path),
+            // never assume nothing was published.
             SafeLog.w(TAG, "Failed to upload photo: ${e.message}")
-            if (objectUploaded) deleteOrphanedObject(objectPath)
-            Result.failure(e)
+            Result.failure(
+                PhotoUploadException(
+                    message = if (registrationAttempted) {
+                        "Photo upload failed after registration was attempted — the photo may already be published. Retrying reconciles with the server instead of duplicating the photo."
+                    } else {
+                        e.message ?: "Photo upload failed."
+                    },
+                    cause = e,
+                    registrationAttempted = registrationAttempted
+                )
+            )
         }
+    }
+
+    /** SHA-256 hex digest of the encoded photo bytes: the content identity. */
+    private fun contentSha256Hex(bytes: ByteArray): String {
+        val digest = MessageDigest.getInstance("SHA-256").digest(bytes)
+        val builder = StringBuilder(digest.size * 2)
+        for (byte in digest) {
+            builder.append("%02x".format(byte))
+        }
+        return builder.toString()
     }
 
     /**
@@ -206,21 +272,6 @@ class PhotoUploadOrchestrator(private val operations: PhotoUploadOperations) {
             if (attempt < FINALIZE_MAX_ATTEMPTS - 1) delay(FINALIZE_BACKOFF_MS)
         }
         throw lastError ?: IllegalStateException("Photo registration failed without a specific error.")
-    }
-
-    /**
-     * Best-effort removal of an object whose registration never completed. Failure here
-     * is logged (without exposing private user information) and never masks the original
-     * upload error: the hourly reapOrphanedPhotoUploads Cloud Function still deletes the
-     * object once it is older than the reaper's safety window.
-     */
-    private suspend fun deleteOrphanedObject(objectPath: String) {
-        try {
-            operations.deleteObject(objectPath)
-        } catch (cleanupError: Exception) {
-            if (cleanupError is CancellationException) throw cleanupError
-            SafeLog.w(TAG, "Failed to delete orphaned photo object: ${cleanupError.message}")
-        }
     }
 }
 
@@ -255,14 +306,20 @@ class FirebasePhotoStorageService(
         context: Context,
         uri: Uri
     ): Result<SpotPhotoData> = withContext(Dispatchers.IO) {
-        runCatching {
+        // Explicit try/catch instead of runCatching: runCatching would also catch
+        // CancellationException and convert structured-concurrency cancellation into an
+        // ordinary failure. Cancellation must propagate.
+        try {
             val imageStream = context.contentResolver.openInputStream(uri)
-                ?: return@withContext Result.failure(
-                    IllegalArgumentException("Selected photo could not be opened.")
-                )
-            imageStream.use { stream ->
-                uploadSpotPhoto(spotId, stream).getOrThrow()
+            if (imageStream == null) {
+                Result.failure(IllegalArgumentException("Selected photo could not be opened."))
+            } else {
+                Result.success(imageStream.use { stream -> uploadSpotPhoto(spotId, stream).getOrThrow() })
             }
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (e: Exception) {
+            Result.failure(e)
         }
     }
 

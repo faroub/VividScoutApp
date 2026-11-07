@@ -20,11 +20,16 @@ service cloud.firestore {
     }
 
     match /community_submissions/{submissionId} {
+      // Public read: submissions are community content. They must NEVER contain
+      // private scout notes — Firestore has no field-level access control, so any
+      // field here is world-readable. Private notes live under
+      // users/{uid}/private_spot_notes/{spotId} (see below) and may not be written
+      // into this collection.
       allow read: if true;
       allow create: if isAuthenticated()
                     && request.resource.data.keys().hasOnly([
                          'id', 'ownerUid', 'title', 'description', 'category', 'locationName',
-                         'latitude', 'longitude', 'photoUri', 'userNotes', 'contributor', 'timestamp'
+                         'latitude', 'longitude', 'photoUri', 'contributor', 'timestamp'
                        ])
                     && request.resource.data.ownerUid == request.auth.uid
                     && request.resource.data.id is string
@@ -44,7 +49,7 @@ service cloud.firestore {
                     && request.resource.data.ownerUid == request.auth.uid
                     && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
                          'id', 'ownerUid', 'title', 'description', 'category', 'locationName',
-                         'latitude', 'longitude', 'photoUri', 'userNotes', 'contributor', 'timestamp'
+                         'latitude', 'longitude', 'photoUri', 'contributor', 'timestamp'
                        ])
                     && request.resource.data.title is string
                     && request.resource.data.title.size() >= 2
@@ -58,6 +63,33 @@ service cloud.firestore {
                     && request.resource.data.timestamp is number;
 
       allow delete: if false;
+    }
+
+    // Private scout notes: one document per spot per user, scoped under the owner's
+    // own UID path. Only the authenticated owner can read, create, update, or delete
+    // their own notes; the collection path key ({uid}) is the authoritative identity,
+    // so no client can read, enumerate, overwrite, or delete another user's notes, and
+    // the owner identity inside each document may never be changed.
+    match /users/{uid}/private_spot_notes/{spotId} {
+      allow read: if isOwner(uid);
+      allow create: if isOwner(uid)
+                    && request.resource.data.keys().hasOnly(['spotId', 'ownerUid', 'notes', 'updatedAt'])
+                    && request.resource.data.spotId is string
+                    && request.resource.data.spotId.size() <= 128
+                    && request.resource.data.ownerUid == uid
+                    && request.resource.data.notes is string
+                    && request.resource.data.notes.size() <= 2000
+                    && request.resource.data.updatedAt is number;
+      allow update: if isOwner(uid)
+                    && request.resource.data.keys().hasOnly(['spotId', 'ownerUid', 'notes', 'updatedAt'])
+                    && request.resource.data.spotId is string
+                    && request.resource.data.spotId.size() <= 128
+                    && request.resource.data.ownerUid == resource.data.ownerUid
+                    && request.resource.data.ownerUid == uid
+                    && request.resource.data.notes is string
+                    && request.resource.data.notes.size() <= 2000
+                    && request.resource.data.updatedAt is number;
+      allow delete: if isOwner(uid);
     }
 
     match /community_tips/{tipId} {
@@ -191,6 +223,18 @@ service cloud.firestore {
     // and the publishing owner UID. Written exclusively by the trusted Admin SDK;
     // clients must never read, write, or enumerate them.
     match /shared_trip_publish_requests/{requestId} {
+      allow read, write: if false;
+    }
+
+    // Server-side bookkeeping of the photo cleanup process: the resumable listing
+    // cursor and the per-object deletion claims (which race-coordinate the reaper with
+    // photo finalization). Written exclusively by the trusted Admin SDK; clients have
+    // no legitimate access to internal cleanup state.
+    match /photo_cleanup_state/{stateId} {
+      allow read, write: if false;
+    }
+
+    match /photo_cleanup_claims/{claimId} {
       allow read, write: if false;
     }
   }

@@ -10,6 +10,29 @@ const ALLOWED_SOURCES = ["opentripmap", "geonames"];
 const RADIUS_MIN_METERS = 100;
 const RADIUS_MAX_METERS = 50000;
 
+// Provider outcome contract shared by the nearbyPlaces callable and the Android app:
+// "ok" — the provider answered (an empty answer is still a real, cacheable answer);
+// "transient" — timeout, unreachable, or 5xx (retryable);
+// "auth-config" — credentials missing/rejected, will not fix itself by retrying;
+// "rate-limit" — the provider answered 429.
+const PROVIDER_STATUS_OK = "ok";
+const PROVIDER_STATUS_TRANSIENT = "transient";
+const PROVIDER_STATUS_AUTH_CONFIG = "auth-config";
+const PROVIDER_STATUS_RATE_LIMIT = "rate-limit";
+
+/**
+ * Classifies a provider fetch error into the outcome contract. 429 is a rate limit,
+ * 401/403 an authentication/configuration failure, and everything else (network, DNS,
+ * timeout, 5xx, unexpected status) a transient failure. Classification matters: an
+ * auth-config failure will not fix itself by retrying, while a transient one might.
+ */
+function providerStatusForError(err) {
+  const status = err && err.response && err.response.status;
+  if (status === 429) return PROVIDER_STATUS_RATE_LIMIT;
+  if (status === 401 || status === 403) return PROVIDER_STATUS_AUTH_CONFIG;
+  return PROVIDER_STATUS_TRANSIENT;
+}
+
 /**
  * Parses a numeric coordinate strictly.
  * Accepts finite numbers and numeric strings; rejects NaN/Infinity, strings
@@ -102,7 +125,12 @@ module.exports = {
   ALLOWED_SOURCES,
   RADIUS_MIN_METERS,
   RADIUS_MAX_METERS,
+  PROVIDER_STATUS_OK,
+  PROVIDER_STATUS_TRANSIENT,
+  PROVIDER_STATUS_AUTH_CONFIG,
+  PROVIDER_STATUS_RATE_LIMIT,
   parseStrictNumber,
   parseStrictInt,
-  validateNearbyPlacesRequest
+  validateNearbyPlacesRequest,
+  providerStatusForError
 };

@@ -58,3 +58,64 @@ jobs:
 
       - name: Assemble Android Debug APK
         run: ./gradlew assembleDebug --stacktrace
+
+  release-validation:
+    name: Release Variant Validation (R8, Resource Shrinking, Firebase Config)
+    runs-on: ubuntu-latest
+    env:
+      FIREBASE_CONFIG: ${{ secrets.FIREBASE_CONFIG }}
+      SIGNING_KEYSTORE: ${{ secrets.SIGNING_KEYSTORE }}
+      STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+      KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+      KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '25'
+          cache: 'gradle'
+
+      - name: Grant Execute Permissions for Gradlew
+        run: chmod +x gradlew
+
+      - name: Require Firebase configuration
+        if: ${{ env.FIREBASE_CONFIG == '' }}
+        run: |
+          echo "::error::Release validation requires the Firebase Android configuration. Provide the FIREBASE_CONFIG secret holding the base64-encoded app/google-services.json of the intended Firebase project; otherwise the release variant's Firebase configuration cannot be validated."
+          exit 1
+
+      - name: Provide Firebase Configuration
+        if: ${{ env.FIREBASE_CONFIG != '' }}
+        run: |
+          printf '%s' "$FIREBASE_CONFIG" | base64 -d > app/google-services.json
+          test -s app/google-services.json
+
+      - name: Provide Release Keystore
+        if: ${{ env.SIGNING_KEYSTORE != '' }}
+        run: |
+          printf '%s' "$SIGNING_KEYSTORE" | base64 -d > "$RUNNER_TEMP/release.keystore"
+          test -s "$RUNNER_TEMP/release.keystore"
+
+      - name: Require Release Signing Credentials
+        if: ${{ env.SIGNING_KEYSTORE == '' || env.STORE_PASSWORD == '' || env.KEY_ALIAS == '' || env.KEY_PASSWORD == '' }}
+        run: |
+          echo "::error::Release variant validation requires release signing credentials. The project gates release packaging on signing by design (see app/build.gradle.kts and README 'Release Signing & Environment Variables'), so an unsigned release build is not a supported validation path. Configure the SIGNING_KEYSTORE (base64 keystore), STORE_PASSWORD, KEY_ALIAS and KEY_PASSWORD secrets to validate the signed release variant."
+          exit 1
+
+      - name: Assemble Signed Release APK (R8 + resource shrinking + signing)
+        if: ${{ env.SIGNING_KEYSTORE != '' }}
+        env:
+          KEYSTORE_PATH: ${{ runner.temp }}/release.keystore
+        run: ./gradlew :app:assembleRelease --stacktrace
+
+      - name: Run Lint on Release Variant
+        run: ./gradlew :app:lintRelease --stacktrace
+
+      - name: Clean up ephemeral signing material
+        if: ${{ always() }}
+        run: rm -f "$RUNNER_TEMP/release.keystore" app/google-services.json

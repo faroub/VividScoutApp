@@ -401,29 +401,89 @@ describe("publishSharedTripDocument (emulator persistence)", () => {
   });
 
   it("applies the rate limit to new publishes only, never to replays", async () => {
-    // Allow exactly one new publish.
-    let calls = 0;
-    const shouldRateLimit = () => {
-      calls += 1;
-      return calls === 1;
-    };
+    // Allow exactly one new publish through the transactional rate-limit counter.
+    const rateLimitRef = db.collection("rate_limits").doc(`test-shared-trips-${nextRequestId()}`);
+    const rateLimit = { ref: rateLimitRef, maxPerHour: 1 };
 
     const requestId = nextRequestId();
-    await publishSharedTripDocument(db, ALICE, validPublishPayload(requestId), { shouldRateLimit });
+    await publishSharedTripDocument(db, ALICE, validPublishPayload(requestId), { rateLimit });
     // A replay of the same request must succeed even though the budget is exhausted.
     const replayed = await publishSharedTripDocument(db, ALICE, validPublishPayload(requestId), {
-      shouldRateLimit,
+      rateLimit,
     });
     assert.strictEqual(replayed.replayed, true);
-    assert.strictEqual(calls, 1, "the replay never consumed rate-limit budget");
 
-    // A genuinely new publish is denied once the budget is exhausted.
+    const counterDoc = await rateLimitRef.get();
+    assert.strictEqual(counterDoc.get("count"), 1, "the replay never consumed rate-limit budget");
+
+    // A genuinely new publish is denied once the budget is exhausted, and does not
+    // consume another slot.
     await assert.rejects(
-      publishSharedTripDocument(db, ALICE, validPublishPayload(nextRequestId()), { shouldRateLimit }),
+      publishSharedTripDocument(db, ALICE, validPublishPayload(nextRequestId()), { rateLimit }),
       (error) => {
         assert.strictEqual(error.code, "resource-exhausted");
         return true;
       }
     );
+    const counterAfterRejection = await rateLimitRef.get();
+    assert.strictEqual(counterAfterRejection.get("count"), 1, "a denied publish consumes no slot");
+  });
+
+  it("resolves concurrent identical publish requests to exactly one trip (atomic idempotency)", async () => {
+    // Two invocations with the same owner and requestId race: pre-refactor each could
+    // create its own trip document before one lost the idempotency-marker race, leaving
+    // an orphan. The single transaction must make all but one replay the winner.
+    const requestId = nextRequestId();
+    const uniqueTitle = `Race Walk ${requestId}`;
+    const results = await Promise.all([
+      publishSharedTripDocument(db, ALICE, validPublishPayload(requestId, { title: uniqueTitle })),
+      publishSharedTripDocument(db, ALICE, validPublishPayload(requestId, { title: uniqueTitle })),
+    ]);
+
+    assert.strictEqual(results[0].tripId, results[1].tripId, "both callers receive the same trip id");
+    const replayed = results.filter((r) => r.replayed).length;
+    assert.ok(replayed >= 1, "at least one invocation replays the committed publish");
+
+    // Exactly one trip document exists for this publish — no orphaned duplicate. The
+    // unique title scopes the query to the documents this pair created, so parallel
+    // test files cannot perturb the count.
+    const matching = await db.collection(TRIP_COLLECTION).where("title", "==", uniqueTitle).get();
+    assert.strictEqual(matching.size, 1, "exactly one trip document was created for the concurrent pair");
+    assert.strictEqual(matching.docs[0].id, results[0].tripId);
+
+    const requestDoc = await db.collection(PUBLISH_REQUEST_COLLECTION).doc(requestId).get();
+    assert.strictEqual(requestDoc.exists, true);
+    assert.strictEqual(requestDoc.get("tripId"), results[0].tripId);
+    assert.strictEqual(requestDoc.get("ownerUid"), ALICE);
+  });
+
+  it("consumes rate-limit budget exactly once per committed publish under concurrency", async () => {
+    // Two genuinely new publishes from the same user racing through one transactional
+    // counter must not both spend the single allowed slot.
+    const rateLimitRef = db.collection("rate_limits").doc(`test-shared-trips-${nextRequestId()}`);
+    const rateLimit = { ref: rateLimitRef, maxPerHour: 1 };
+
+    const outcomes = await Promise.allSettled([
+      publishSharedTripDocument(db, ALICE, validPublishPayload(nextRequestId()), { rateLimit }),
+      publishSharedTripDocument(db, ALICE, validPublishPayload(nextRequestId()), { rateLimit }),
+    ]);
+
+    const fulfilled = outcomes.filter((o) => o.status === "fulfilled");
+    assert.strictEqual(fulfilled.length, 1, "exactly one concurrent publish wins the single slot");
+    const counterDoc = await rateLimitRef.get();
+    assert.strictEqual(counterDoc.get("count"), 1, "exactly one slot was consumed, not two");
+  });
+
+  it("lets concurrent publishes from different users proceed independently", async () => {
+    const aliceRequest = nextRequestId();
+    const bobRequest = nextRequestId();
+    const [aliceResult, bobResult] = await Promise.all([
+      publishSharedTripDocument(db, ALICE, validPublishPayload(aliceRequest)),
+      publishSharedTripDocument(db, BOB, validPublishPayload(bobRequest)),
+    ]);
+
+    assert.notStrictEqual(aliceResult.tripId, bobResult.tripId);
+    assert.strictEqual(aliceResult.replayed, false);
+    assert.strictEqual(bobResult.replayed, false);
   });
 });

@@ -38,13 +38,21 @@ data class AStarRouteResult(
     val isDirectFallback: Boolean = false,
     /**
      * True when the found path traverses only edges injected from offline region
-     * packs plus the short snap connectors at both endpoints, i.e. none of the
-     * hand-authored built-in graph edges. False for paths that use hand-authored
-     * edges ([WalkEdgeProvenance.MANUAL_BASE_GRAPH]) — those are approximate graph
-     * connections whose geometry is straight-line interpolation, and callers must
-     * not present them as verified street-level pedestrian routing.
+     * packs carrying real imported pedestrian geometry ([WalkEdgeProvenance.REGION_PACK_SEGMENT])
+     * plus the short snap connectors at both endpoints, i.e. none of the hand-authored
+     * built-in graph edges and none of the synthetic region-pack edges. False for paths
+     * that use hand-authored edges ([WalkEdgeProvenance.MANUAL_BASE_GRAPH]) or synthetic
+     * region-pack edges ([WalkEdgeProvenance.SYNTHETIC_REGION_PACK]) — those are
+     * approximate graph connections whose geometry is straight-line interpolation,
+     * and callers must not present them as verified street-level pedestrian routing.
      */
-    val usesOnlyRegionPackGeometry: Boolean = false
+    val usesOnlyRegionPackGeometry: Boolean = false,
+    /**
+     * True when the found path traverses at least one synthetic region-pack edge
+     * ([WalkEdgeProvenance.SYNTHETIC_REGION_PACK]): locally generated road-like grid
+     * geometry, not real street data. Callers must label such a route approximate.
+     */
+    val usesSyntheticRegionPackGeometry: Boolean = false
 ) {
     val formattedDistance: String
         get() = if (totalDistanceMeters >= 1000) {
@@ -301,9 +309,11 @@ object AStarPathfinder {
         val steps = consolidateSteps(pathEdges, destName)
         val minutes = (totalDistance / WALKING_SPEED_METERS_PER_MIN).roundToInt().coerceAtLeast(1)
 
-        // A path is only free of hand-authored approximations when every edge it
-        // traverses comes from an offline region pack (or is a short snap connector).
-        val usesOnlyRegionPack = pathEdges.all { it.provenance != WalkEdgeProvenance.MANUAL_BASE_GRAPH }
+        // A path is only free of approximate geometry when every edge it traverses
+        // is real imported region-pack data (or a short snap connector): neither
+        // hand-authored base-graph edges nor locally synthesized region-pack edges qualify.
+        val usesOnlyRegionPack = pathEdges.all { it.provenance == WalkEdgeProvenance.REGION_PACK_SEGMENT || it.provenance == WalkEdgeProvenance.SNAP_CONNECTOR }
+        val usesSynthetic = pathEdges.any { it.provenance == WalkEdgeProvenance.SYNTHETIC_REGION_PACK }
 
         return AStarRouteResult(
             originName = startName,
@@ -313,7 +323,8 @@ object AStarPathfinder {
             steps = steps,
             totalDistanceMeters = totalDistance,
             estimatedWalkingMinutes = minutes,
-            usesOnlyRegionPackGeometry = usesOnlyRegionPack
+            usesOnlyRegionPackGeometry = usesOnlyRegionPack,
+            usesSyntheticRegionPackGeometry = usesSynthetic
         )
     }
 

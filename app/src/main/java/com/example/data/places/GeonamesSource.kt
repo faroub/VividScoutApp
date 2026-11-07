@@ -10,9 +10,14 @@ import kotlinx.coroutines.withContext
 /**
  * GeoNames place data source routed through secure Firebase Callable Cloud Function (nearbyPlaces).
  * Ensures zero usernames/credentials are embedded in the Android APK.
+ *
+ * The callable returns the provider outcome contract: "ok" (the provider answered — even
+ * with zero places, which is a valid answer), or a failure kind (transient / auth-config /
+ * rate-limit). A failure is surfaced as a typed [PlaceSourceFailure] instead of an empty
+ * success list, so the repository never treats a provider outage as "no places here".
  */
 class GeonamesSource(
-    private val callableProvider: (suspend (HashMap<String, Any>) -> List<Map<String, Any?>>)? = null,
+    private val callableProvider: (suspend (HashMap<String, Any>) -> Map<String, Any?>)? = null,
     private val functionsProvider: () -> FirebaseFunctions = { FirebaseFunctions.getInstance() }
 ) : PlaceSource {
 
@@ -20,6 +25,7 @@ class GeonamesSource(
 
     companion object {
         private const val TAG = "GeonamesSource"
+        private const val PROVIDER_KEY = "geonames"
     }
 
     override suspend fun fetchNear(
@@ -45,7 +51,7 @@ class GeonamesSource(
                 "sources" to listOf("geonames")
             )
 
-            val rawList = if (callableProvider != null) {
+            val raw = if (callableProvider != null) {
                 callableProvider.invoke(payload)
             } else {
                 val functions = try {
@@ -56,7 +62,29 @@ class GeonamesSource(
                 }
                 val result = functions.getHttpsCallable("nearbyPlaces").call(payload).await()
                 @Suppress("UNCHECKED_CAST")
-                (result.data as? List<Map<String, Any?>>).orEmpty()
+                (result.data as? Map<String, Any?>).orEmpty()
+            }
+
+            @Suppress("UNCHECKED_CAST")
+            val rawList = (raw["places"] as? List<Map<String, Any?>>).orEmpty()
+            @Suppress("UNCHECKED_CAST")
+            val providerStatus = (raw["providerStatus"] as? Map<String, Any?>)?.get(PROVIDER_KEY) as? String
+
+            when (providerStatus) {
+                "transient" -> {
+                    SafeLog.w(TAG, "GeoNames provider temporarily unavailable")
+                    return@withContext Result.failure(PlaceSourceFailure.TemporaryFailure())
+                }
+                "auth-config" -> {
+                    SafeLog.w(TAG, "GeoNames provider credentials are missing or rejected")
+                    return@withContext Result.failure(PlaceSourceFailure.AuthConfigFailure())
+                }
+                "rate-limit" -> {
+                    SafeLog.w(TAG, "GeoNames provider rate limited the request")
+                    return@withContext Result.failure(PlaceSourceFailure.RateLimited())
+                }
+                // "ok", or an older backend not yet reporting provider status.
+                else -> Unit
             }
 
             val candidates = rawList.mapNotNull { item ->
@@ -82,21 +110,24 @@ class GeonamesSource(
 
             Result.success(candidates)
         } catch (e: FirebaseFunctionsException) {
-            when (e.code) {
+            val failure = when (e.code) {
                 FirebaseFunctionsException.Code.RESOURCE_EXHAUSTED -> {
                     SafeLog.w(TAG, "Rate limit exceeded (max 60/hr/UID) querying GeoNames via nearbyPlaces")
+                    PlaceSourceFailure.RateLimited()
                 }
                 FirebaseFunctionsException.Code.UNAUTHENTICATED -> {
                     SafeLog.w(TAG, "Firebase Auth required to query GeoNames via nearbyPlaces")
+                    PlaceSourceFailure.AuthConfigFailure()
                 }
                 else -> {
                     SafeLog.w(TAG, "Firebase Functions error querying GeoNames: ${e.message}")
+                    PlaceSourceFailure.TemporaryFailure()
                 }
             }
-            Result.success(emptyList())
+            Result.failure(failure)
         } catch (e: Exception) {
             SafeLog.w(TAG, "Network or parsing error querying GeoNames: ${e.message}")
-            Result.success(emptyList())
+            Result.failure(PlaceSourceFailure.TemporaryFailure())
         }
     }
 }

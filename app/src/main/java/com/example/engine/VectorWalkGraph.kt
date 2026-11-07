@@ -31,13 +31,20 @@ enum class WalkEdgeProvenance {
 
     /**
      * Edge injected from a downloaded offline region pack
-     * ([VectorWalkGraph.loadCustomRegionSegments]). Note: region packs are
-     * currently produced locally by [com.example.data.offline.OfflineRegionStorage.synthesizeRoadNetworkForBounds],
-     * which generates a synthetic grid rather than retrieving real street
-     * geometry, so this provenance marks "region-pack data", not verified
-     * street-level geometry.
+     * ([VectorWalkGraph.loadCustomRegionSegments]) whose geometry was imported
+     * from a real pedestrian-network source. A path traversing only such edges
+     * (plus snap connectors) may be labeled fully routed.
      */
     REGION_PACK_SEGMENT,
+
+    /**
+     * Edge injected from an offline region pack whose geometry was SYNTHESIZED
+     * locally (see [com.example.data.offline.OfflineRegionStorage.synthesizeRoadNetworkForBounds]):
+     * a generated road-like grid, not real street geometry. It carries no
+     * information about actual streets, crossings, footways, stairs, or
+     * pedestrian restrictions, so routes using such edges must stay approximate.
+     */
+    SYNTHETIC_REGION_PACK,
 
     /**
      * Short runtime connector created by [AStarPathfinder] to snap a GPS
@@ -253,6 +260,13 @@ object VectorWalkGraph {
 
             val existing = baseEdges.any { it.fromId == seg.fromId && it.toId == seg.toId }
             if (!existing) {
+                // Synthetic region-pack segments keep their own provenance so a path
+                // through them is never presented as real street-level routing.
+                val packProvenance = if (seg.isSynthetic) {
+                    WalkEdgeProvenance.SYNTHETIC_REGION_PACK
+                } else {
+                    WalkEdgeProvenance.REGION_PACK_SEGMENT
+                }
                 baseEdges.add(
                     WalkEdge(
                         fromId = seg.fromId,
@@ -261,7 +275,7 @@ object VectorWalkGraph {
                         streetName = seg.streetName,
                         isPedestrianOnly = seg.isPedestrian,
                         isStairsOrCalçada = seg.isStairs,
-                        provenance = WalkEdgeProvenance.REGION_PACK_SEGMENT
+                        provenance = packProvenance
                     )
                 )
                 baseEdges.add(
@@ -272,7 +286,7 @@ object VectorWalkGraph {
                         streetName = seg.streetName,
                         isPedestrianOnly = seg.isPedestrian,
                         isStairsOrCalçada = seg.isStairs,
-                        provenance = WalkEdgeProvenance.REGION_PACK_SEGMENT
+                        provenance = packProvenance
                     )
                 )
             }

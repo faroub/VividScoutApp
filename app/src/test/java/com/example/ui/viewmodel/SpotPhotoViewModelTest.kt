@@ -3,6 +3,8 @@ package com.example.ui.viewmodel
 import android.content.Context
 import android.net.Uri
 import androidx.test.core.app.ApplicationProvider
+import com.example.data.repository.OlderPhotosPage
+import com.example.data.repository.PhotoPageCursor
 import com.example.data.repository.SpotPhotoData
 import com.example.data.repository.SpotPhotoRepository
 import com.example.data.repository.SpotPhotosState
@@ -51,8 +53,8 @@ class SpotPhotoViewModelTest {
         var reportedPhotoIds = mutableListOf<String>()
         val photosFlow = MutableStateFlow<SpotPhotosState>(SpotPhotosState.Loaded(emptyList()))
         var lastOlderPhotosSpotId: String? = null
-        var lastOlderPhotosBeforeTimestamp: Long? = null
-        var olderPhotosResult: Result<List<SpotPhotoData>> = Result.success(emptyList())
+        var lastOlderPhotosCursor: PhotoPageCursor? = null
+        var olderPhotosResult: Result<OlderPhotosPage> = Result.success(OlderPhotosPage(emptyList(), null))
 
         override suspend fun uploadPhoto(
             context: android.content.Context,
@@ -70,9 +72,9 @@ class SpotPhotoViewModelTest {
 
         override fun photosForSpotFlow(spotId: String): Flow<SpotPhotosState> = photosFlow
 
-        override suspend fun getOlderPhotos(spotId: String, beforeTimestamp: Long): Result<List<SpotPhotoData>> {
+        override suspend fun getOlderPhotos(spotId: String, cursor: PhotoPageCursor?): Result<OlderPhotosPage> {
             lastOlderPhotosSpotId = spotId
-            lastOlderPhotosBeforeTimestamp = beforeTimestamp
+            lastOlderPhotosCursor = cursor
             return olderPhotosResult
         }
     }
@@ -186,20 +188,54 @@ class SpotPhotoViewModelTest {
     }
 
     @Test
-    fun loadOlderPhotos_delegatesWithSpotIdAndOldestTimestampCursor() = runTest {
+    fun loadOlderPhotos_delegatesWithSpotIdAndCompoundCursor() = runTest {
+        val olderPhoto = uploadedPhoto.copy(id = "photo-older", timestamp = 1_699_999_000_000)
+        val liveCursor = PhotoPageCursor(1_700_000_000_000, "photo-live")
+        val nextCursor = PhotoPageCursor(1_699_999_000_000, "photo-older")
         val fake = FakeSpotPhotoRepository().apply {
-            olderPhotosResult = Result.success(listOf(uploadedPhoto.copy(id = "photo-older", timestamp = 1_699_999_000_000)))
+            olderPhotosResult = Result.success(OlderPhotosPage(listOf(olderPhoto), nextCursor))
         }
         val viewModel = SpotPhotoViewModel(photoRepository = fake)
 
-        val result = viewModel.loadOlderPhotos("spot-1", 1_700_000_000_000)
+        val result = viewModel.loadOlderPhotos("spot-1", liveCursor)
 
         assertTrue("Older-photos page must surface success", result.isSuccess)
         assertEquals("spot-1", fake.lastOlderPhotosSpotId)
-        assertEquals(1_700_000_000_000, fake.lastOlderPhotosBeforeTimestamp)
+        assertEquals("the cursor must be passed through unchanged", liveCursor, fake.lastOlderPhotosCursor)
         val page = result.getOrThrow()
-        assertEquals(1, page.size)
-        assertEquals("photo-older", page[0].id)
+        assertEquals(1, page.photos.size)
+        assertEquals("photo-older", page.photos[0].id)
+        assertEquals(nextCursor, page.nextCursor)
+    }
+
+    @Test
+    fun loadOlderPhotos_shortPageReportsNoFurtherCursor() = runTest {
+        // An empty page (or any page shorter than the page size) must report a null
+        // nextCursor so the UI can stop offering "Show older photos" — pagination
+        // completion may never be derived from an empty accumulated list again.
+        val fake = FakeSpotPhotoRepository()
+        val viewModel = SpotPhotoViewModel(photoRepository = fake)
+
+        val result = viewModel.loadOlderPhotos("spot-1", PhotoPageCursor(1_700_000_000_000, "photo-live"))
+
+        assertTrue("An empty page must surface as success, not failure", result.isSuccess)
+        assertNull("an empty page carries no further cursor", result.getOrThrow().nextCursor)
+    }
+
+    @Test
+    fun loadOlderPhotos_fullPageCarriesTheNextCursor() = runTest {
+        val photos = (1..20).map { uploadedPhoto.copy(id = "photo-$it") }
+        val nextCursor = PhotoPageCursor(1_699_999_000_000, "photo-20")
+        val fake = FakeSpotPhotoRepository().apply {
+            olderPhotosResult = Result.success(OlderPhotosPage(photos, nextCursor))
+        }
+        val viewModel = SpotPhotoViewModel(photoRepository = fake)
+
+        val result = viewModel.loadOlderPhotos("spot-1", PhotoPageCursor(1_700_000_000_000, "photo-live"))
+
+        assertTrue(result.isSuccess)
+        assertEquals(20, result.getOrThrow().photos.size)
+        assertEquals(nextCursor, result.getOrThrow().nextCursor)
     }
 
     @Test
@@ -209,7 +245,7 @@ class SpotPhotoViewModelTest {
         }
         val viewModel = SpotPhotoViewModel(photoRepository = fake)
 
-        val result = viewModel.loadOlderPhotos("spot-1", 1_700_000_000_000)
+        val result = viewModel.loadOlderPhotos("spot-1", PhotoPageCursor(1_700_000_000_000, "photo-live"))
 
         // A failed page query must not become a synthetic empty page the UI would
         // interpret as "no older photos exist".
