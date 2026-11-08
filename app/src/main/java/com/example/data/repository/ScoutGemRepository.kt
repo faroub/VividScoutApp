@@ -17,7 +17,6 @@ import com.example.util.Geo
 import com.example.util.LocationPhotoResolver
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -25,9 +24,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
-import java.util.Collections
 
 /**
  * Diagnostic summary produced when auto-cleanup runs on the local Room database.
@@ -143,7 +140,7 @@ open class ScoutGemRepository(
                 photoResolver.isGenericOrStockPhoto(spot.imageUrl) &&
                     !completedPhotoIds.contains(spot.id) &&
                     !inProgressPhotoIds.contains(spot.id) &&
-                    !isBackingOff(spot.id)
+                    !photoEnrichment.isBackingOff(spot.id)
             }
             if (schedulable.isNotEmpty()) {
                 repositoryScope.launch {
@@ -655,145 +652,32 @@ open class ScoutGemRepository(
         log
     }
 
-    data class PhotoAttemptInfo(
-        val failedCount: Int = 0,
-        val lastAttemptTimestamp: Long = 0L
-    )
+    private val photoEnrichment = GemPhotoEnrichment(scoutDao, photoResolver)
 
-    // Photo-enrichment queue state, keyed by spot id. Room remains the persisted
-    // source of truth: a spot is "pending" while its imageUrl is still generic,
-    // so the queue re-arms from Room after an app restart.
-    //  - in-progress: [inProgressPhotoIds] while its network lookup is running
-    //  - completed:   [completedPhotoIds] (authentic URL already persisted to Room)
-    //  - retryable:   [failedPhotoAttempts] waiting out exponential backoff
-    //  - exhausted:   five failed attempts; skipped until a connectivity re-sync
-    internal val inProgressPhotoIds = Collections.synchronizedSet(HashSet<String>())
-    internal val completedPhotoIds = Collections.synchronizedSet(HashSet<String>())
-    internal val failedPhotoAttempts = Collections.synchronizedMap(HashMap<String, PhotoAttemptInfo>())
-    private val enrichmentMutex = Mutex()
+    // Photo-enrichment queue state, owned by GemPhotoEnrichment and delegated here
+    // because observeGems and the enrichment tests read them through the repository surface.
+    internal val inProgressPhotoIds: MutableSet<String> get() = photoEnrichment.inProgressPhotoIds
+    internal val completedPhotoIds: MutableSet<String> get() = photoEnrichment.completedPhotoIds
+    internal val failedPhotoAttempts: MutableMap<String, GemPhotoEnrichment.PhotoAttemptInfo> get() = photoEnrichment.failedPhotoAttempts
 
     // Deterministic test seams for backoff timing and request pacing; production
     // uses real wall-clock time and the 50 ms inter-request delay.
-    internal var currentTimeMs: () -> Long = { System.currentTimeMillis() }
-    internal var enrichmentPacingMs: () -> Long = { ENRICHMENT_DELAY_MS }
-
-    /**
-     * True while [spotId] is in exponential backoff after a failed lookup, or has
-     * exhausted its retries. Backoff doubles with each failure (1 s × 2^failures).
-     */
-    private fun isBackingOff(spotId: String): Boolean {
-        val attempt = failedPhotoAttempts[spotId] ?: return false
-        val backoffMs = 1000L * (1 shl attempt.failedCount.coerceAtMost(MAX_PHOTO_ATTEMPTS))
-        return attempt.failedCount >= MAX_PHOTO_ATTEMPTS ||
-            (currentTimeMs() - attempt.lastAttemptTimestamp) < backoffMs
-    }
-
-    private fun recordFailedAttempt(spotId: String) {
-        val currentFailed = failedPhotoAttempts[spotId]?.failedCount ?: 0
-        failedPhotoAttempts[spotId] = PhotoAttemptInfo(currentFailed + 1, currentTimeMs())
-    }
-
-    /**
-     * Selects the next bounded batch of eligible candidates: pending spots (generic
-     * imageUrl) that are neither in progress, completed, nor backing off, with saved
-     * places prioritized and then by recency.
-     */
-    private fun nextEnrichmentBatch(candidates: List<ScoutSpotEntity>): List<ScoutSpotEntity> {
-        val eligible = candidates.filter { spot ->
-            if (!photoResolver.isGenericOrStockPhoto(spot.imageUrl)) {
-                // Room is the source of truth: an authentic persisted URL means completed.
-                completedPhotoIds.add(spot.id)
-                return@filter false
-            }
-            if (inProgressPhotoIds.contains(spot.id) || completedPhotoIds.contains(spot.id)) {
-                return@filter false
-            }
-            !isBackingOff(spot.id)
-        }.sortedWith(
-            compareByDescending<ScoutSpotEntity> { it.isSaved }
-                .thenByDescending { it.timestamp }
-        )
-        return eligible.take(ENRICHMENT_BATCH_SIZE)
-    }
+    internal var currentTimeMs: () -> Long
+        get() = photoEnrichment.currentTimeMs
+        set(value) { photoEnrichment.currentTimeMs = value }
+    internal var enrichmentPacingMs: () -> Long
+        get() = photoEnrichment.enrichmentPacingMs
+        set(value) { photoEnrichment.enrichmentPacingMs = value }
 
     /**
      * Automatically enriches spots having placeholder or generic image URLs
      * by querying live Wikipedia & Wikimedia Commons APIs for 1200px HD resolution metadata
      * and caching the authentic image URLs directly in the Room database for permanent offline availability.
-     * Prioritizes saved/bookmarked spots first, followed by active feed spots.
      *
-     * Drains the queue in bounded batches until no eligible candidate remains — there is
-     * no fixed pass limit, so a backlog of any size is fully processed across one or more
-     * drains. Concurrent invocations merge into the running drain via the mutex; each spot
-     * is resolved at most once per drain, and coroutine cancellation reliably clears the
-     * in-progress marker.
+     * Delegates to [GemPhotoEnrichment]; stays `open` so test fakes can replace the whole drain.
      */
-    open suspend fun enrichSpotsPhotosInBackground(spots: List<ScoutSpotEntity> = emptyList()) = withContext(Dispatchers.IO) {
-        if (!enrichmentMutex.tryLock()) {
-            // A drain is already running; this invocation's candidates are merged into it
-            // because every drain re-reads the full candidate set from Room between batches.
-            return@withContext
-        }
-
-        try {
-            var processedThisSession = 0
-            var candidates: List<ScoutSpotEntity> = if (spots.isNotEmpty()) spots else scoutDao.getAllSpotsList()
-
-            while (processedThisSession < MAX_ENRICHMENTS_PER_SESSION) {
-                val batch = nextEnrichmentBatch(candidates)
-                if (batch.isEmpty()) break // Queue drained: no pending, non-backing-off candidates.
-
-                for (spot in batch) {
-                    inProgressPhotoIds.add(spot.id)
-                    try {
-                        val resolved = photoResolver.resolveEnrichedPhoto(
-                            title = spot.title,
-                            category = spot.category,
-                            districtOrLocation = spot.locationName,
-                            latitude = spot.latitude,
-                            longitude = spot.longitude,
-                            spotId = spot.id
-                        )
-
-                        val isAuthenticPhoto = resolved.url.isNotBlank() && !photoResolver.isGenericOrStockPhoto(resolved.url)
-                        if (isAuthenticPhoto) {
-                            scoutDao.updateImageUrl(spot.id, resolved.url)
-                            completedPhotoIds.add(spot.id)
-                            failedPhotoAttempts.remove(spot.id)
-                            SafeLog.i(
-                                TAG,
-                                "Wikimedia Commons Resolution SUCCESS: Validated photo for '${spot.title}' (isSaved=${spot.isSaved}): ${resolved.url}"
-                            )
-                        } else {
-                            recordFailedAttempt(spot.id)
-                        }
-                        delay(enrichmentPacingMs())
-                    } catch (e: kotlinx.coroutines.CancellationException) {
-                        throw e // Cancellation must propagate; the finally below clears the in-progress marker.
-                    } catch (e: Exception) {
-                        recordFailedAttempt(spot.id)
-                        SafeLog.w(TAG, "Background photo enrichment error for ${spot.id} ('${spot.title}'): ${e.message}")
-                    } finally {
-                        inProgressPhotoIds.remove(spot.id)
-                    }
-                    processedThisSession++
-                }
-
-                // Continue the drain: re-read Room so spots inserted mid-session join the queue.
-                candidates = scoutDao.getAllSpotsList()
-            }
-
-            if (processedThisSession >= MAX_ENRICHMENTS_PER_SESSION) {
-                SafeLog.w(
-                    TAG,
-                    "Photo enrichment session hit the $MAX_ENRICHMENTS_PER_SESSION-item safety cap; " +
-                        "remaining candidates are picked up by the next scheduled drain."
-                )
-            }
-        } finally {
-            enrichmentMutex.unlock()
-        }
-    }
+    open suspend fun enrichSpotsPhotosInBackground(spots: List<ScoutSpotEntity> = emptyList()) =
+        photoEnrichment.enrichSpotsPhotosInBackground(spots)
 
     /**
      * Triggered automatically when device transitions from offline to online state.

@@ -1,25 +1,4 @@
 <?xml version="1.0" ?>
-<!--
-  Baseline regenerated 2026-11-08 (after commit a988b31).
-  detekt fails CI only on NEW findings; this file records the accepted pre-existing ones.
-  Rule groups and reasons (triage of all 26 rules, see docs task T4):
-  - (c) acceptable: MagicNumber (geographic/elevation model constants and data tables),
-    FunctionNaming (Compose factory-style names), ConstructorParameterNaming / FunctionParameterNaming /
-    DestructuringDeclarationWithTooManyEntries / MatchingDeclarationName / EmptyFunctionBlock
-    (Kotlin and Compose conventions, test-fake no-ops), InstanceOfCheckForException (these ARE the
-    CancellationException rethrow patterns), UseCheckOrError / UseRequire (explicit throw is clearer),
-    VariableNaming (legacy TAG constant), SpreadOperator (single migration-array spread).
-  - (b) low risk (maintainability, no defects — verified working logic):
-    MaxLineLength, LongMethod, LongParameterList, CyclomaticComplexMethod, ReturnCount,
-    ComplexCondition (coordinate-validation guards), LoopWithTooManyJumpStatements, TooManyFunctions,
-    NestedBlockDepth, ThrowsCount, UnusedParameter, UnusedPrivateProperty.
-  - (b) low risk (exception handling): TooGenericExceptionCaught — every coroutine call site already
-    rethrows CancellationException; remaining sites are non-coroutine sensor/camera/settings callbacks.
-    SwallowedException — intentional recoveries (TimeoutCancellationException-to-empty-result is
-    deliberate; photo-finalization FirebaseFunctionsException classifies transient vs definitive).
-  - No (a) real-bug groups remain; the previous (a)-class SwallowedException findings
-    (CompassSensorManager, ARNavigationOverlay) were fixed in code before regenerating.
--->
 <SmellBaseline>
   <ManuallySuppressedIssues/>
   <CurrentIssues>
@@ -687,6 +666,7 @@
     <ID>MagicNumber:FirestoreSyncManager.kt$FirestoreSyncManager$50</ID>
     <ID>MagicNumber:FirestoreSyncManager.kt$FirestoreSyncManager$500</ID>
     <ID>MagicNumber:FirestoreSyncManager.kt$FirestoreSyncManager$90.0</ID>
+    <ID>MagicNumber:GemPhotoEnrichment.kt$GemPhotoEnrichment$1000L</ID>
     <ID>MagicNumber:GeminiQueryService.kt$GeminiQueryService$1000</ID>
     <ID>MagicNumber:GeminiQueryService.kt$GeminiQueryService$10_000L</ID>
     <ID>MagicNumber:GeminiQueryService.kt$GeminiQueryService$15_000L</ID>
@@ -1491,6 +1471,11 @@
     <ID>MaxLineLength:FirestoreSyncManager.kt$FirestoreSyncManager$SafeLog.w(TAG, "User '${SafeLog.sanitizeUid(currentUid)}' has already voted on tip '$tipId'. Rejecting second vote.")</ID>
     <ID>MaxLineLength:FirestoreSyncManager.kt$FirestoreSyncManager$if</ID>
     <ID>MaxLineLength:FirestoreTipRulesValidationTest.kt$FirestoreTipRulesValidationTest$assertFalse("Counter increment without creating vote doc MUST fail post-write check (existsAfter)", postStateCheck)</ID>
+    <ID>MaxLineLength:GemPhotoEnrichment.kt$GemPhotoEnrichment$"Photo enrichment session hit the ${ScoutGemRepository.MAX_ENRICHMENTS_PER_SESSION}-item safety cap; "</ID>
+    <ID>MaxLineLength:GemPhotoEnrichment.kt$GemPhotoEnrichment$"Wikimedia Commons Resolution SUCCESS: Validated photo for '${spot.title}' (isSaved=${spot.isSaved}): ${resolved.url}"</ID>
+    <ID>MaxLineLength:GemPhotoEnrichment.kt$GemPhotoEnrichment$SafeLog.w(TAG, "Background photo enrichment error for ${spot.id} ('${spot.title}'): ${e.message}")</ID>
+    <ID>MaxLineLength:GemPhotoEnrichment.kt$GemPhotoEnrichment$suspend</ID>
+    <ID>MaxLineLength:GemPhotoEnrichment.kt$GemPhotoEnrichment$val isAuthenticPhoto = resolved.url.isNotBlank() &amp;&amp; !photoResolver.isGenericOrStockPhoto(resolved.url)</ID>
     <ID>MaxLineLength:GeminiFailureAndCorridorTest.kt$GeminiFailureAndCorridorTest$val (offCorridorLat, offCorridorLng) = MovementVectorUtils.extrapolateTargetCoordinate(originLat, originLng, 0f, 5000.0)</ID>
     <ID>MaxLineLength:GeminiFailureAndCorridorTest.kt$GeminiFailureAndCorridorTest$val (onCorridorLat, onCorridorLng) = MovementVectorUtils.extrapolateTargetCoordinate(originLat, originLng, 90f, 1000.0)</ID>
     <ID>MaxLineLength:GeminiFailureAndCorridorTest.kt$GeminiFailureAndCorridorTest$val isFarPointInCorridor = MovementVectorUtils.isPointInCorridor(farPerpendicularLat, farPerpendicularLng, vector, maxLateralMeters = 1500.0)</ID>
@@ -1918,16 +1903,14 @@
     <ID>MaxLineLength:ScoutGemRepository.kt$ScoutGemRepository$"Auto-cleanup completed: removed $expiredRemoved expired spots (&gt; ${maxAgeDays}d) and $distantRemoved distant spots (&gt; ${maxRadiusKm.toInt()}km). Total pruned: $totalRemoved."</ID>
     <ID>MaxLineLength:ScoutGemRepository.kt$ScoutGemRepository$"Automatic Network Reconnection Re-Sync: Found ${unEnriched.size} spots needing photos (${savedSpots.size} saved/bookmarked, ${feedSpots.size} feed)."</ID>
     <ID>MaxLineLength:ScoutGemRepository.kt$ScoutGemRepository$"Spot discovery attempt #$attempt failed. Retrying in ${currentDelay}ms... Error: ${lastResult.exceptionOrNull()?.message}"</ID>
-    <ID>MaxLineLength:ScoutGemRepository.kt$ScoutGemRepository$"Wikimedia Commons Resolution SUCCESS: Validated photo for '${spot.title}' (isSaved=${spot.isSaved}): ${resolved.url}"</ID>
     <ID>MaxLineLength:ScoutGemRepository.kt$ScoutGemRepository$// Safe recovery: JSON parsing of raw Overpass telemetry failed, log warning telemetry and return raw log</ID>
-    <ID>MaxLineLength:ScoutGemRepository.kt$ScoutGemRepository$SafeLog.w(TAG, "Background photo enrichment error for ${spot.id} ('${spot.title}'): ${e.message}")</ID>
     <ID>MaxLineLength:ScoutGemRepository.kt$ScoutGemRepository$SafeLog.w(TAG, "Multi-source pipeline returned no places (offline cache unavailable for $requestedPipelineIds)")</ID>
     <ID>MaxLineLength:ScoutGemRepository.kt$ScoutGemRepository$com.example.data.location.LocationTracker.distanceBetween(userLat, userLng, spot.latitude, spot.longitude) &lt;= 50000f</ID>
     <ID>MaxLineLength:ScoutGemRepository.kt$ScoutGemRepository$if</ID>
+    <ID>MaxLineLength:ScoutGemRepository.kt$ScoutGemRepository$internal val failedPhotoAttempts: MutableMap&lt;String, GemPhotoEnrichment.PhotoAttemptInfo&gt; get() = photoEnrichment.failedPhotoAttempts</ID>
     <ID>MaxLineLength:ScoutGemRepository.kt$ScoutGemRepository$open suspend</ID>
     <ID>MaxLineLength:ScoutGemRepository.kt$ScoutGemRepository$sourceIds: List&lt;String&gt; = listOf("open_trip_map", "wikivoyage_wikidata", "overpass_osm", "geonames_gazetteer", "unesco_world_heritage", "europeana_cultural", "municipal_open_data", "firebase_gemini_ai")</ID>
     <ID>MaxLineLength:ScoutGemRepository.kt$ScoutGemRepository$val europeanaService: com.example.data.network.EuropeanaCulturalService = com.example.data.network.EuropeanaCulturalService()</ID>
-    <ID>MaxLineLength:ScoutGemRepository.kt$ScoutGemRepository$val isAuthenticPhoto = resolved.url.isNotBlank() &amp;&amp; !photoResolver.isGenericOrStockPhoto(resolved.url)</ID>
     <ID>MaxLineLength:ScoutGemRepository.kt$ScoutGemRepository$val municipalService: com.example.data.network.MunicipalOpenDataService = com.example.data.network.MunicipalOpenDataService()</ID>
     <ID>MaxLineLength:ScoutGemRepository.kt$ScoutGemRepository$val result = try { syncEuropeanaGems(cityName, userLat, userLng) } catch (e: Exception) { Result.failure(e) }</ID>
     <ID>MaxLineLength:ScoutGemRepository.kt$ScoutGemRepository$val result = try { syncMunicipalGems(cityName, userLat, userLng) } catch (e: Exception) { Result.failure(e) }</ID>
@@ -2116,6 +2099,7 @@
     <ID>TooGenericExceptionCaught:FirebasePhotoStorageService.kt$FirebasePhotoUploadOperations$e: Exception</ID>
     <ID>TooGenericExceptionCaught:FirebasePhotoStorageService.kt$PhotoUploadOrchestrator$e: Exception</ID>
     <ID>TooGenericExceptionCaught:FirestoreSyncManager.kt$FirestoreSyncManager$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:GemPhotoEnrichment.kt$GemPhotoEnrichment$e: Exception</ID>
     <ID>TooGenericExceptionCaught:GeminiModelConstants.kt$GeminiModelConstants$e: Exception</ID>
     <ID>TooGenericExceptionCaught:GeminiQueryService.kt$GeminiQueryService$e: Exception</ID>
     <ID>TooGenericExceptionCaught:GeminiQueryService.kt$GeminiQueryService$t: Exception</ID>
