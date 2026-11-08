@@ -126,7 +126,9 @@ fun MainTabContent(
                             }
                         },
                         userCoordinates = locationState.safeCoordinates,
-                        successMessage = communityState.postTipSuccessMessage
+                        successMessage = communityState.postTipSuccessMessage,
+                        isUsingDefaultFallbackLocation = isUsingDefaultFallbackLocation,
+                        onSelectCity = { exploreViewModel.openGlobalCityDialog() }
                     )
                 }
 

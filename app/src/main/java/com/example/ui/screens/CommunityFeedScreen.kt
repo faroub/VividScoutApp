@@ -70,6 +70,7 @@ import com.example.data.p2p.MeshSyncPhase
 import com.example.data.p2p.PeerMeshSyncResult
 import com.example.ui.components.CommunityTipCard
 import com.example.ui.components.EmptyStateView
+import com.example.ui.components.FallbackLocationBanner
 import com.example.ui.components.LoadingStateView
 import com.example.ui.components.PostTipDialog
 import com.example.ui.theme.BrandCoral
@@ -100,6 +101,8 @@ fun CommunityFeedScreen(
     onSpotClick: (String) -> Unit,
     userCoordinates: Pair<Double, Double> = Pair(38.7112, -9.1423),
     successMessage: String? = null,
+    isUsingDefaultFallbackLocation: Boolean = false,
+    onSelectCity: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val strings = LocalAppStrings.current
@@ -134,6 +137,19 @@ fun CommunityFeedScreen(
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            // Fallback-location warning: the NEARBY filter and the feed's city context are
+            // derived from the built-in default (Lisbon) coordinates while device location
+            // is off and no city has been picked.
+            if (isUsingDefaultFallbackLocation) {
+                item {
+                    FallbackLocationBanner(
+                        onClick = onSelectCity,
+                        testTag = "community_fallback_location_banner",
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+            }
+
             // Header Section
             item {
                 Row(
