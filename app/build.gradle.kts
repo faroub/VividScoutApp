@@ -7,6 +7,7 @@ plugins {
   alias(libs.plugins.secrets)
   alias(libs.plugins.google.services)
   alias(libs.plugins.detekt)
+  jacoco
 }
 
 android {
@@ -136,6 +137,33 @@ tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
 }
 tasks.withType<io.gitlab.arturbosch.detekt.DetektCreateBaselineTask>().configureEach {
   jvmTarget = "11"
+}
+
+// ./gradlew :app:jacocoTestReport — runs the debug unit tests (instrumented by
+// enableUnitTestCoverage above) and aggregates their coverage into
+// app/build/reports/jacoco/jacocoTestReport/. Kept minimal: it reuses the .exec data
+// AGP already produces instead of duplicating instrumentation setup.
+tasks.register<JacocoReport>("jacocoTestReport") {
+  dependsOn("testDebugUnitTest")
+  group = "verification"
+  description = "Generates the JaCoCo coverage report for the debug unit tests."
+  // The unit tests execute against AGP's bundled runtime classes jar
+  // (runtime_app_classes_jar), not the raw classes directory, so the report must
+  // analyze that jar to match what the test JVM actually loaded.
+  classDirectories.setFrom(
+    layout.buildDirectory.file("intermediates/runtime_app_classes_jar/debug/bundleDebugClassesToRuntimeJar/classes.jar")
+  )
+  sourceDirectories.setFrom(files("$projectDir/src/main/java"))
+  executionData.setFrom(
+    layout.buildDirectory.file("outputs/unit_test_code_coverage/debugUnitTest/testDebugUnitTest.exec")
+  )
+  reports {
+    xml.required.set(true)
+    html.required.set(true)
+    csv.required.set(false)
+    html.outputLocation.set(layout.buildDirectory.dir("reports/jacoco/jacocoTestReport/html"))
+    xml.outputLocation.set(layout.buildDirectory.file("reports/jacoco/jacocoTestReport/jacoco.xml"))
+  }
 }
 
 // Some unused dependencies are commented out below instead of being removed.

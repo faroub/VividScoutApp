@@ -1,3 +1,17 @@
+<!--
+  Baseline regenerated 2026-11-08 (after commit a988b31).
+  Lint fails CI only on NEW findings (warnings beyond this baseline; abortOnError for errors).
+  Rule groups and reasons (triage of all reported rules, see docs task T4):
+  - (b) low risk: UnusedResources (unreferenced strings/colors, dead weight, no runtime effect);
+    GradleDependency + NewerVersionAvailable + AndroidGradlePluginVersion (known stale dependency
+    and wrapper versions, deliberate upgrade cadence); OldTargetApi (targetSdk 36 is a deliberate
+    compatibility target); VectorRaster + IconLauncherShape (oversized vector icons and legacy
+    launcher shape — drawing cost only); UseKtx (androidx KTX style equivalents).
+  - Note: R.string.fallback_location_banner_* is a false positive — the strings are used through
+    the LocalAppStrings indirection which lint cannot trace. Kept here so it does not surface as
+    a new warning; remove on the next deliberate baseline cleanup.
+  - No (a) real-bug findings exist in the baseline.
+-->
 <?xml version="1.0" encoding="UTF-8"?>
 <issues format="6" by="lint 9.1.1" type="baseline" client="gradle" dependencies="false" name="AGP (9.1.1)" variant="all" version="9.1.1">
 
@@ -8,7 +22,7 @@
         errorLine2="    ~~~~~~~~~~~~~~">
         <location
             file="build.gradle.kts"
-            line="18"
+            line="20"
             column="5"/>
     </issue>
 
@@ -80,7 +94,7 @@
 
     <issue
         id="AndroidGradlePluginVersion"
-        message="A newer version of Gradle than 9.3.1 is available: 9.8.2"
+        message="A newer version of Gradle than 9.3.1 is available: 9.9.0"
         errorLine1="distributionUrl=https\://services.gradle.org/distributions/gradle-9.3.1-bin.zip"
         errorLine2="                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
@@ -91,7 +105,7 @@
 
     <issue
         id="AndroidGradlePluginVersion"
-        message="A newer version of com.android.application than 9.1.1 is available: 9.5.0"
+        message="A newer version of com.android.application than 9.1.1 is available: 9.5.1"
         errorLine1="agp = &quot;9.1.1&quot;"
         errorLine2="      ~~~~~~~">
         <location
@@ -1708,9 +1722,20 @@
 
     <issue
         id="UnusedResources"
+        message="The resource `R.string.location_privacy_note` appears to be unused"
+        errorLine1="    &lt;string name=&quot;location_privacy_note&quot;>How location is used: to discover nearby spots, your GPS coordinates are sent to VividScout\&apos;s cloud and to external place providers (OpenTripMap, GeoNames, OpenStreetMap) for that search. Coordinates are not stored on your profile; logs round them to ~1 km precision.&lt;/string>"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/res/values/strings.xml"
+            line="109"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="UnusedResources"
         message="The resource `R.string.fallback_location_banner_text` appears to be unused"
         errorLine1="    &lt;string name=&quot;fallback_location_banner_text&quot;>Showing Lisbon because location is off&lt;/string>"
-        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/res/values/strings.xml"
             line="111"
@@ -1721,21 +1746,10 @@
         id="UnusedResources"
         message="The resource `R.string.fallback_location_banner_action` appears to be unused"
         errorLine1="    &lt;string name=&quot;fallback_location_banner_action&quot;>Set city&lt;/string>"
-        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/res/values/strings.xml"
             line="112"
-            column="13"/>
-    </issue>
-
-    <issue
-        id="UnusedResources"
-        message="The resource `R.string.location_privacy_note` appears to be unused"
-        errorLine1="    &lt;string name=&quot;location_privacy_note&quot;>Zero Cloud Tracking: Your GPS coordinates are processed exclusively on your device.&lt;/string>"
-        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/res/values/strings.xml"
-            line="109"
             column="13"/>
     </issue>
 
@@ -1746,7 +1760,7 @@
         errorLine2="            ~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/res/values/strings.xml"
-            line="110"
+            line="113"
             column="13"/>
     </issue>
 
@@ -1757,7 +1771,7 @@
         errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/res/values/strings.xml"
-            line="111"
+            line="114"
             column="13"/>
     </issue>
 
@@ -1768,7 +1782,7 @@
         errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/res/values/strings.xml"
-            line="112"
+            line="115"
             column="13"/>
     </issue>
 
@@ -1779,7 +1793,7 @@
         errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/res/values/strings.xml"
-            line="113"
+            line="116"
             column="13"/>
     </issue>
 
@@ -1790,7 +1804,7 @@
         errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/res/values/strings.xml"
-            line="114"
+            line="117"
             column="13"/>
     </issue>
 
@@ -1801,7 +1815,7 @@
         errorLine2="            ~~~~~~~~~~~~~~">
         <location
             file="src/main/res/values/strings.xml"
-            line="115"
+            line="118"
             column="13"/>
     </issue>
 
@@ -1812,7 +1826,7 @@
         errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/res/values/strings.xml"
-            line="116"
+            line="119"
             column="13"/>
     </issue>
 
@@ -1823,7 +1837,7 @@
         errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/res/values/strings.xml"
-            line="117"
+            line="120"
             column="13"/>
     </issue>
 
@@ -1834,7 +1848,7 @@
         errorLine2="            ~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/res/values/strings.xml"
-            line="118"
+            line="121"
             column="13"/>
     </issue>
 
@@ -1845,7 +1859,7 @@
         errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/res/values/strings.xml"
-            line="119"
+            line="122"
             column="13"/>
     </issue>
 
@@ -1856,7 +1870,7 @@
         errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/res/values/strings.xml"
-            line="120"
+            line="123"
             column="13"/>
     </issue>
 
@@ -1867,7 +1881,7 @@
         errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/res/values/strings.xml"
-            line="121"
+            line="124"
             column="13"/>
     </issue>
 
@@ -1878,7 +1892,7 @@
         errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/res/values/strings.xml"
-            line="122"
+            line="125"
             column="13"/>
     </issue>
 
@@ -1889,7 +1903,7 @@
         errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/res/values/strings.xml"
-            line="123"
+            line="126"
             column="13"/>
     </issue>
 
@@ -1900,7 +1914,7 @@
         errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/res/values/strings.xml"
-            line="124"
+            line="127"
             column="13"/>
     </issue>
 
@@ -1911,7 +1925,7 @@
         errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/res/values/strings.xml"
-            line="125"
+            line="128"
             column="13"/>
     </issue>
 
@@ -1922,7 +1936,7 @@
         errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/res/values/strings.xml"
-            line="126"
+            line="129"
             column="13"/>
     </issue>
 
@@ -1933,7 +1947,7 @@
         errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/res/values/strings.xml"
-            line="127"
+            line="130"
             column="13"/>
     </issue>
 
@@ -1944,7 +1958,7 @@
         errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/res/values/strings.xml"
-            line="128"
+            line="131"
             column="13"/>
     </issue>
 
@@ -1955,7 +1969,7 @@
         errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/res/values/strings.xml"
-            line="129"
+            line="132"
             column="13"/>
     </issue>
 
@@ -1966,7 +1980,7 @@
         errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/res/values/strings.xml"
-            line="130"
+            line="133"
             column="13"/>
     </issue>
 
@@ -1977,7 +1991,62 @@
         errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/res/values/strings.xml"
-            line="131"
+            line="134"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="UnusedResources"
+        message="The resource `R.string.suggested_searches` appears to be unused"
+        errorLine1="    &lt;string name=&quot;suggested_searches&quot;>Suggested Searches&lt;/string>"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/res/values/strings.xml"
+            line="135"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="UnusedResources"
+        message="The resource `R.string.search_suggestion_viewpoints` appears to be unused"
+        errorLine1="    &lt;string name=&quot;search_suggestion_viewpoints&quot;>viewpoints near me&lt;/string>"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/res/values/strings.xml"
+            line="136"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="UnusedResources"
+        message="The resource `R.string.search_suggestion_historic` appears to be unused"
+        errorLine1="    &lt;string name=&quot;search_suggestion_historic&quot;>historic sites&lt;/string>"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/res/values/strings.xml"
+            line="137"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="UnusedResources"
+        message="The resource `R.string.search_suggestion_trails` appears to be unused"
+        errorLine1="    &lt;string name=&quot;search_suggestion_trails&quot;>hiking trails&lt;/string>"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/res/values/strings.xml"
+            line="138"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="UnusedResources"
+        message="The resource `R.string.clear_search_history` appears to be unused"
+        errorLine1="    &lt;string name=&quot;clear_search_history&quot;>Clear history&lt;/string>"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/res/values/strings.xml"
+            line="139"
             column="13"/>
     </issue>
 
@@ -2014,6 +2083,39 @@
         message="Launcher icons should not fill every pixel of their square region; see the design guide for details">
         <location
             file="src/main/res/mipmap-xxxhdpi/ic_launcher.png"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `String.toUri` instead?"
+        errorLine1="                    val localUri = spot.imageUrl?.let { android.net.Uri.parse(it) }"
+        errorLine2="                                                        ~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/example/data/sync/FirestoreSyncManager.kt"
+            line="182"
+            column="57"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `Bitmap.scale` instead?"
+        errorLine1="                Bitmap.createScaledBitmap(bitmap, targetWidth, targetHeight, true)"
+        errorLine2="                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/example/util/PhotoProcessor.kt"
+            line="167"
+            column="17"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `String.toUri` instead?"
+        errorLine1="            val uri = Uri.parse(uriString.trim())"
+        errorLine2="                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/example/data/sync/SharedTripManager.kt"
+            line="140"
+            column="23"/>
     </issue>
 
 </issues>

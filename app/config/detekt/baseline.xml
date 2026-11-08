@@ -1,4 +1,25 @@
 <?xml version="1.0" ?>
+<!--
+  Baseline regenerated 2026-11-08 (after commit a988b31).
+  detekt fails CI only on NEW findings; this file records the accepted pre-existing ones.
+  Rule groups and reasons (triage of all 26 rules, see docs task T4):
+  - (c) acceptable: MagicNumber (geographic/elevation model constants and data tables),
+    FunctionNaming (Compose factory-style names), ConstructorParameterNaming / FunctionParameterNaming /
+    DestructuringDeclarationWithTooManyEntries / MatchingDeclarationName / EmptyFunctionBlock
+    (Kotlin and Compose conventions, test-fake no-ops), InstanceOfCheckForException (these ARE the
+    CancellationException rethrow patterns), UseCheckOrError / UseRequire (explicit throw is clearer),
+    VariableNaming (legacy TAG constant), SpreadOperator (single migration-array spread).
+  - (b) low risk (maintainability, no defects — verified working logic):
+    MaxLineLength, LongMethod, LongParameterList, CyclomaticComplexMethod, ReturnCount,
+    ComplexCondition (coordinate-validation guards), LoopWithTooManyJumpStatements, TooManyFunctions,
+    NestedBlockDepth, ThrowsCount, UnusedParameter, UnusedPrivateProperty.
+  - (b) low risk (exception handling): TooGenericExceptionCaught — every coroutine call site already
+    rethrows CancellationException; remaining sites are non-coroutine sensor/camera/settings callbacks.
+    SwallowedException — intentional recoveries (TimeoutCancellationException-to-empty-result is
+    deliberate; photo-finalization FirebaseFunctionsException classifies transient vs definitive).
+  - No (a) real-bug groups remain; the previous (a)-class SwallowedException findings
+    (CompassSensorManager, ARNavigationOverlay) were fixed in code before regenerating.
+-->
 <SmellBaseline>
   <ManuallySuppressedIssues/>
   <CurrentIssues>
@@ -101,7 +122,7 @@
     <ID>FunctionNaming:CacheHealthBadge.kt$@Composable fun CacheHealthBadge( health: VicinityCacheHealth, onClick: () -&gt; Unit, modifier: Modifier = Modifier, isCompact: Boolean = false )</ID>
     <ID>FunctionNaming:CacheHealthDialog.kt$@Composable fun CacheHealthDialog( health: VicinityCacheHealth, onDismiss: () -&gt; Unit, onPreCacheVicinity: () -&gt; Unit, onOpenDiagnostics: () -&gt; Unit, modifier: Modifier = Modifier )</ID>
     <ID>FunctionNaming:ClearCacheConfirmationDialog.kt$@Composable fun ClearCacheConfirmationDialog( transientCount: Int, savedCount: Int, discoveredCount: Int, onConfirm: () -&gt; Unit, onDismiss: () -&gt; Unit )</ID>
-    <ID>FunctionNaming:CommunityFeedScreen.kt$@Composable fun CommunityFeedScreen( tips: List&lt;CommunityTipEntity&gt;, spots: List&lt;ScoutSpotEntity&gt;, syncPhase: MeshSyncPhase, lastSyncResult: PeerMeshSyncResult?, onTriggerSync: () -&gt; Unit, onUpvoteTip: (String) -&gt; Unit, onPostTip: (spotId: String, spotTitle: String, content: String, isStatus: Boolean, category: String) -&gt; Unit, onSpotClick: (String) -&gt; Unit, userCoordinates: Pair&lt;Double, Double&gt; = Pair(38.7112, -9.1423), successMessage: String? = null, modifier: Modifier = Modifier )</ID>
+    <ID>FunctionNaming:CommunityFeedScreen.kt$@Composable fun CommunityFeedScreen( tips: List&lt;CommunityTipEntity&gt;, spots: List&lt;ScoutSpotEntity&gt;, syncPhase: MeshSyncPhase, lastSyncResult: PeerMeshSyncResult?, onTriggerSync: () -&gt; Unit, onUpvoteTip: (String) -&gt; Unit, onPostTip: (spotId: String, spotTitle: String, content: String, isStatus: Boolean, category: String) -&gt; Unit, onSpotClick: (String) -&gt; Unit, userCoordinates: Pair&lt;Double, Double&gt; = Pair(38.7112, -9.1423), successMessage: String? = null, isUsingDefaultFallbackLocation: Boolean = false, onSelectCity: () -&gt; Unit = {}, modifier: Modifier = Modifier )</ID>
     <ID>FunctionNaming:CommunityFeedScreen.kt$@Composable fun PeerMeshRadarCard( syncPhase: MeshSyncPhase, lastSyncResult: PeerMeshSyncResult?, onTriggerSync: () -&gt; Unit, modifier: Modifier = Modifier )</ID>
     <ID>FunctionNaming:CommunityTipCard.kt$@Composable fun CommunityTipCard( tip: CommunityTipEntity, onUpvoteClick: (String) -&gt; Unit, onSpotClick: ((String) -&gt; Unit)? = null, showSpotHeader: Boolean = true, modifier: Modifier = Modifier )</ID>
     <ID>FunctionNaming:CommunityTipCard.kt$@Composable fun StatusCategoryChip(category: String, modifier: Modifier = Modifier)</ID>
@@ -129,6 +150,7 @@
     <ID>FunctionNaming:ExploreSearchBar.kt$@Composable fun FloatingPillSearchBar( searchQuery: String, onSearchQueryChange: (String) -&gt; Unit, recentSearches: List&lt;RecentSearchEntity&gt; = emptyList(), onDeleteRecentSearch: (String) -&gt; Unit = {}, onClearAllRecentSearches: () -&gt; Unit = {} )</ID>
     <ID>FunctionNaming:ExploreSpotCard.kt$@Composable fun ScoutSpotCard( spot: ScoutSpotEntity, userCoordinates: Pair&lt;Double, Double&gt; = Pair(38.7112, -9.1423), isPlayingAudio: Boolean, activeLayers: Set&lt;ExploreMapLayer&gt; = emptySet(), onToggleSave: () -&gt; Unit, onUpvote: () -&gt; Unit, onToggleAudio: () -&gt; Unit, onDirectionsClick: () -&gt; Unit )</ID>
     <ID>FunctionNaming:ExploreSpotCard.kt$@Composable fun WaypointCard( distance: String, name: String, status: String, statusColor: Color, modifier: Modifier = Modifier )</ID>
+    <ID>FunctionNaming:FallbackLocationBanner.kt$@Composable fun FallbackLocationBanner( onClick: () -&gt; Unit, modifier: Modifier = Modifier, showAction: Boolean = true, testTag: String = "fallback_location_banner" )</ID>
     <ID>FunctionNaming:GlobalCitySelectionDialog.kt$@Composable fun CityGridCard( city: GlobalCity, isSelected: Boolean, onClick: () -&gt; Unit )</ID>
     <ID>FunctionNaming:GlobalCitySelectionDialog.kt$@Composable fun CityListItem( city: GlobalCity, isSelected: Boolean, onClick: () -&gt; Unit )</ID>
     <ID>FunctionNaming:GlobalCitySelectionDialog.kt$@Composable fun GlobalCitySelectionDialog( selectedCity: GlobalCity?, isUsingGps: Boolean, onSelectCity: (GlobalCity) -&gt; Unit, onSelectGpsLocation: () -&gt; Unit, onDismiss: () -&gt; Unit )</ID>
@@ -229,7 +251,7 @@
     <ID>LongMethod:CacheHealthBadge.kt$@Composable fun CacheHealthBadge( health: VicinityCacheHealth, onClick: () -&gt; Unit, modifier: Modifier = Modifier, isCompact: Boolean = false )</ID>
     <ID>LongMethod:CacheHealthDialog.kt$@Composable fun CacheHealthDialog( health: VicinityCacheHealth, onDismiss: () -&gt; Unit, onPreCacheVicinity: () -&gt; Unit, onOpenDiagnostics: () -&gt; Unit, modifier: Modifier = Modifier )</ID>
     <ID>LongMethod:ClearCacheConfirmationDialog.kt$@Composable fun ClearCacheConfirmationDialog( transientCount: Int, savedCount: Int, discoveredCount: Int, onConfirm: () -&gt; Unit, onDismiss: () -&gt; Unit )</ID>
-    <ID>LongMethod:CommunityFeedScreen.kt$@Composable fun CommunityFeedScreen( tips: List&lt;CommunityTipEntity&gt;, spots: List&lt;ScoutSpotEntity&gt;, syncPhase: MeshSyncPhase, lastSyncResult: PeerMeshSyncResult?, onTriggerSync: () -&gt; Unit, onUpvoteTip: (String) -&gt; Unit, onPostTip: (spotId: String, spotTitle: String, content: String, isStatus: Boolean, category: String) -&gt; Unit, onSpotClick: (String) -&gt; Unit, userCoordinates: Pair&lt;Double, Double&gt; = Pair(38.7112, -9.1423), successMessage: String? = null, modifier: Modifier = Modifier )</ID>
+    <ID>LongMethod:CommunityFeedScreen.kt$@Composable fun CommunityFeedScreen( tips: List&lt;CommunityTipEntity&gt;, spots: List&lt;ScoutSpotEntity&gt;, syncPhase: MeshSyncPhase, lastSyncResult: PeerMeshSyncResult?, onTriggerSync: () -&gt; Unit, onUpvoteTip: (String) -&gt; Unit, onPostTip: (spotId: String, spotTitle: String, content: String, isStatus: Boolean, category: String) -&gt; Unit, onSpotClick: (String) -&gt; Unit, userCoordinates: Pair&lt;Double, Double&gt; = Pair(38.7112, -9.1423), successMessage: String? = null, isUsingDefaultFallbackLocation: Boolean = false, onSelectCity: () -&gt; Unit = {}, modifier: Modifier = Modifier )</ID>
     <ID>LongMethod:CommunityFeedScreen.kt$@Composable fun PeerMeshRadarCard( syncPhase: MeshSyncPhase, lastSyncResult: PeerMeshSyncResult?, onTriggerSync: () -&gt; Unit, modifier: Modifier = Modifier )</ID>
     <ID>LongMethod:CommunityTipCard.kt$@Composable fun CommunityTipCard( tip: CommunityTipEntity, onUpvoteClick: (String) -&gt; Unit, onSpotClick: ((String) -&gt; Unit)? = null, showSpotHeader: Boolean = true, modifier: Modifier = Modifier )</ID>
     <ID>LongMethod:CompassOverlay.kt$@Composable fun CompassOverlay( compassState: CompassState, userLat: Double, userLng: Double, targetGem: ScoutSpotEntity? = null, onToggleTrueNorth: () -&gt; Unit = {}, onSelectTargetGem: (ScoutSpotEntity) -&gt; Unit = {}, modifier: Modifier = Modifier )</ID>
@@ -347,7 +369,7 @@
     <ID>LongParameterList:AppDialogLayer.kt$( exploreViewModel: ExploreViewModel, offlineMapsViewModel: OfflineMapsViewModel, profileViewModel: ProfileViewModel, locationViewModel: LocationViewModel, exploreState: ExploreUiState, offlineMapsState: OfflineMapsUiState, profileState: ProfileUiState, locationState: LocationUiState, permissionActions: LocationPermissionActions )</ID>
     <ID>LongParameterList:BottomNavigationDock.kt$( title: String, selected: Boolean, selectedIcon: ImageVector, unselectedIcon: ImageVector, showDot: Boolean = false, testTag: String, onClick: () -&gt; Unit, modifier: Modifier = Modifier )</ID>
     <ID>LongParameterList:CacheHealth.kt$CacheHealthCalculator$( userLat: Double, userLng: Double, spots: List&lt;ScoutSpotEntity&gt;, radiusMeters: Int = DEFAULT_VICINITY_RADIUS_METERS, targetCount: Int = TARGET_VICINITY_DENSITY, lastSyncedCount: Int = 0, isFetching: Boolean = false )</ID>
-    <ID>LongParameterList:CommunityFeedScreen.kt$( tips: List&lt;CommunityTipEntity&gt;, spots: List&lt;ScoutSpotEntity&gt;, syncPhase: MeshSyncPhase, lastSyncResult: PeerMeshSyncResult?, onTriggerSync: () -&gt; Unit, onUpvoteTip: (String) -&gt; Unit, onPostTip: (spotId: String, spotTitle: String, content: String, isStatus: Boolean, category: String) -&gt; Unit, onSpotClick: (String) -&gt; Unit, userCoordinates: Pair&lt;Double, Double&gt; = Pair(38.7112, -9.1423), successMessage: String? = null, modifier: Modifier = Modifier )</ID>
+    <ID>LongParameterList:CommunityFeedScreen.kt$( tips: List&lt;CommunityTipEntity&gt;, spots: List&lt;ScoutSpotEntity&gt;, syncPhase: MeshSyncPhase, lastSyncResult: PeerMeshSyncResult?, onTriggerSync: () -&gt; Unit, onUpvoteTip: (String) -&gt; Unit, onPostTip: (spotId: String, spotTitle: String, content: String, isStatus: Boolean, category: String) -&gt; Unit, onSpotClick: (String) -&gt; Unit, userCoordinates: Pair&lt;Double, Double&gt; = Pair(38.7112, -9.1423), successMessage: String? = null, isUsingDefaultFallbackLocation: Boolean = false, onSelectCity: () -&gt; Unit = {}, modifier: Modifier = Modifier )</ID>
     <ID>LongParameterList:CommunityTipRepository.kt$CommunityTipRepository$( spotId: String, spotTitle: String, content: String, isStatusUpdate: Boolean = false, statusCategory: String = "INSIGHT", authorName: String = "@you", onPostOutcome: (CommunitySyncOutcome) -&gt; Unit = {} )</ID>
     <ID>LongParameterList:CompassOverlay.kt$( compassState: CompassState, userLat: Double, userLng: Double, targetGem: ScoutSpotEntity? = null, onToggleTrueNorth: () -&gt; Unit = {}, onSelectTargetGem: (ScoutSpotEntity) -&gt; Unit = {}, modifier: Modifier = Modifier )</ID>
     <ID>LongParameterList:DataStorageDashboardCard.kt$( totalSpotsCount: Int, savedCount: Int, discoveredCount: Int, draftCount: Int, databaseSizeBytes: Long, onClearCacheClick: () -&gt; Unit, modifier: Modifier = Modifier )</ID>
@@ -650,6 +672,10 @@
     <ID>MagicNumber:ExploreViewModel.kt$ExploreViewModel$4000</ID>
     <ID>MagicNumber:ExploreViewModel.kt$ExploreViewModel$5000</ID>
     <ID>MagicNumber:ExploreViewModel.kt$ExploreViewModel$60000f</ID>
+    <ID>MagicNumber:FallbackLocationBanner.kt$0xFF92400E</ID>
+    <ID>MagicNumber:FallbackLocationBanner.kt$0xFFD97706</ID>
+    <ID>MagicNumber:FallbackLocationBanner.kt$0xFFF59E0B</ID>
+    <ID>MagicNumber:FallbackLocationBanner.kt$0xFFFEF3C7</ID>
     <ID>MagicNumber:FirestoreSyncManager.kt$FirestoreSyncManager$100</ID>
     <ID>MagicNumber:FirestoreSyncManager.kt$FirestoreSyncManager$1000</ID>
     <ID>MagicNumber:FirestoreSyncManager.kt$FirestoreSyncManager$120</ID>
@@ -1157,10 +1183,6 @@
     <ID>MagicNumber:ScoutGemRepository.kt$ScoutGemRepository$60L</ID>
     <ID>MagicNumber:ScoutGemRepository.kt$ScoutGemRepository$80f</ID>
     <ID>MagicNumber:ScoutGemRepository.kt$ScoutGemRepository$9.1423</ID>
-    <ID>MagicNumber:ScoutMapLifecycleHost.kt$0xFF92400E</ID>
-    <ID>MagicNumber:ScoutMapLifecycleHost.kt$0xFFD97706</ID>
-    <ID>MagicNumber:ScoutMapLifecycleHost.kt$0xFFF59E0B</ID>
-    <ID>MagicNumber:ScoutMapLifecycleHost.kt$0xFFFEF3C7</ID>
     <ID>MagicNumber:ScoutMapViewModel.kt$ScoutMapUiState$100</ID>
     <ID>MagicNumber:ScoutMapViewModel.kt$ScoutMapViewModel$0.05f</ID>
     <ID>MagicNumber:ScoutRepository.kt$ScoutRepository$6</ID>
@@ -1451,6 +1473,8 @@
     <ID>MaxLineLength:ExploreViewModel.kt$ExploreViewModel$// Immediately query Gemini AI for authentic tourist attractions, historic landmarks, dining gems within 1.5km walking radius</ID>
     <ID>MaxLineLength:ExploreViewModel.kt$ExploreViewModel$val coords = _userCoordinates.value ?: Pair(DefaultLocationConfig.DEFAULT_LAT, DefaultLocationConfig.DEFAULT_LNG)</ID>
     <ID>MaxLineLength:ExploreViewModelUiStateTest.kt$ExploreViewModelUiStateTest.FakeScoutGemRepository$recentSearchesFlow.value = recentSearchesFlow.value + RecentSearchEntity(queryText, queryText, category, System.currentTimeMillis())</ID>
+    <ID>MaxLineLength:FallbackLocationBanner.kt$style = MaterialTheme.typography.labelMedium.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)</ID>
+    <ID>MaxLineLength:FallbackLocationBanner.kt$style = MaterialTheme.typography.labelSmall.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)</ID>
     <ID>MaxLineLength:FirebasePhotoStorageService.kt$FirebasePhotoUploadOperations$override suspend</ID>
     <ID>MaxLineLength:FirebasePhotoStorageService.kt$PhotoUploadOrchestrator$"Photo upload failed after registration was attempted — the photo may already be published. Retrying reconciles with the server instead of duplicating the photo."</ID>
     <ID>MaxLineLength:FirestoreSyncManager.kt$FirestoreSyncManager$*</ID>
@@ -2062,10 +2086,8 @@
     <ID>ReturnCount:WikipediaPhotoService.kt$WikipediaPhotoService$fun resolveWikimediaCommonsTag(commonsTag: String?, targetWidth: Int = 1200): String?</ID>
     <ID>ReturnCount:WikipediaPhotoService.kt$WikipediaPhotoService$private fun fetchPageSummary(lang: String, title: String, targetWidth: Int = 1200): WikipediaPhotoResult?</ID>
     <ID>SpreadOperator:AppDatabase.kt$AppDatabase.Companion$(*DatabaseMigrations.ALL_MIGRATIONS)</ID>
-    <ID>SwallowedException:ARNavigationOverlay.kt$e: Exception</ID>
     <ID>SwallowedException:CommunityTipRepositoryTest.kt$CommunityTipRepositoryTest$e: Exception</ID>
     <ID>SwallowedException:CommunityViewModel.kt$CommunityViewModel$e: Exception</ID>
-    <ID>SwallowedException:CompassSensorManager.kt$CompassSensorManager$e: Exception</ID>
     <ID>SwallowedException:FirebasePhotoStorageService.kt$FirebasePhotoUploadOperations$e: FirebaseFunctionsException</ID>
     <ID>SwallowedException:FirestoreSyncManager.kt$FirestoreSyncManager$e: Exception</ID>
     <ID>SwallowedException:GeminiQueryService.kt$GeminiQueryService$e: TimeoutCancellationException</ID>
