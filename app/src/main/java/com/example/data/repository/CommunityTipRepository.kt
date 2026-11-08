@@ -1,6 +1,7 @@
 package com.example.data.repository
 
 import android.content.Context
+import com.example.BuildConfig
 import com.example.util.SafeLog
 import com.example.data.local.AppDatabase
 import com.example.data.local.CommunityTipDao
@@ -156,7 +157,13 @@ class CommunityTipRepository(
         result
     }
 
+    /**
+     * Ensures the initial seed tips exist only in debug builds: release installs must
+     * never present fabricated demo tips as real community contributions. The seed
+     * generator itself is kept — debug builds and tests rely on it.
+     */
     suspend fun ensureInitialTipsSeeded() = withContext(Dispatchers.IO) {
+        if (!BuildConfig.DEBUG) return@withContext
         val count = dao.getTipCount()
         if (count == 0) {
             val seedTips = PeerMeshSyncEngine.createSeedTips()

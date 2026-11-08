@@ -6,6 +6,7 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.example.BuildConfig
 import com.example.data.places.CachedPlaceEntity
 import com.example.data.places.PlaceCoverageEntity
 import kotlinx.coroutines.CoroutineScope
@@ -25,7 +26,7 @@ import kotlinx.coroutines.launch
         PlaceCoverageEntity::class,
         UserPointsEntity::class
     ],
-    version = 15,
+    version = 16,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -68,7 +69,11 @@ abstract class AppDatabase : RoomDatabase() {
                         populateInitialSpots(database.scoutDao())
                         populateInitialRecentSearches(database.recentSearchDao())
                         populateInitialAchievements(database.achievementDao())
-                        populateInitialCommunityTips(database.communityTipDao())
+                        // Demo seed tips ship in debug builds only: release installs must
+                        // not present fabricated community content as real contributions.
+                        if (BuildConfig.DEBUG) {
+                            populateInitialCommunityTips(database.communityTipDao())
+                        }
                     }
                 }
             }

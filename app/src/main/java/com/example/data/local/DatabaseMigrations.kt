@@ -334,6 +334,26 @@ object DatabaseMigrations {
         }
     }
 
+    /**
+     * Migration from version 15 to version 16:
+     * Removes the demo community tips that earlier releases inserted into production
+     * databases: 'seed_tip_*' / 'peer_seed_*' rows (AppDatabase.onCreate's
+     * populateInitialCommunityTips and CommunityTipRepository.ensureInitialTipsSeeded,
+     * which now seed only debug builds) and 'p2p_*' rows (simulated peer-mesh gossip).
+     * Only rows that are NOT locally authored (demo rows mimic remote contributions) AND
+     * carry a demo-only id/peerNodeId prefix are deleted: real user-authored tips
+     * ('user_tip_*', always isLocallyAuthored = 1) and downloaded community tips
+     * (isLocallyAuthored = 0 with a real client-generated id) always survive.
+     */
+    val MIGRATION_15_16 = object : Migration(15, 16) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "DELETE FROM community_tips WHERE isLocallyAuthored = 0 AND (" +
+                    "id LIKE 'seed_tip_%' OR peerNodeId LIKE 'peer_seed_%' OR id LIKE 'p2p_%')"
+            )
+        }
+    }
+
     val ALL_MIGRATIONS: Array<Migration> = arrayOf(
         MIGRATION_1_2,
         MIGRATION_2_3,
@@ -348,6 +368,7 @@ object DatabaseMigrations {
         MIGRATION_11_12,
         MIGRATION_12_13,
         MIGRATION_13_14,
-        MIGRATION_14_15
+        MIGRATION_14_15,
+        MIGRATION_15_16
     )
 }

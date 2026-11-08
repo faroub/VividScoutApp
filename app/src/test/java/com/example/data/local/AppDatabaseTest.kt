@@ -482,4 +482,55 @@ class AppDatabaseTest {
 
         db.close()
     }
+
+    @Test
+    @Throws(IOException::class)
+    fun testMigration15To16RemovesDemoSeedTipsAndPreservesRealTips() {
+        // Seed version 15 with one demo seed tip, one demo p2p gossip tip, one locally
+        // authored real tip, and one downloaded community tip (not locally authored, but
+        // a genuine client-generated 'user_tip_' id from another author).
+        var db = helper.createDatabase(TEST_DB, 15).apply {
+            execSQL(
+                """
+                INSERT INTO community_tips (
+                    id, spotId, spotTitle, authorName, content, timestamp, isStatusUpdate,
+                    statusCategory, legacyUpvotes, upvotes, peerNodeId, isLocallyAuthored,
+                    isSyncedToCloud, isMigrated
+                ) VALUES
+                ('seed_tip_99', 'spot_2', 'Pastelaria Santo Antonio', '@patricia_bakes', 'Bakery fresh batch alert', 1700000000000, 1, 'FRESH_BATCH', 0, 24, 'peer_seed_99', 0, 0, 1),
+                ('p2p_tip_199', 'spot_5', 'Manteigaria Fabrica', '@miguel_chiado', 'Kitchen closing for quick dough prep', 1700000001000, 1, 'LINE_QUEUE', 0, 12, 'peer_chiado_42', 0, 0, 1),
+                ('user_tip_keep', 'spot_1', 'Miradouro de Santa Luzia', '@you', 'Best sunset view', 1700000002000, 0, 'INSIGHT', 0, 0, 'local-device', 1, 1, 1),
+                ('user_tip_remote', 'spot_1', 'Miradouro de Santa Luzia', '@another', 'Cloud tip from another user', 1700000003000, 0, 'INSIGHT', 0, 7, 'local-device', 0, 1, 1)
+                """.trimIndent()
+            )
+            close()
+        }
+
+        db = helper.runMigrationsAndValidate(TEST_DB, 16, true, DatabaseMigrations.MIGRATION_15_16)
+
+        // The demo rows are gone.
+        val seedCursor = db.query("SELECT COUNT(*) AS total FROM community_tips WHERE id = 'seed_tip_99'")
+        assertTrue(seedCursor.moveToFirst())
+        assertEquals(0, seedCursor.getInt(seedCursor.getColumnIndexOrThrow("total")))
+        seedCursor.close()
+        val p2pCursor = db.query("SELECT COUNT(*) AS total FROM community_tips WHERE id = 'p2p_tip_199'")
+        assertTrue(p2pCursor.moveToFirst())
+        assertEquals(0, p2pCursor.getInt(p2pCursor.getColumnIndexOrThrow("total")))
+        p2pCursor.close()
+
+        // The real tips survive untouched, including the not-locally-authored
+        // downloaded tip, whose id carries no demo prefix.
+        val localCursor = db.query("SELECT * FROM community_tips WHERE id = 'user_tip_keep'")
+        assertTrue("Locally authored tips must survive the migration", localCursor.moveToFirst())
+        assertEquals(1, localCursor.getInt(localCursor.getColumnIndexOrThrow("isLocallyAuthored")))
+        assertEquals("Best sunset view", localCursor.getString(localCursor.getColumnIndexOrThrow("content")))
+        localCursor.close()
+        val remoteCursor = db.query("SELECT * FROM community_tips WHERE id = 'user_tip_remote'")
+        assertTrue("Downloaded community tips must survive the migration", remoteCursor.moveToFirst())
+        assertEquals(0, remoteCursor.getInt(remoteCursor.getColumnIndexOrThrow("isLocallyAuthored")))
+        assertEquals(7, remoteCursor.getInt(remoteCursor.getColumnIndexOrThrow("upvotes")))
+        remoteCursor.close()
+
+        db.close()
+    }
 }
