@@ -666,6 +666,10 @@
     <ID>MagicNumber:FirestoreSyncManager.kt$FirestoreSyncManager$50</ID>
     <ID>MagicNumber:FirestoreSyncManager.kt$FirestoreSyncManager$500</ID>
     <ID>MagicNumber:FirestoreSyncManager.kt$FirestoreSyncManager$90.0</ID>
+    <ID>MagicNumber:GemCacheMaintenance.kt$GemCacheMaintenance$1000.0</ID>
+    <ID>MagicNumber:GemCacheMaintenance.kt$GemCacheMaintenance$1000L</ID>
+    <ID>MagicNumber:GemCacheMaintenance.kt$GemCacheMaintenance$24L</ID>
+    <ID>MagicNumber:GemCacheMaintenance.kt$GemCacheMaintenance$60L</ID>
     <ID>MagicNumber:GemPhotoEnrichment.kt$GemPhotoEnrichment$1000L</ID>
     <ID>MagicNumber:GeminiQueryService.kt$GeminiQueryService$1000</ID>
     <ID>MagicNumber:GeminiQueryService.kt$GeminiQueryService$10_000L</ID>
@@ -1155,12 +1159,8 @@
     <ID>MagicNumber:RouteSummarySection.kt$100</ID>
     <ID>MagicNumber:SafeLog.kt$SafeLog$4</ID>
     <ID>MagicNumber:ScoutGem.kt$9.1423</ID>
-    <ID>MagicNumber:ScoutGemRepository.kt$ScoutGemRepository$1000.0</ID>
-    <ID>MagicNumber:ScoutGemRepository.kt$ScoutGemRepository$1000L</ID>
-    <ID>MagicNumber:ScoutGemRepository.kt$ScoutGemRepository$24L</ID>
     <ID>MagicNumber:ScoutGemRepository.kt$ScoutGemRepository$50000f</ID>
     <ID>MagicNumber:ScoutGemRepository.kt$ScoutGemRepository$6</ID>
-    <ID>MagicNumber:ScoutGemRepository.kt$ScoutGemRepository$60L</ID>
     <ID>MagicNumber:ScoutGemRepository.kt$ScoutGemRepository$80f</ID>
     <ID>MagicNumber:ScoutGemRepository.kt$ScoutGemRepository$9.1423</ID>
     <ID>MagicNumber:ScoutMapViewModel.kt$ScoutMapUiState$100</ID>
@@ -1471,6 +1471,7 @@
     <ID>MaxLineLength:FirestoreSyncManager.kt$FirestoreSyncManager$SafeLog.w(TAG, "User '${SafeLog.sanitizeUid(currentUid)}' has already voted on tip '$tipId'. Rejecting second vote.")</ID>
     <ID>MaxLineLength:FirestoreSyncManager.kt$FirestoreSyncManager$if</ID>
     <ID>MaxLineLength:FirestoreTipRulesValidationTest.kt$FirestoreTipRulesValidationTest$assertFalse("Counter increment without creating vote doc MUST fail post-write check (existsAfter)", postStateCheck)</ID>
+    <ID>MaxLineLength:GemCacheMaintenance.kt$GemCacheMaintenance$"Auto-cleanup completed: removed $expiredRemoved expired spots (&gt; ${maxAgeDays}d) and $distantRemoved distant spots (&gt; ${maxRadiusKm.toInt()}km). Total pruned: $totalRemoved."</ID>
     <ID>MaxLineLength:GemPhotoEnrichment.kt$GemPhotoEnrichment$"Photo enrichment session hit the ${ScoutGemRepository.MAX_ENRICHMENTS_PER_SESSION}-item safety cap; "</ID>
     <ID>MaxLineLength:GemPhotoEnrichment.kt$GemPhotoEnrichment$"Wikimedia Commons Resolution SUCCESS: Validated photo for '${spot.title}' (isSaved=${spot.isSaved}): ${resolved.url}"</ID>
     <ID>MaxLineLength:GemPhotoEnrichment.kt$GemPhotoEnrichment$SafeLog.w(TAG, "Background photo enrichment error for ${spot.id} ('${spot.title}'): ${e.message}")</ID>
@@ -1900,7 +1901,6 @@
     <ID>MaxLineLength:ScoutDao.kt$ScoutDao$@Query("DELETE FROM scout_spots WHERE isSaved = 0 AND isDiscovered = 0 AND isOfflineDraft = 0 AND (id LIKE 'osm_fallback_%' OR id LIKE 'fallback_%')")</ID>
     <ID>MaxLineLength:ScoutDao.kt$ScoutDao$@Query("DELETE FROM scout_spots WHERE isSaved = 0 AND isDiscovered = 0 AND isOfflineDraft = 0 AND (latitude &lt; :minLat OR latitude &gt; :maxLat OR longitude &lt; :minLng OR longitude &gt; :maxLng)")</ID>
     <ID>MaxLineLength:ScoutDao.kt$ScoutDao$@Query("DELETE FROM scout_spots WHERE isSaved = 0 AND isDiscovered = 0 AND isOfflineDraft = 0 AND timestamp &lt; :cutoffTimestamp")</ID>
-    <ID>MaxLineLength:ScoutGemRepository.kt$ScoutGemRepository$"Auto-cleanup completed: removed $expiredRemoved expired spots (&gt; ${maxAgeDays}d) and $distantRemoved distant spots (&gt; ${maxRadiusKm.toInt()}km). Total pruned: $totalRemoved."</ID>
     <ID>MaxLineLength:ScoutGemRepository.kt$ScoutGemRepository$"Automatic Network Reconnection Re-Sync: Found ${unEnriched.size} spots needing photos (${savedSpots.size} saved/bookmarked, ${feedSpots.size} feed)."</ID>
     <ID>MaxLineLength:ScoutGemRepository.kt$ScoutGemRepository$"Spot discovery attempt #$attempt failed. Retrying in ${currentDelay}ms... Error: ${lastResult.exceptionOrNull()?.message}"</ID>
     <ID>MaxLineLength:ScoutGemRepository.kt$ScoutGemRepository$// Safe recovery: JSON parsing of raw Overpass telemetry failed, log warning telemetry and return raw log</ID>
