@@ -1,13 +1,6 @@
 package com.example.ui.screens
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -18,113 +11,37 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
-import androidx.compose.material.icons.filled.AddLocationAlt
-import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.Bolt
-import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Explore
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.Groups
-import androidx.compose.material.icons.filled.Headphones
-import androidx.compose.material.icons.filled.Lightbulb
-import androidx.compose.material.icons.filled.LocalFireDepartment
-import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.NearMe
-import androidx.compose.material.icons.filled.NotificationsActive
-import androidx.compose.material.icons.filled.PauseCircle
-import androidx.compose.material.icons.filled.PhotoCamera
-import androidx.compose.material.icons.filled.PlayCircle
-import androidx.compose.material.icons.filled.Public
-import androidx.compose.material.icons.filled.Restaurant
-import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.ThumbUp
-import androidx.compose.material.icons.filled.Timer
-import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material.icons.filled.Verified
-import androidx.compose.material.icons.filled.WbSunny
-import androidx.compose.material.icons.outlined.Deck
-import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Search
-import androidx.compose.material.icons.outlined.TravelExplore
-import androidx.compose.ui.text.style.TextAlign
 import android.location.Location
-import com.example.data.local.computedDistanceMeters
-import com.example.data.local.computedDistanceString
-import com.example.data.local.computedWalkMinutes
 import androidx.compose.material.icons.filled.Route
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.platform.LocalContext
-import coil.compose.AsyncImage
-import coil.request.ImageRequest
-import com.example.util.ImageResolver
 import com.example.data.local.ScoutSpotEntity
 import com.example.ui.components.DiscoverGemsLoadingState
-import com.example.ui.theme.BrandCoral
-import com.example.ui.theme.BrandNight
-import com.example.ui.theme.BrandTeal
-import com.example.ui.theme.EatsAmber
-import com.example.ui.theme.EatsAmberBg
-import com.example.ui.theme.HistoryPurple
-import com.example.ui.theme.HistoryPurpleBg
 import com.example.ui.theme.LocalAppStrings
-import com.example.ui.theme.Primary
-import com.example.ui.theme.PrimaryContainer
-import com.example.ui.theme.PrimaryFixed
-import com.example.ui.theme.Secondary
-import com.example.ui.theme.SecondaryContainer
-import com.example.ui.theme.SecondaryFixed
-import com.example.ui.theme.SecondaryFixedDim
-import com.example.ui.theme.SightsGreen
-import com.example.ui.theme.SightsGreenBg
-import com.example.ui.theme.SurfaceContainer
-import com.example.ui.theme.SurfaceContainerHigh
-import com.example.ui.theme.SurfaceContainerLow
-import com.example.ui.theme.SurfaceContainerLowest
 import androidx.compose.material.icons.filled.Layers
 import com.example.data.local.RecentSearchEntity
 import com.example.data.model.ExploreMapLayer
 import com.example.ui.components.EmptyStateView
 import com.example.ui.components.FallbackLocationBanner
 import com.example.ui.components.OfflineNoCacheStateView
-import com.example.ui.theme.Tertiary
-import com.example.ui.theme.TertiaryFixed
 
 @Composable
 fun ExploreScreen(
@@ -279,82 +196,25 @@ fun ExploreScreen(
                 }
             }
 
-            // 2. Header Style 0 vs Header Style 1
-            if (headerStyle == 0) {
-                // Style 0: Floating Search + Live Scrape Pulse Ticker
-                item {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        // Floating Pill Search Bar
-                        FloatingPillSearchBar(
-                            searchQuery = searchQuery,
-                            onSearchQueryChange = onSearchQueryChange,
-                            recentSearches = recentSearches,
-                            onDeleteRecentSearch = onDeleteRecentSearch,
-                            onClearAllRecentSearches = onClearAllRecentSearches
-                        )
-
-                        // Offline Database Sync Status Badge & Cache Health Score Badge
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            com.example.ui.components.OfflineSyncStatusBadge(
-                                status = syncStatus,
-                                onClick = onOpenQueueDialog,
-                                onOpenDiagnostics = onOpenDiagnostics,
-                                modifier = Modifier.weight(1f)
-                            )
-
-                            if (cacheHealth != null) {
-                                com.example.ui.components.CacheHealthBadge(
-                                    health = cacheHealth,
-                                    onClick = onOpenCacheHealth,
-                                    isCompact = true
-                                )
-                            }
-                        }
-
-                        // Live Scrape Pulse Ticker
-                        LiveScrapePulseTicker(
-                            isDiscovering = isDiscovering,
-                            discoveryMessage = discoveryMessage,
-                            onTriggerDiscover = onTriggerDiscover
-                        )
-                    }
-                }
-
-                // Category Filter Ribbon
-                item {
-                    CategoryFilterRibbon(
-                        selectedCategory = selectedCategory,
-                        onCategorySelected = onCategorySelected
-                    )
-                }
-            } else {
-                // Style 1: Chiado District Radiant Teal Depth Hero Header
-                item {
-                    ChiadoHeroHeader(
-                        searchQuery = searchQuery,
-                        onSearchQueryChange = onSearchQueryChange
-                    )
-                }
-
-                // Category Filter Chips for Sights Hero
-                item {
-                    ChiadoCategoryFilterRibbon(
-                        selectedCategory = selectedCategory,
-                        onCategorySelected = onCategorySelected
-                    )
-                }
-            }
-
-            // Pinned Inline Toolbar Strip: Map & Route + Map Overlays (No floating buttons)
+            // 2. Header Style 0 vs Header Style 1 (section composables)
+            exploreFeedHeaderSection(
+                headerStyle = headerStyle,
+                searchQuery = searchQuery,
+                onSearchQueryChange = onSearchQueryChange,
+                recentSearches = recentSearches,
+                onDeleteRecentSearch = onDeleteRecentSearch,
+                onClearAllRecentSearches = onClearAllRecentSearches,
+                syncStatus = syncStatus,
+                onOpenQueueDialog = onOpenQueueDialog,
+                onOpenDiagnostics = onOpenDiagnostics,
+                cacheHealth = cacheHealth,
+                onOpenCacheHealth = onOpenCacheHealth,
+                isDiscovering = isDiscovering,
+                discoveryMessage = discoveryMessage,
+                onTriggerDiscover = onTriggerDiscover,
+                selectedCategory = selectedCategory,
+                onCategorySelected = onCategorySelected
+            )
             item {
                 Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)) {
                     ExploreControlToolbarStrip(
@@ -367,113 +227,12 @@ fun ExploreScreen(
 
             // Section Title: Trending Around You
             item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 4.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.LocalFireDepartment,
-                            contentDescription = null,
-                            tint = Primary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = strings.trendingAroundYou,
-                            style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Surface(
-                            shape = RoundedCornerShape(999.dp),
-                            color = PrimaryContainer.copy(alpha = 0.15f),
-                            modifier = Modifier
-                                .clickable { onTriggerDiscover() }
-                                .testTag("discover_gems_button")
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.AutoAwesome,
-                                    contentDescription = null,
-                                    tint = PrimaryContainer,
-                                    modifier = Modifier.size(13.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = "Discover Gems",
-                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                    color = PrimaryContainer
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.width(6.dp))
-
-                        Surface(
-                            shape = RoundedCornerShape(999.dp),
-                            color = BrandTeal.copy(alpha = 0.15f),
-                            modifier = Modifier
-                                .clickable { onOpenTouristicSources() }
-                                .testTag("open_touristic_sources_button")
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Public,
-                                    contentDescription = null,
-                                    tint = BrandTeal,
-                                    modifier = Modifier.size(13.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = "Sources",
-                                    style = MaterialTheme.typography.labelSmall.copy(
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 11.sp
-                                    ),
-                                    color = BrandTeal
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.width(6.dp))
-
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(999.dp))
-                                .clickable { onPlanRouteClick() }
-                                .padding(horizontal = 6.dp, vertical = 4.dp)
-                                .testTag("map_view_trigger")
-                        ) {
-                            Text(
-                                text = strings.mapView,
-                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                                color = Primary
-                            )
-                            Icon(
-                                imageVector = Icons.Default.ChevronRight,
-                                contentDescription = null,
-                                tint = Primary,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-                    }
-                }
+                ExploreTrendingSectionHeader(
+                    onTriggerDiscover = onTriggerDiscover,
+                    onOpenTouristicSources = onOpenTouristicSources,
+                    onPlanRouteClick = onPlanRouteClick
+                )
             }
-
-            // 3. Feed Cards OR Loading State OR Empty State OR Offline No Cache Error State
             if (isDiscovering) {
                 item {
                     Box(modifier = Modifier.padding(horizontal = 16.dp)) {
@@ -531,138 +290,4 @@ fun ExploreScreen(
         }
     }
 }
-
-/**
- * Pinned inline toolbar strip for Explore screen containing Map & Route launcher
- * and multi-select Historical, Culinary, and Shortcut overlay chips (Zero floating buttons).
- */
-@Composable
-fun ExploreControlToolbarStrip(
-    activeMapLayers: Set<ExploreMapLayer>,
-    onToggleMapLayer: (ExploreMapLayer) -> Unit,
-    onPlanRouteClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Surface(
-        shape = RoundedCornerShape(18.dp),
-        color = SurfaceContainerLow,
-        shadowElevation = 2.dp,
-        border = androidx.compose.foundation.BorderStroke(
-            1.dp,
-            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
-        ),
-        modifier = modifier
-            .fillMaxWidth()
-            .testTag("explore_control_toolbar_strip")
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 10.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Map & Route Action Button (Inline, non-floating)
-                Surface(
-                    onClick = onPlanRouteClick,
-                    shape = RoundedCornerShape(999.dp),
-                    color = BrandNight,
-                    shadowElevation = 3.dp,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, BrandTeal.copy(alpha = 0.5f)),
-                    modifier = Modifier.testTag("inline_map_route_button")
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Route,
-                            contentDescription = "Map & Route",
-                            tint = BrandTeal,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Map & Route",
-                            style = MaterialTheme.typography.labelMedium.copy(
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 12.5.sp
-                            ),
-                            color = Color.White
-                        )
-                    }
-                }
-
-                // Map Overlays Title
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.Layers,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(15.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = "Map Overlays",
-                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // Inline segmented layer toggle chips (Historical, Culinary, Shortcut)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                ExploreMapLayer.entries.forEach { layer ->
-                    val isActive = activeMapLayers.contains(layer)
-                    Surface(
-                        onClick = { onToggleMapLayer(layer) },
-                        shape = RoundedCornerShape(999.dp),
-                        color = if (isActive) layer.color.copy(alpha = 0.18f) else SurfaceContainerLowest,
-                        border = androidx.compose.foundation.BorderStroke(
-                            1.dp,
-                            if (isActive) layer.color else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                        ),
-                        shadowElevation = if (isActive) 2.dp else 0.dp,
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("inline_layer_chip_${layer.id}")
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(vertical = 7.dp),
-                            horizontalArrangement = Arrangement.Center,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(7.dp)
-                                    .clip(CircleShape)
-                                    .background(if (isActive) layer.color else Color.Gray.copy(alpha = 0.4f))
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = layer.displayName,
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium,
-                                    fontSize = 11.sp
-                                ),
-                                color = if (isActive) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-
-
 
