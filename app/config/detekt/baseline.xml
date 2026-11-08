@@ -2,10 +2,10 @@
 <SmellBaseline>
   <ManuallySuppressedIssues/>
   <CurrentIssues>
+    <ID>ComplexCondition:CommunitySyncDownloader.kt$CommunitySyncDownloader$lat.isNaN() || lng.isNaN() || (lat == 0.0 &amp;&amp; lng == 0.0) || lat &lt; -90.0 || lat &gt; 90.0 || lng &lt; -180.0 || lng &gt; 180.0</ID>
     <ID>ComplexCondition:DefaultLocationConfig.kt$DefaultLocationConfig$!lat.isNaN() &amp;&amp; !lng.isNaN() &amp;&amp; lat &gt;= -90.0 &amp;&amp; lat &lt;= 90.0 &amp;&amp; lng &gt;= -180.0 &amp;&amp; lng &lt;= 180.0</ID>
     <ID>ComplexCondition:EuropeanaCulturalService.kt$EuropeanaCulturalService$spotLat &lt; -90.0 || spotLat &gt; 90.0 || spotLon &lt; -180.0 || spotLon &gt; 180.0</ID>
     <ID>ComplexCondition:EuropeanaCulturalService.kt$EuropeanaCulturalService$spotLat.isNaN() || spotLon.isNaN() || (spotLat == 0.0 &amp;&amp; spotLon == 0.0)</ID>
-    <ID>ComplexCondition:FirestoreSyncManager.kt$FirestoreSyncManager$lat.isNaN() || lng.isNaN() || (lat == 0.0 &amp;&amp; lng == 0.0) || lat &lt; -90.0 || lat &gt; 90.0 || lng &lt; -180.0 || lng &gt; 180.0</ID>
     <ID>ComplexCondition:GeminiQueryService.kt$GeminiQueryService$spotLat &lt; -90.0 || spotLat &gt; 90.0 || spotLng &lt; -180.0 || spotLng &gt; 180.0</ID>
     <ID>ComplexCondition:GeminiQueryService.kt$GeminiQueryService$spotLat.isNaN() || spotLng.isNaN() || (spotLat == 0.0 &amp;&amp; spotLng == 0.0)</ID>
     <ID>ComplexCondition:GeminiSpotService.kt$GeminiSpotService$spotLat &lt; -90.0 || spotLat &gt; 90.0 || spotLng &lt; -180.0 || spotLng &gt; 180.0</ID>
@@ -30,13 +30,13 @@
     <ID>CyclomaticComplexMethod:AStarPathfinder.kt$AStarPathfinder$fun findShortestPath( startLat: Double, startLng: Double, destLat: Double, destLng: Double, startName: String = "Starting Point", destName: String = "Destination" ): AStarRouteResult</ID>
     <ID>CyclomaticComplexMethod:AchievementsShowcaseSection.kt$@Composable private fun AchievementBadgeCard( achievement: AchievementEntity, modifier: Modifier = Modifier )</ID>
     <ID>CyclomaticComplexMethod:CommunityFeedScreen.kt$@Composable fun PeerMeshRadarCard( syncPhase: MeshSyncPhase, lastSyncResult: PeerMeshSyncResult?, onTriggerSync: () -&gt; Unit, modifier: Modifier = Modifier )</ID>
+    <ID>CyclomaticComplexMethod:CommunitySyncDownloader.kt$CommunitySyncDownloader$private suspend fun syncOwnPrivateNotesDown( context: Context, scoutDao: ScoutDao ): Int</ID>
+    <ID>CyclomaticComplexMethod:CommunitySyncDownloader.kt$CommunitySyncDownloader$suspend fun syncRemoteContentDown( context: Context, tipDao: CommunityTipDao, scoutDao: ScoutDao ): Pair&lt;Int, Int&gt;</ID>
     <ID>CyclomaticComplexMethod:CompassOverlay.kt$@Composable fun CompassOverlay( compassState: CompassState, userLat: Double, userLng: Double, targetGem: ScoutSpotEntity? = null, onToggleTrueNorth: () -&gt; Unit = {}, onSelectTargetGem: (ScoutSpotEntity) -&gt; Unit = {}, modifier: Modifier = Modifier )</ID>
     <ID>CyclomaticComplexMethod:ElevationProfileSparkline.kt$@Composable fun ElevationProfileSparkline( elevationProfile: RouteElevationProfile?, modifier: Modifier = Modifier )</ID>
     <ID>CyclomaticComplexMethod:EuropeanaCulturalService.kt$EuropeanaCulturalService$open suspend fun fetchEuropeanaCulturalSpots( locationName: String = "Lisbon", lat: Double = 38.7112, lon: Double = -9.1423, radiusMeters: Int = 15000 ): List&lt;ScoutSpotEntity&gt;</ID>
     <ID>CyclomaticComplexMethod:ExploreSpotCard.kt$@Composable fun ScoutSpotCard( spot: ScoutSpotEntity, userCoordinates: Pair&lt;Double, Double&gt; = Pair(38.7112, -9.1423), isPlayingAudio: Boolean, activeLayers: Set&lt;ExploreMapLayer&gt; = emptySet(), onToggleSave: () -&gt; Unit, onUpvote: () -&gt; Unit, onToggleAudio: () -&gt; Unit, onDirectionsClick: () -&gt; Unit )</ID>
-    <ID>CyclomaticComplexMethod:FirestoreSyncManager.kt$FirestoreSyncManager$private suspend fun syncOwnPrivateNotesDown( context: Context, scoutDao: ScoutDao ): Int</ID>
     <ID>CyclomaticComplexMethod:FirestoreSyncManager.kt$FirestoreSyncManager$suspend fun syncDraftSpotToCloud( context: Context, spot: ScoutSpotEntity, scoutDao: ScoutDao, discoveredGemDao: DiscoveredGemDao? ): Boolean</ID>
-    <ID>CyclomaticComplexMethod:FirestoreSyncManager.kt$FirestoreSyncManager$suspend fun syncRemoteContentDown( context: Context, tipDao: CommunityTipDao, scoutDao: ScoutDao ): Pair&lt;Int, Int&gt;</ID>
     <ID>CyclomaticComplexMethod:GemDiscoverySync.kt$GemDiscoverySync$suspend fun syncMultiSourceGems( userLat: Double = DefaultLocationConfig.DEFAULT_LAT, userLng: Double = DefaultLocationConfig.DEFAULT_LNG, cityName: String = "Lisbon", sourceIds: List&lt;String&gt; = listOf("open_trip_map", "wikivoyage_wikidata", "overpass_osm", "geonames_gazetteer", "unesco_world_heritage", "europeana_cultural", "municipal_open_data", "firebase_gemini_ai") ): Result&lt;Int&gt;</ID>
     <ID>CyclomaticComplexMethod:GeminiQueryService.kt$GeminiQueryService$internal fun parseSpots(jsonString: String, vector: MovementVector): List&lt;ScoutSpotEntity&gt;</ID>
     <ID>CyclomaticComplexMethod:GeminiSpotService.kt$GeminiSpotService$internal fun parseSpotsJson( jsonString: String, userLat: Double, userLng: Double, radiusMeters: Int ): List&lt;ScoutSpotEntity&gt;</ID>
@@ -232,6 +232,7 @@
     <ID>LongMethod:ClearCacheConfirmationDialog.kt$@Composable fun ClearCacheConfirmationDialog( transientCount: Int, savedCount: Int, discoveredCount: Int, onConfirm: () -&gt; Unit, onDismiss: () -&gt; Unit )</ID>
     <ID>LongMethod:CommunityFeedScreen.kt$@Composable fun CommunityFeedScreen( tips: List&lt;CommunityTipEntity&gt;, spots: List&lt;ScoutSpotEntity&gt;, syncPhase: MeshSyncPhase, lastSyncResult: PeerMeshSyncResult?, onTriggerSync: () -&gt; Unit, onUpvoteTip: (String) -&gt; Unit, onPostTip: (spotId: String, spotTitle: String, content: String, isStatus: Boolean, category: String) -&gt; Unit, onSpotClick: (String) -&gt; Unit, userCoordinates: Pair&lt;Double, Double&gt; = Pair(38.7112, -9.1423), successMessage: String? = null, isUsingDefaultFallbackLocation: Boolean = false, onSelectCity: () -&gt; Unit = {}, modifier: Modifier = Modifier )</ID>
     <ID>LongMethod:CommunityFeedScreen.kt$@Composable fun PeerMeshRadarCard( syncPhase: MeshSyncPhase, lastSyncResult: PeerMeshSyncResult?, onTriggerSync: () -&gt; Unit, modifier: Modifier = Modifier )</ID>
+    <ID>LongMethod:CommunitySyncDownloader.kt$CommunitySyncDownloader$suspend fun syncRemoteContentDown( context: Context, tipDao: CommunityTipDao, scoutDao: ScoutDao ): Pair&lt;Int, Int&gt;</ID>
     <ID>LongMethod:CommunityTipCard.kt$@Composable fun CommunityTipCard( tip: CommunityTipEntity, onUpvoteClick: (String) -&gt; Unit, onSpotClick: ((String) -&gt; Unit)? = null, showSpotHeader: Boolean = true, modifier: Modifier = Modifier )</ID>
     <ID>LongMethod:CompassOverlay.kt$@Composable fun CompassOverlay( compassState: CompassState, userLat: Double, userLng: Double, targetGem: ScoutSpotEntity? = null, onToggleTrueNorth: () -&gt; Unit = {}, onSelectTargetGem: (ScoutSpotEntity) -&gt; Unit = {}, modifier: Modifier = Modifier )</ID>
     <ID>LongMethod:DataStorageDashboardCard.kt$@Composable fun DataStorageDashboardCard( totalSpotsCount: Int, savedCount: Int, discoveredCount: Int, draftCount: Int, databaseSizeBytes: Long, onClearCacheClick: () -&gt; Unit, modifier: Modifier = Modifier )</ID>
@@ -253,7 +254,6 @@
     <ID>LongMethod:ExploreSearchBar.kt$@Composable fun FloatingPillSearchBar( searchQuery: String, onSearchQueryChange: (String) -&gt; Unit, recentSearches: List&lt;RecentSearchEntity&gt; = emptyList(), onDeleteRecentSearch: (String) -&gt; Unit = {}, onClearAllRecentSearches: () -&gt; Unit = {} )</ID>
     <ID>LongMethod:ExploreSpotCard.kt$@Composable fun ScoutSpotCard( spot: ScoutSpotEntity, userCoordinates: Pair&lt;Double, Double&gt; = Pair(38.7112, -9.1423), isPlayingAudio: Boolean, activeLayers: Set&lt;ExploreMapLayer&gt; = emptySet(), onToggleSave: () -&gt; Unit, onUpvote: () -&gt; Unit, onToggleAudio: () -&gt; Unit, onDirectionsClick: () -&gt; Unit )</ID>
     <ID>LongMethod:FirestoreSyncManager.kt$FirestoreSyncManager$suspend fun syncDraftSpotToCloud( context: Context, spot: ScoutSpotEntity, scoutDao: ScoutDao, discoveredGemDao: DiscoveredGemDao? ): Boolean</ID>
-    <ID>LongMethod:FirestoreSyncManager.kt$FirestoreSyncManager$suspend fun syncRemoteContentDown( context: Context, tipDao: CommunityTipDao, scoutDao: ScoutDao ): Pair&lt;Int, Int&gt;</ID>
     <ID>LongMethod:GemDiscoverySync.kt$GemDiscoverySync$suspend fun syncMultiSourceGems( userLat: Double = DefaultLocationConfig.DEFAULT_LAT, userLng: Double = DefaultLocationConfig.DEFAULT_LNG, cityName: String = "Lisbon", sourceIds: List&lt;String&gt; = listOf("open_trip_map", "wikivoyage_wikidata", "overpass_osm", "geonames_gazetteer", "unesco_world_heritage", "europeana_cultural", "municipal_open_data", "firebase_gemini_ai") ): Result&lt;Int&gt;</ID>
     <ID>LongMethod:GeminiQueryService.kt$GeminiQueryService$fun generateCuratedCorridorGems(vector: MovementVector): List&lt;ScoutSpotEntity&gt;</ID>
     <ID>LongMethod:GeminiQueryService.kt$GeminiQueryService$internal fun parseSpots(jsonString: String, vector: MovementVector): List&lt;ScoutSpotEntity&gt;</ID>
@@ -397,8 +397,8 @@
     <ID>LongParameterList:StartupGpsLocatingScreen.kt$( status: GpsAcquisitionStatus, detectedCity: String?, onRequestPermission: () -&gt; Unit, onOpenSettings: () -&gt; Unit, onRetry: () -&gt; Unit, onManualCityClick: () -&gt; Unit, modifier: Modifier = Modifier )</ID>
     <ID>LongParameterList:VividScoutTopBar.kt$( onSearchClick: () -&gt; Unit, onRouteClick: () -&gt; Unit = {}, onProfileClick: () -&gt; Unit, onAddSpotClick: () -&gt; Unit = {}, onToggleHeaderStyle: () -&gt; Unit, onLanguageClick: () -&gt; Unit, onGpsClick: () -&gt; Unit = {}, onArClick: () -&gt; Unit = {}, hasLocationPermission: Boolean = true, selectedGlobalCity: String? = null, isUsingGpsLocation: Boolean = true, isPrefetchActive: Boolean = false, prefetchedCount: Int = 0, prefetchPowerMode: com.example.util.PrefetchPowerMode = com.example.util.PrefetchPowerMode.OPTIMAL_WALKING, onPrefetchClick: () -&gt; Unit = {}, modifier: Modifier = Modifier )</ID>
     <ID>LoopWithTooManyJumpStatements:AStarPathfinder.kt$AStarPathfinder$while</ID>
+    <ID>LoopWithTooManyJumpStatements:CommunitySyncDownloader.kt$CommunitySyncDownloader$for</ID>
     <ID>LoopWithTooManyJumpStatements:EuropeanaCulturalService.kt$EuropeanaCulturalService$for</ID>
-    <ID>LoopWithTooManyJumpStatements:FirestoreSyncManager.kt$FirestoreSyncManager$for</ID>
     <ID>LoopWithTooManyJumpStatements:GeminiQueryService.kt$GeminiQueryService$for</ID>
     <ID>LoopWithTooManyJumpStatements:GeminiSpotService.kt$GeminiSpotService$for</ID>
     <ID>LoopWithTooManyJumpStatements:GeonamesService.kt$GeonamesService$for</ID>
@@ -517,6 +517,17 @@
     <ID>MagicNumber:CommunityFeedScreen.kt$2000</ID>
     <ID>MagicNumber:CommunityFeedScreen.kt$38.7112</ID>
     <ID>MagicNumber:CommunityFeedScreen.kt$9.1423</ID>
+    <ID>MagicNumber:CommunitySyncDownloader.kt$CommunitySyncDownloader$100</ID>
+    <ID>MagicNumber:CommunitySyncDownloader.kt$CommunitySyncDownloader$1000</ID>
+    <ID>MagicNumber:CommunitySyncDownloader.kt$CommunitySyncDownloader$120</ID>
+    <ID>MagicNumber:CommunitySyncDownloader.kt$CommunitySyncDownloader$128</ID>
+    <ID>MagicNumber:CommunitySyncDownloader.kt$CommunitySyncDownloader$180.0</ID>
+    <ID>MagicNumber:CommunitySyncDownloader.kt$CommunitySyncDownloader$30</ID>
+    <ID>MagicNumber:CommunitySyncDownloader.kt$CommunitySyncDownloader$300</ID>
+    <ID>MagicNumber:CommunitySyncDownloader.kt$CommunitySyncDownloader$32</ID>
+    <ID>MagicNumber:CommunitySyncDownloader.kt$CommunitySyncDownloader$50</ID>
+    <ID>MagicNumber:CommunitySyncDownloader.kt$CommunitySyncDownloader$500</ID>
+    <ID>MagicNumber:CommunitySyncDownloader.kt$CommunitySyncDownloader$90.0</ID>
     <ID>MagicNumber:CommunityTipCard.kt$0xFF059669</ID>
     <ID>MagicNumber:CommunityTipCard.kt$0xFF10B981</ID>
     <ID>MagicNumber:CommunityTipCard.kt$0xFF7C3AED</ID>
@@ -656,17 +667,6 @@
     <ID>MagicNumber:FallbackLocationBanner.kt$0xFFD97706</ID>
     <ID>MagicNumber:FallbackLocationBanner.kt$0xFFF59E0B</ID>
     <ID>MagicNumber:FallbackLocationBanner.kt$0xFFFEF3C7</ID>
-    <ID>MagicNumber:FirestoreSyncManager.kt$FirestoreSyncManager$100</ID>
-    <ID>MagicNumber:FirestoreSyncManager.kt$FirestoreSyncManager$1000</ID>
-    <ID>MagicNumber:FirestoreSyncManager.kt$FirestoreSyncManager$120</ID>
-    <ID>MagicNumber:FirestoreSyncManager.kt$FirestoreSyncManager$128</ID>
-    <ID>MagicNumber:FirestoreSyncManager.kt$FirestoreSyncManager$180.0</ID>
-    <ID>MagicNumber:FirestoreSyncManager.kt$FirestoreSyncManager$30</ID>
-    <ID>MagicNumber:FirestoreSyncManager.kt$FirestoreSyncManager$300</ID>
-    <ID>MagicNumber:FirestoreSyncManager.kt$FirestoreSyncManager$32</ID>
-    <ID>MagicNumber:FirestoreSyncManager.kt$FirestoreSyncManager$50</ID>
-    <ID>MagicNumber:FirestoreSyncManager.kt$FirestoreSyncManager$500</ID>
-    <ID>MagicNumber:FirestoreSyncManager.kt$FirestoreSyncManager$90.0</ID>
     <ID>MagicNumber:GemCacheMaintenance.kt$GemCacheMaintenance$1000.0</ID>
     <ID>MagicNumber:GemCacheMaintenance.kt$GemCacheMaintenance$1000L</ID>
     <ID>MagicNumber:GemCacheMaintenance.kt$GemCacheMaintenance$24L</ID>
@@ -1408,6 +1408,16 @@
     <ID>MaxLineLength:CommunityFeedScreen.kt$Icon(imageVector = Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))</ID>
     <ID>MaxLineLength:CommunityFeedScreen.kt$description = "No notes match active filter. Share your first local scout tip with the community!"</ID>
     <ID>MaxLineLength:CommunityFeedScreen.kt$text = if (isDemoActive) strings.communityDemoModeActive else strings.communitySavedLocally.uppercase()</ID>
+    <ID>MaxLineLength:CommunitySyncDownloader.kt$CommunitySyncDownloader$SafeLog.w(TAG, "Skipped $externalPhotoUriSkipped community submission photo(s) with non Storage URLs (legacy external URLs are never rendered; no data was deleted)")</ID>
+    <ID>MaxLineLength:CommunitySyncDownloader.kt$CommunitySyncDownloader$SafeLog.w(TAG, "Skipping remote submission '$id': invalid coordinates (${SafeLog.sanitizeCoordinate(lat)}, ${SafeLog.sanitizeCoordinate(lng)})")</ID>
+    <ID>MaxLineLength:CommunitySyncDownloader.kt$CommunitySyncDownloader$SafeLog.w(TAG, "Submission photo '$rawPhotoUri' could not be resolved; showing no photo")</ID>
+    <ID>MaxLineLength:CommunitySyncDownloader.kt$CommunitySyncDownloader$if</ID>
+    <ID>MaxLineLength:CommunitySyncWriter.kt$CommunitySyncWriter$*</ID>
+    <ID>MaxLineLength:CommunitySyncWriter.kt$CommunitySyncWriter$SafeLog.i(TAG, "Successfully recorded vote from user '${SafeLog.sanitizeUid(currentUid)}' for tip '$tipId'")</ID>
+    <ID>MaxLineLength:CommunitySyncWriter.kt$CommunitySyncWriter$SafeLog.w(TAG, "Cannot upvote tip '$tipId': Document is missing 'legacyUpvotes' field. Aborting transaction.")</ID>
+    <ID>MaxLineLength:CommunitySyncWriter.kt$CommunitySyncWriter$SafeLog.w(TAG, "Community tip '${tip.id}' hit the daily post limit; it stays local and will sync when the limit resets")</ID>
+    <ID>MaxLineLength:CommunitySyncWriter.kt$CommunitySyncWriter$SafeLog.w(TAG, "User '${SafeLog.sanitizeUid(currentUid)}' has already voted on tip '$tipId'. Rejecting second vote.")</ID>
+    <ID>MaxLineLength:CommunitySyncWriter.kt$CommunitySyncWriter$val currentUid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: return@withContext false</ID>
     <ID>MaxLineLength:CommunityTipCard.kt$"ATMOSPHERE" -&gt; StatusChipStyle("LIVE ATMOSPHERE", Color(0xFF8B5CF6).copy(alpha = 0.15f), Color(0xFF7C3AED), Icons.Default.AutoAwesome)</ID>
     <ID>MaxLineLength:CommunityTipCard.kt$"FRESH_BATCH" -&gt; StatusChipStyle("WARM BATCH OUT", Color(0xFF10B981).copy(alpha = 0.15f), Color(0xFF059669), Icons.Default.AutoAwesome)</ID>
     <ID>MaxLineLength:CommunityTipCard.kt$"LINE_QUEUE" -&gt; StatusChipStyle("QUEUE UPDATE", Color(0xFFF59E0B).copy(alpha = 0.15f), Color(0xFFD97706), Icons.Default.HourglassTop)</ID>
@@ -1456,21 +1466,12 @@
     <ID>MaxLineLength:ExploreViewModelUiStateTest.kt$ExploreViewModelUiStateTest.FakeScoutGemRepository$recentSearchesFlow.value = recentSearchesFlow.value + RecentSearchEntity(queryText, queryText, category, System.currentTimeMillis())</ID>
     <ID>MaxLineLength:FallbackLocationBanner.kt$style = MaterialTheme.typography.labelMedium.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)</ID>
     <ID>MaxLineLength:FallbackLocationBanner.kt$style = MaterialTheme.typography.labelSmall.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)</ID>
+    <ID>MaxLineLength:FirebaseAccess.kt$FirebaseAccess$SafeLog.d(TAG, "Successfully authenticated Firebase user anonymously (${SafeLog.sanitizeUid(auth.currentUser?.uid)})")</ID>
     <ID>MaxLineLength:FirebasePhotoStorageService.kt$FirebasePhotoUploadOperations$override suspend</ID>
     <ID>MaxLineLength:FirebasePhotoStorageService.kt$PhotoUploadOrchestrator$"Photo upload failed after registration was attempted — the photo may already be published. Retrying reconciles with the server instead of duplicating the photo."</ID>
-    <ID>MaxLineLength:FirestoreSyncManager.kt$FirestoreSyncManager$*</ID>
-    <ID>MaxLineLength:FirestoreSyncManager.kt$FirestoreSyncManager$SafeLog.d(TAG, "Successfully authenticated Firebase user anonymously (${SafeLog.sanitizeUid(auth.currentUser?.uid)})")</ID>
-    <ID>MaxLineLength:FirestoreSyncManager.kt$FirestoreSyncManager$SafeLog.i(TAG, "Successfully recorded vote from user '${SafeLog.sanitizeUid(currentUid)}' for tip '$tipId'")</ID>
-    <ID>MaxLineLength:FirestoreSyncManager.kt$FirestoreSyncManager$SafeLog.w(TAG, "Cannot upvote tip '$tipId': Document is missing 'legacyUpvotes' field. Aborting transaction.")</ID>
-    <ID>MaxLineLength:FirestoreSyncManager.kt$FirestoreSyncManager$SafeLog.w(TAG, "Community tip '${tip.id}' hit the daily post limit; it stays local and will sync when the limit resets")</ID>
     <ID>MaxLineLength:FirestoreSyncManager.kt$FirestoreSyncManager$SafeLog.w(TAG, "Private note for spot '${spot.id}' could not be synced; the public submission was left without it and the draft will be retried")</ID>
-    <ID>MaxLineLength:FirestoreSyncManager.kt$FirestoreSyncManager$SafeLog.w(TAG, "Skipped $externalPhotoUriSkipped community submission photo(s) with non Storage URLs (legacy external URLs are never rendered; no data was deleted)")</ID>
-    <ID>MaxLineLength:FirestoreSyncManager.kt$FirestoreSyncManager$SafeLog.w(TAG, "Skipping remote submission '$id': invalid coordinates (${SafeLog.sanitizeCoordinate(lat)}, ${SafeLog.sanitizeCoordinate(lng)})")</ID>
     <ID>MaxLineLength:FirestoreSyncManager.kt$FirestoreSyncManager$SafeLog.w(TAG, "Submission '${spot.id}' hit the daily post limit; the draft stays queued and syncs when the limit resets")</ID>
-    <ID>MaxLineLength:FirestoreSyncManager.kt$FirestoreSyncManager$SafeLog.w(TAG, "Submission photo '$rawPhotoUri' could not be resolved; showing no photo")</ID>
     <ID>MaxLineLength:FirestoreSyncManager.kt$FirestoreSyncManager$SafeLog.w(TAG, "Submission photo upload failed for draft '${spot.id}': ${e.message}; draft stays queued")</ID>
-    <ID>MaxLineLength:FirestoreSyncManager.kt$FirestoreSyncManager$SafeLog.w(TAG, "User '${SafeLog.sanitizeUid(currentUid)}' has already voted on tip '$tipId'. Rejecting second vote.")</ID>
-    <ID>MaxLineLength:FirestoreSyncManager.kt$FirestoreSyncManager$if</ID>
     <ID>MaxLineLength:FirestoreTipRulesValidationTest.kt$FirestoreTipRulesValidationTest$assertFalse("Counter increment without creating vote doc MUST fail post-write check (existsAfter)", postStateCheck)</ID>
     <ID>MaxLineLength:GemCacheMaintenance.kt$GemCacheMaintenance$"Auto-cleanup completed: removed $expiredRemoved expired spots (&gt; ${maxAgeDays}d) and $distantRemoved distant spots (&gt; ${maxRadiusKm.toInt()}km). Total pruned: $totalRemoved."</ID>
     <ID>MaxLineLength:GemDiscoverySync.kt$GemDiscoverySync$"Spot discovery attempt #$attempt failed. Retrying in ${currentDelay}ms... Error: ${lastResult.exceptionOrNull()?.message}"</ID>
@@ -2071,10 +2072,10 @@
     <ID>ReturnCount:WikipediaPhotoService.kt$WikipediaPhotoService$fun resolveWikimediaCommonsTag(commonsTag: String?, targetWidth: Int = 1200): String?</ID>
     <ID>ReturnCount:WikipediaPhotoService.kt$WikipediaPhotoService$private fun fetchPageSummary(lang: String, title: String, targetWidth: Int = 1200): WikipediaPhotoResult?</ID>
     <ID>SpreadOperator:AppDatabase.kt$AppDatabase.Companion$(*DatabaseMigrations.ALL_MIGRATIONS)</ID>
+    <ID>SwallowedException:CommunitySyncDownloader.kt$CommunitySyncDownloader$e: Exception</ID>
     <ID>SwallowedException:CommunityTipRepositoryTest.kt$CommunityTipRepositoryTest$e: Exception</ID>
     <ID>SwallowedException:CommunityViewModel.kt$CommunityViewModel$e: Exception</ID>
     <ID>SwallowedException:FirebasePhotoStorageService.kt$FirebasePhotoUploadOperations$e: FirebaseFunctionsException</ID>
-    <ID>SwallowedException:FirestoreSyncManager.kt$FirestoreSyncManager$e: Exception</ID>
     <ID>SwallowedException:GeminiQueryService.kt$GeminiQueryService$e: TimeoutCancellationException</ID>
     <ID>SwallowedException:GeminiSpotService.kt$GeminiSpotService$e: TimeoutCancellationException</ID>
     <ID>SwallowedException:LocationTracker.kt$LocationTracker$e: Exception</ID>
@@ -2090,6 +2091,8 @@
     <ID>ThrowsCount:GeminiSpotService.kt$GeminiSpotService$open suspend fun discoverGems( userLat: Double, userLng: Double, category: String = "all", radiusMeters: Int = 2000, customQuery: String = "" ): Result&lt;List&lt;ScoutSpotEntity&gt;&gt;</ID>
     <ID>TooGenericExceptionCaught:ARNavigationOverlay.kt$e: Exception</ID>
     <ID>TooGenericExceptionCaught:AppCheckInitializer.kt$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:CommunitySyncDownloader.kt$CommunitySyncDownloader$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:CommunitySyncWriter.kt$CommunitySyncWriter$e: Exception</ID>
     <ID>TooGenericExceptionCaught:CommunityTipRepository.kt$CommunityTipRepository$e: Exception</ID>
     <ID>TooGenericExceptionCaught:CommunityViewModel.kt$CommunityViewModel$e: Exception</ID>
     <ID>TooGenericExceptionCaught:CompassSensorManager.kt$CompassSensorManager$e: Exception</ID>
@@ -2097,6 +2100,7 @@
     <ID>TooGenericExceptionCaught:DownloadedRegion.kt$OfflineRegionStorage$e: Exception</ID>
     <ID>TooGenericExceptionCaught:EuropeanaCulturalService.kt$EuropeanaCulturalService$e: Exception</ID>
     <ID>TooGenericExceptionCaught:ExploreViewModel.kt$ExploreViewModel$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:FirebaseAccess.kt$FirebaseAccess$e: Exception</ID>
     <ID>TooGenericExceptionCaught:FirebasePhotoStorageService.kt$FirebasePhotoStorageService$e: Exception</ID>
     <ID>TooGenericExceptionCaught:FirebasePhotoStorageService.kt$FirebasePhotoUploadOperations$e: Exception</ID>
     <ID>TooGenericExceptionCaught:FirebasePhotoStorageService.kt$PhotoUploadOrchestrator$e: Exception</ID>
@@ -2137,7 +2141,6 @@
     <ID>TooGenericExceptionCaught:WikipediaPhotoService.kt$WikipediaPhotoService$e: Exception</ID>
     <ID>TooManyFunctions:CommunityTipDao.kt$CommunityTipDao</ID>
     <ID>TooManyFunctions:ExploreViewModel.kt$ExploreViewModel : ViewModel</ID>
-    <ID>TooManyFunctions:FirestoreSyncManager.kt$FirestoreSyncManager</ID>
     <ID>TooManyFunctions:GemDiscoverySync.kt$GemDiscoverySync</ID>
     <ID>TooManyFunctions:LocationTracker.kt$LocationTracker</ID>
     <ID>TooManyFunctions:OfflineMapsViewModel.kt$OfflineMapsViewModel : ViewModel</ID>
