@@ -268,9 +268,14 @@ async function finalizePhotoUploadDocument(db, bucket, ownerUid, data, options =
   // Fast replay path (cheap direct read): an already-registered object returns its
   // published photo without re-validation — registration itself already proved the
   // object's bytes. Racy by design: a concurrent registration missed here is still
-  // caught authoritatively by the transaction below.
+  // caught authoritatively by the transaction below. A photo removed by moderation can
+  // never be re-registered: its path is quarantined, so a re-uploaded object is refused
+  // instead of replaying the removed record's (now untrusted) published URL.
   const replayedDoc = await photoRef.get();
   if (replayedDoc.exists) {
+    if ((replayedDoc.data() || {}).moderationState === MODERATION_STATE_REMOVED) {
+      throw new HttpsError("permission-denied", "This photo was removed by moderation.");
+    }
     const replay = replayResult(replayedDoc, ownerUid, spotId, canonicalPath);
     if (replay) {
       return replay;
@@ -299,6 +304,12 @@ async function finalizePhotoUploadDocument(db, bucket, ownerUid, data, options =
     // so the public photo document carries no ownerUid, and its ownership is recorded
     // in the server-written index (replayed here for legacy documents predating it).
     if (photoDoc.exists) {
+      // Moderation quarantine inside the transaction too: the fast path above may have
+      // missed a record removed concurrently, so the authoritative replay refuses the
+      // same way. Throwing aborts the transaction, so no partial state is committed.
+      if ((photoDoc.data() || {}).moderationState === MODERATION_STATE_REMOVED) {
+        throw new HttpsError("permission-denied", "This photo was removed by moderation.");
+      }
       const replay = replayResult(photoDoc, ownerUid, spotId, canonicalPath);
       if (replay) {
         if (!indexDoc.exists) {
@@ -844,10 +855,12 @@ async function reapUnregisteredPhotoObjects(db, bucket, options = {}) {
  * photo is genuinely inaccessible and hidden everywhere.
  *
  * Semantics:
- *   - scans photos whose reportsCount has reached the threshold and that are not already
- *     marked removed (the reportsCount single-field index serves the query);
+ *   - scans photos whose reportsCount has reached the threshold (the reportsCount
+ *     single-field index serves the query); records already marked removed are still
+ *     scanned so their path can be re-verified;
  *   - deletes the referenced Storage object (a 404 is tolerated: a concurrent reaper or
- *     an earlier sweep may have removed it already);
+ *     an earlier sweep may have removed it already); for an already-removed record this
+ *     deletes any object the owner re-uploaded to the moderated path afterwards;
  *   - marks the record removed with a server-side timestamp ONLY after the object is
  *     gone (or already gone), never before, so a failed delete is retried by the next
  *     scheduled run instead of silently orphaning a live object;
@@ -855,7 +868,8 @@ async function reapUnregisteredPhotoObjects(db, bucket, options = {}) {
  *     fetched without an object, so marking it removed hides it everywhere.
  *
  * Returns { processed, removed, kept, failed } diagnostics. Run as a scheduled function;
- * it is idempotent — already-removed records are skipped.
+ * it is idempotent — already-removed records are re-checked (any object re-uploaded to
+ * the moderated path is deleted again) but never re-marked, and a 404 keeps them.
  */
 async function moderateReportedPhotos(db, bucket, options = {}) {
   const threshold = options.threshold ?? MODERATION_REPORTS_THRESHOLD;
@@ -877,16 +891,14 @@ async function moderateReportedPhotos(db, bucket, options = {}) {
   for (const photoDoc of snapshot.docs) {
     result.processed += 1;
     const data = photoDoc.data() || {};
-
-    if (data.moderationState === MODERATION_STATE_REMOVED) {
-      result.kept += 1;
-      continue;
-    }
+    const alreadyRemoved = data.moderationState === MODERATION_STATE_REMOVED;
 
     const photoPath = data.photoPath;
+    let objectDeleted = false;
     if (typeof photoPath === "string" && photoPath.length > 0) {
       try {
         await bucket.file(photoPath).delete();
+        objectDeleted = true;
       } catch (err) {
         // A missing object is consistent with an already-revoked photo; any other
         // failure must leave the record unmarked so the next sweep retries it.
@@ -896,6 +908,21 @@ async function moderateReportedPhotos(db, bucket, options = {}) {
           continue;
         }
       }
+    }
+
+    if (alreadyRemoved) {
+      // The record is already quarantined, but the owner may have re-uploaded an object
+      // to the moderated path after the sweep deleted it (storage.rules allows create
+      // once the object is gone). The sweep deletes any such re-upload too — those bytes
+      // were never re-validated, and finalization refuses to re-register a removed
+      // photo's path, so the record itself never needs re-marking. Nothing found to
+      // delete (404 or no usable path) simply keeps the record (idempotent).
+      if (objectDeleted) {
+        result.removed += 1;
+      } else {
+        result.kept += 1;
+      }
+      continue;
     }
 
     const updateData = { moderationState: MODERATION_STATE_REMOVED };

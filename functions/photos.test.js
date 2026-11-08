@@ -1112,20 +1112,24 @@ describe("moderateReportedPhotos (authoritative moderation)", () => {
     assert.strictEqual(doc.get("moderatedAt"), FIXED_NOW);
   });
 
-  it("is idempotent: a second sweep skips an already-removed record without touching Storage", async () => {
+  it("is idempotent: a second sweep re-checks an already-removed record's path and tolerates the missing object", async () => {
     const threshold = nextThreshold();
     const { ref, objectPath } = await seedReportedPhoto(threshold);
     await moderateReportedPhotos(db, bucket, { threshold, nowMs: () => FIXED_NOW });
 
+    // Already-removed records are re-verified: the owner could have re-uploaded an
+    // object to the moderated path after the first sweep deleted it (storage.rules
+    // allows create once the object is gone), so the sweep attempts the delete again.
+    // Here the object is already gone, so the 404 is tolerated and the record is kept.
     const calls = [];
     const result = await moderateReportedPhotos(
       db,
-      recordingBucket({ calls }),
+      recordingBucket({ calls, failWith: Object.assign(new Error("not found"), { code: 404 }) }),
       { threshold, nowMs: () => FIXED_NOW }
     );
 
     assert.deepStrictEqual(result, { processed: 1, removed: 0, kept: 1, failed: 0 });
-    assert.deepStrictEqual(calls, [], "no delete is attempted for an already-removed record");
+    assert.deepStrictEqual(calls, [objectPath], "the sweep re-checks the moderated path for a re-upload");
     const doc = await ref.get();
     assert.strictEqual(doc.get("moderationState"), "removed");
     const [stillExists] = await bucket.file(objectPath).exists();
@@ -1204,5 +1208,62 @@ describe("moderateReportedPhotos (authoritative moderation)", () => {
     assert.deepStrictEqual(calls, []);
     const doc = await ref.get();
     assert.strictEqual(doc.get("moderationState"), "removed");
+  });
+
+  it("deletes an object re-uploaded to a removed photo's path on the next sweep", async () => {
+    const threshold = nextThreshold();
+    const { objectPath } = await seedReportedPhoto(threshold);
+    await moderateReportedPhotos(db, bucket, { threshold, nowMs: () => FIXED_NOW });
+
+    // The owner re-uploads to the same path after moderation deleted the object
+    // (storage.rules allows create once the object is gone). The next sweep must
+    // delete the re-upload: otherwise the moderated photo's slot in Storage could
+    // serve arbitrary unvalidated bytes through a fresh download URL.
+    await seedObject(objectPath);
+    const [existsBefore] = await bucket.file(objectPath).exists();
+    assert.strictEqual(existsBefore, true);
+
+    const result = await moderateReportedPhotos(db, bucket, { threshold, nowMs: () => FIXED_NOW });
+
+    assert.deepStrictEqual(result, { processed: 1, removed: 1, kept: 0, failed: 0 });
+    const [stillExists] = await bucket.file(objectPath).exists();
+    assert.strictEqual(stillExists, false, "the re-uploaded object is deleted by the sweep");
+  });
+
+  it("refuses to re-register a removed photo's path: finalization rejects a re-uploaded object", async () => {
+    const threshold = nextThreshold();
+    const objectPath = nextObjectPath(ALICE, "spot-mod-reregister");
+    await seedObject(objectPath);
+    const registered = await finalizePhotoUploadDocument(db, bucket, ALICE, {
+      spotId: "spot-mod-reregister",
+      filename: objectPath.split("/").pop(),
+      photoUrl: tokenUrlFor(objectPath),
+    });
+    const photoRef = db.collection(PHOTOS_COLLECTION).doc(registered.photoId);
+    await photoRef.update({ reportsCount: threshold });
+    await moderateReportedPhotos(db, bucket, { threshold, nowMs: () => FIXED_NOW });
+    assert.strictEqual((await photoRef.get()).get("moderationState"), "removed");
+
+    // The owner re-uploads an object to the moderated path and tries to re-register it
+    // (e.g. with a fresh download URL). The replay must refuse instead of publishing
+    // the re-uploaded — never re-validated — bytes behind the removed record.
+    await seedObject(objectPath);
+    await expectHttpsError(
+      () =>
+        finalizePhotoUploadDocument(db, bucket, ALICE, {
+          spotId: "spot-mod-reregister",
+          filename: objectPath.split("/").pop(),
+          photoUrl: tokenUrlFor(objectPath),
+        }),
+      "permission-denied"
+    );
+
+    const record = await photoRef.get();
+    assert.strictEqual(record.get("moderationState"), "removed", "the removed record is untouched");
+    const registrations = await db
+      .collection(PHOTOS_COLLECTION)
+      .where("photoPath", "==", objectPath)
+      .get();
+    assert.strictEqual(registrations.size, 1, "no second registration was written for the object");
   });
 });
