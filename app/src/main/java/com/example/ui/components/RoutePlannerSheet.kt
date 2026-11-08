@@ -1,86 +1,40 @@
 package com.example.ui.components
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.ExpandLess
-import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.Map
-import androidx.compose.material.icons.filled.MyLocation
-import androidx.compose.material.icons.filled.NearMe
-import androidx.compose.material.icons.filled.Place
-import androidx.compose.material.icons.filled.Route
-import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.SwapVert
-import kotlinx.coroutines.launch
-import androidx.compose.material.icons.filled.Terrain
-import androidx.compose.material.icons.filled.Timer
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
 import com.example.data.local.ScoutSpotEntity
 import com.example.data.offline.GuidedWalkMood
 import com.example.data.offline.GuidedWalkPlannerEngine
 import com.example.data.sync.SharedTripManager
 import com.example.engine.OfflineWalkingTrail
-import com.example.engine.RouteStep
 import com.example.ui.theme.BrandCoral
-import com.example.ui.theme.BrandTeal
 import java.util.UUID
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -126,184 +80,18 @@ fun RoutePlannerSheet(
                 .padding(horizontal = 20.dp, vertical = 12.dp)
         ) {
             // Header Bar
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(BrandTeal.copy(alpha = 0.2f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Route,
-                            contentDescription = "Offline Walking Route Planner",
-                            tint = BrandTeal,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column {
-                        Text(
-                            text = "Offline Route Planner",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
-                        Text(
-                            text = "A* shortest path on vector road graph",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color(0xFF94A3B8)
-                        )
-                    }
-                }
-                IconButton(
-                    onClick = onDismiss,
-                    modifier = Modifier.testTag("close_route_planner_btn")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "Close Route Planner",
-                        tint = Color.LightGray
-                    )
-                }
-            }
+            RoutePlannerHeader(onDismiss = onDismiss)
 
             Spacer(modifier = Modifier.height(16.dp))
 
             // Origin & Destination Selector Card
-            Surface(
-                color = Color(0xFF1E293B),
-                shape = RoundedCornerShape(16.dp),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF334155)),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(14.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Left route spine (dots & line)
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.width(28.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(10.dp)
-                                .clip(CircleShape)
-                                .background(BrandTeal)
-                        )
-                        Box(
-                            modifier = Modifier
-                                .width(2.dp)
-                                .height(36.dp)
-                                .background(Color(0xFF475569))
-                        )
-                        Box(
-                            modifier = Modifier
-                                .size(12.dp)
-                                .clip(CircleShape)
-                                .background(BrandCoral)
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(10.dp))
-
-                    // Origin & Destination Pickers
-                    Column(modifier = Modifier.weight(1f)) {
-                        // Origin Field
-                        Surface(
-                            color = Color(0xFF0F172A),
-                            shape = RoundedCornerShape(10.dp),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF334155)),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { isSelectingOrigin = true }
-                                .testTag("origin_selector")
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    imageVector = if (origin == null) Icons.Default.MyLocation else Icons.Default.LocationOn,
-                                    contentDescription = null,
-                                    tint = BrandTeal,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = origin?.name ?: "My Current GPS Location",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.Medium,
-                                    color = Color.White,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        // Destination Field
-                        Surface(
-                            color = Color(0xFF0F172A),
-                            shape = RoundedCornerShape(10.dp),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF334155)),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { isSelectingDest = true }
-                                .testTag("destination_selector")
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Place,
-                                    contentDescription = null,
-                                    tint = BrandCoral,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = destination?.name ?: "Select Destination Gem",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.Medium,
-                                    color = if (destination != null) Color.White else Color(0xFF94A3B8),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.width(10.dp))
-
-                    // Swap Button
-                    IconButton(
-                        onClick = onSwapEndpoints,
-                        modifier = Modifier
-                            .size(38.dp)
-                            .clip(CircleShape)
-                            .background(Color(0xFF334155))
-                            .testTag("swap_endpoints_btn")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.SwapVert,
-                            contentDescription = "Swap Origin and Destination",
-                            tint = Color.White,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                }
-            }
+            RouteEndpointSelectorCard(
+                origin = origin,
+                destination = destination,
+                onPickOrigin = { isSelectingOrigin = true },
+                onPickDestination = { isSelectingDest = true },
+                onSwapEndpoints = onSwapEndpoints
+            )
 
             Spacer(modifier = Modifier.height(12.dp))
 
@@ -311,88 +99,12 @@ fun RoutePlannerSheet(
             var selectedMood by remember { mutableStateOf(GuidedWalkMood.SCENIC) } // SCENIC, HISTORIC, QUIET
 
             // Step 2: Duration & Mood Selection Card
-            Surface(
-                color = Color(0xFF1E293B),
-                shape = RoundedCornerShape(16.dp),
-                border = BorderStroke(1.dp, Color(0xFF334155)),
-                modifier = Modifier.fillMaxWidth().testTag("guided_walk_options_card")
-            ) {
-                Column(modifier = Modifier.padding(12.dp)) {
-                    // Duration Selector
-                    Text(
-                        text = "Walk Duration",
-                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                        color = Color(0xFF94A3B8)
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        listOf(30, 60, 120).forEach { mins ->
-                            val isSelected = selectedDurationMinutes == mins
-                            Surface(
-                                shape = RoundedCornerShape(999.dp),
-                                color = if (isSelected) BrandTeal else Color(0xFF0F172A),
-                                border = androidx.compose.foundation.BorderStroke(1.dp, if (isSelected) BrandTeal else Color(0xFF334155)),
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clickable { selectedDurationMinutes = mins }
-                                    .testTag("duration_chip_$mins")
-                            ) {
-                                Box(
-                                    modifier = Modifier.padding(vertical = 6.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = "$mins min",
-                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                        color = if (isSelected) Color.White else Color(0xFFCBD5E1)
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    // Mood Selector
-                    Text(
-                        text = "Walk Mood",
-                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                        color = Color(0xFF94A3B8)
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        GuidedWalkMood.entries.forEach { mood ->
-                            val isSelected = selectedMood == mood
-                            Surface(
-                                shape = RoundedCornerShape(999.dp),
-                                color = if (isSelected) BrandCoral else Color(0xFF0F172A),
-                                border = androidx.compose.foundation.BorderStroke(1.dp, if (isSelected) BrandCoral else Color(0xFF334155)),
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clickable { selectedMood = mood }
-                                    .testTag("mood_chip_${mood.name.lowercase()}")
-                            ) {
-                                Box(
-                                    modifier = Modifier.padding(vertical = 6.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = mood.title,
-                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                        color = if (isSelected) Color.White else Color(0xFFCBD5E1)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+            GuidedWalkOptionsCard(
+                selectedDurationMinutes = selectedDurationMinutes,
+                selectedMood = selectedMood,
+                onDurationSelected = { selectedDurationMinutes = it },
+                onMoodSelected = { selectedMood = it }
+            )
 
             val startLat = origin?.latitude ?: 38.7112
             val startLng = origin?.longitude ?: -9.1423
@@ -412,131 +124,49 @@ fun RoutePlannerSheet(
 
             if (guidedWalkPlan.waypoints.isNotEmpty() && plannedRoute == null) {
                 Spacer(modifier = Modifier.height(12.dp))
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = Color(0xFF1E293B),
-                    border = BorderStroke(1.dp, BrandTeal.copy(alpha = 0.5f)),
-                    modifier = Modifier.fillMaxWidth().testTag("guided_walk_plan_card")
-                ) {
-                    Column(modifier = Modifier.padding(14.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "Guided Walk Loop (${guidedWalkPlan.waypoints.size} waypoints)",
-                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                                color = Color.White
+                GuidedWalkPlanCard(
+                    guidedWalkPlan = guidedWalkPlan,
+                    isPublishing = isPublishingSharedTrip,
+                    publishError = sharePublishError,
+                    onPublish = {
+                        coroutineScope.launch {
+                            isPublishingSharedTrip = true
+                            sharePublishError = null
+                            val createdTrip = SharedTripManager.createSharedTrip(
+                                title = "${guidedWalkPlan.startTitle} ${guidedWalkPlan.mood.title} Walk",
+                                spots = guidedWalkPlan.waypoints
                             )
-                            Text(
-                                // Approximate plans carry graph or straight-line estimates:
-                                // the summary must say so, not just the provenance line below.
-                                text = if (guidedWalkPlan.isFullyRouted) {
-                                    "${guidedWalkPlan.formattedDistance} • ${guidedWalkPlan.totalWalkingMinutes} min walk"
-                                } else {
-                                    "${guidedWalkPlan.formattedDistance} • ${guidedWalkPlan.totalWalkingMinutes} min walk (est.)"
-                                },
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                color = BrandTeal
+                            val publishResult = SharedTripManager.publishSharedTripToFirestore(
+                                context = context,
+                                trip = createdTrip,
+                                requestId = shareRequestId
                             )
-                        }
-
-                        // Honest distance provenance: routed network distance vs approximate estimate.
-                        Text(
-                            text = guidedWalkPlan.routingLabel,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = if (guidedWalkPlan.isFullyRouted) BrandTeal else Color(0xFFF59E0B),
-                            fontSize = 11.sp
-                        )
-
-                        if (sharePublishError != null) {
-                            Text(
-                                text = sharePublishError!!,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = BrandCoral,
-                                modifier = Modifier.padding(top = 4.dp)
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        Button(
-                            onClick = {
-                                coroutineScope.launch {
-                                    isPublishingSharedTrip = true
-                                    sharePublishError = null
-                                    val createdTrip = SharedTripManager.createSharedTrip(
-                                        title = "${guidedWalkPlan.startTitle} ${guidedWalkPlan.mood.title} Walk",
-                                        spots = guidedWalkPlan.waypoints
-                                    )
-                                    val publishResult = SharedTripManager.publishSharedTripToFirestore(
-                                        context = context,
-                                        trip = createdTrip,
-                                        requestId = shareRequestId
-                                    )
-                                    isPublishingSharedTrip = false
-                                    if (publishResult.isSuccess) {
-                                        // Only the server-generated link resolves to the
-                                        // real Firestore document; never the local placeholder.
-                                        val published = publishResult.getOrThrow()
-                                        shareRequestId = UUID.randomUUID().toString()
-                                        SharedTripManager.shareTripNativeIntent(
-                                            context = context,
-                                            shareableLink = published.shareableLink,
-                                            tripTitle = createdTrip.title
-                                        )
-                                    } else {
-                                        sharePublishError = "Failed to publish trip: ${publishResult.exceptionOrNull()?.message ?: "Check network connection."}"
-                                    }
-                                }
-                            },
-                            enabled = !isPublishingSharedTrip,
-                            colors = ButtonDefaults.buttonColors(containerColor = BrandTeal, contentColor = Color.White),
-                            shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier.fillMaxWidth().height(42.dp).testTag("publish_share_itinerary_btn")
-                        ) {
-                            if (isPublishingSharedTrip) {
-                                CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("Publishing to Cloud...", fontWeight = FontWeight.Bold)
+                            isPublishingSharedTrip = false
+                            if (publishResult.isSuccess) {
+                                // Only the server-generated link resolves to the
+                                // real Firestore document; never the local placeholder.
+                                val published = publishResult.getOrThrow()
+                                shareRequestId = UUID.randomUUID().toString()
+                                SharedTripManager.shareTripNativeIntent(
+                                    context = context,
+                                    shareableLink = published.shareableLink,
+                                    tripTitle = createdTrip.title
+                                )
                             } else {
-                                Icon(imageVector = Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Publish & Share Itinerary Link", fontWeight = FontWeight.Bold)
+                                sharePublishError = "Failed to publish trip: ${publishResult.exceptionOrNull()?.message ?: "Check network connection."}"
                             }
                         }
                     }
-                }
+                )
             }
 
             // Step 3: Show Empty State if guidedWalkPlan is empty and no custom destination selected
             if (guidedWalkPlan.waypoints.isEmpty() && destination == null && plannedRoute == null) {
                 Spacer(modifier = Modifier.height(12.dp))
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = Color(0xFF1E293B),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF334155)),
-                    modifier = Modifier.fillMaxWidth().testTag("empty_guided_walk_plan_card")
-                ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            text = "No Matching Spots Found",
-                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                            color = Color.White
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "No spots match the selected '${selectedMood.title}' mood within $selectedDurationMinutes minutes. Try selecting a different mood or duration.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color(0xFF94A3B8),
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                }
+                GuidedWalkEmptyStateCard(
+                    moodTitle = selectedMood.title,
+                    durationMinutes = selectedDurationMinutes
+                )
             }
 
             Spacer(modifier = Modifier.height(14.dp))
@@ -563,265 +193,13 @@ fun RoutePlannerSheet(
                     )
                 }
             } else if (plannedRoute != null) {
-                // Route Statistics & Summary Badges
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    // Distance Badge
-                    Surface(
-                        color = BrandCoral.copy(alpha = 0.15f),
-                        shape = RoundedCornerShape(12.dp),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, BrandCoral.copy(alpha = 0.4f)),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.DirectionsWalk,
-                                contentDescription = null,
-                                tint = BrandCoral,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Column {
-                                Text(
-                                    text = "DISTANCE",
-                                    fontSize = 9.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = BrandCoral
-                                )
-                                Text(
-                                    text = plannedRoute.formattedDistance,
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White
-                                )
-                            }
-                        }
-                    }
-
-                    // Duration Badge
-                    Surface(
-                        color = BrandTeal.copy(alpha = 0.15f),
-                        shape = RoundedCornerShape(12.dp),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, BrandTeal.copy(alpha = 0.4f)),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Timer,
-                                contentDescription = null,
-                                tint = BrandTeal,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Column {
-                                Text(
-                                    text = "WALK TIME",
-                                    fontSize = 9.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = BrandTeal
-                                )
-                                Text(
-                                    text = plannedRoute.formattedDuration,
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White
-                                )
-                            }
-                        }
-                    }
-
-                    // A* Mode Badge
-                    Surface(
-                        color = Color(0xFF1E293B),
-                        shape = RoundedCornerShape(12.dp),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF475569)),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.NearMe,
-                                contentDescription = null,
-                                tint = Color(0xFF38BDF8),
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Column {
-                                Text(
-                                    text = "APPROX. ROUTING",
-                                    fontSize = 9.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF38BDF8)
-                                )
-                                Text(
-                                    text = "A* Walking Graph",
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White
-                                )
-                            }
-                        }
-                    }
-                }
-
-                // Secondary Route Metrics: Pedestrian % & Lisbon Calçada Incline
-                val totalDist = plannedRoute.totalDistanceMeters.coerceAtLeast(1.0)
-                val pedDist = plannedRoute.steps.filter { it.isPedestrianOnly }.sumOf { it.distanceMeters }
-                val pedPct = ((pedDist / totalDist) * 100).toInt().coerceIn(0, 100)
-                val stairsCount = plannedRoute.steps.count { it.isStairsOrCalçada }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Surface(
-                        color = Color(0xFF1E293B),
-                        shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.DirectionsWalk,
-                                contentDescription = null,
-                                tint = BrandTeal,
-                                modifier = Modifier.size(14.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "$pedPct% Car-Free Paths",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Color(0xFFE2E8F0)
-                            )
-                        }
-                    }
-
-                    Surface(
-                        color = Color(0xFF1E293B),
-                        shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Terrain,
-                                contentDescription = null,
-                                tint = if (stairsCount > 0) Color(0xFFF59E0B) else BrandTeal,
-                                modifier = Modifier.size(14.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = if (stairsCount > 0) "$stairsCount Stone Stairways" else "Gentle Grade",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = if (stairsCount > 0) Color(0xFFFBBF24) else Color(0xFFE2E8F0)
-                            )
-                        }
-                    }
-                }
-
-                // Dedicated Elevation Profile Sparkline Card (Incline vs Decline)
-                if (plannedRoute.elevationProfile != null) {
-                    Spacer(modifier = Modifier.height(10.dp))
-                    ElevationProfileSparkline(
-                        elevationProfile = plannedRoute.elevationProfile,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                // Turn-by-Turn Steps Header & List
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { areStepsExpanded = !areStepsExpanded }
-                        .padding(vertical = 4.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Turn-by-Turn Directions · approximate graph (${plannedRoute.steps.size} steps)",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color(0xFFE2E8F0)
-                    )
-                    Icon(
-                        imageVector = if (areStepsExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                        contentDescription = "Toggle Directions",
-                        tint = Color(0xFF94A3B8)
-                    )
-                }
-
-                AnimatedVisibility(
-                    visible = areStepsExpanded,
-                    enter = fadeIn() + expandVertically(),
-                    exit = fadeOut() + shrinkVertically()
-                ) {
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 240.dp)
-                            .padding(vertical = 4.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        items(plannedRoute.steps) { step ->
-                            StepItemView(step = step)
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Actions: Show On Map and Clear Route
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    OutlinedButton(
-                        onClick = onClearRoute,
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFEF4444)),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.6f)),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("clear_route_btn")
-                    ) {
-                        Text("Clear Route")
-                    }
-
-                    Button(
-                        onClick = onDismiss,
-                        colors = ButtonDefaults.buttonColors(containerColor = BrandCoral),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier
-                            .weight(1.5f)
-                            .testTag("show_on_map_btn")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Map,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Show On Map", fontWeight = FontWeight.Bold)
-                    }
-                }
+                RouteSummarySection(
+                    plannedRoute = plannedRoute,
+                    areStepsExpanded = areStepsExpanded,
+                    onToggleStepsExpanded = { areStepsExpanded = !areStepsExpanded },
+                    onClearRoute = onClearRoute,
+                    onDismiss = onDismiss
+                )
             }
 
             Spacer(modifier = Modifier.height(18.dp))
@@ -855,214 +233,5 @@ fun RoutePlannerSheet(
             },
             onDismiss = { isSelectingDest = false }
         )
-    }
-}
-
-@Composable
-private fun StepItemView(step: RouteStep) {
-    Surface(
-        color = Color(0xFF1E293B),
-        shape = RoundedCornerShape(10.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF334155)),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Row(
-            modifier = Modifier.padding(10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            val (icon, iconTint, bgTint) = when {
-                step.isStairsOrCalçada -> Triple(Icons.Default.Terrain, Color(0xFFF59E0B), Color(0xFFF59E0B).copy(alpha = 0.2f))
-                step.isPedestrianOnly -> Triple(Icons.AutoMirrored.Filled.DirectionsWalk, BrandTeal, BrandTeal.copy(alpha = 0.2f))
-                step.streetName.contains("Destination", ignoreCase = true) -> Triple(Icons.Default.Place, BrandCoral, BrandCoral.copy(alpha = 0.2f))
-                else -> Triple(Icons.Default.NearMe, Color(0xFF38BDF8), Color(0xFF38BDF8).copy(alpha = 0.2f))
-            }
-
-            Box(
-                modifier = Modifier
-                    .size(32.dp)
-                    .clip(CircleShape)
-                    .background(bgTint),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = iconTint,
-                    modifier = Modifier.size(16.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.width(10.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = step.instruction,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Medium,
-                    color = Color.White
-                )
-                if (step.distanceMeters > 0) {
-                    Text(
-                        text = "${step.formattedDistance} • ${step.streetName}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFF94A3B8)
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun SpotPickerModal(
-    title: String,
-    includeCurrentGps: Boolean,
-    spots: List<ScoutSpotEntity>,
-    onSelect: (ScoutSpotEntity?) -> Unit,
-    onDismiss: () -> Unit
-) {
-    var searchQuery by remember { mutableStateOf("") }
-    val filteredSpots = remember(searchQuery, spots) {
-        if (searchQuery.isBlank()) spots else {
-            spots.filter {
-                it.name.contains(searchQuery, ignoreCase = true) ||
-                        it.category.contains(searchQuery, ignoreCase = true) ||
-                        it.neighborhood.contains(searchQuery, ignoreCase = true)
-            }
-        }
-    }
-
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            shape = RoundedCornerShape(20.dp),
-            color = Color(0xFF101726),
-            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF334155)),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 16.dp)
-        ) {
-            Column(modifier = Modifier.padding(18.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                    IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "Close",
-                            tint = Color.Gray
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
-                    placeholder = { Text("Search cached gems...", color = Color(0xFF64748B)) },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
-                        focusedBorderColor = BrandTeal,
-                        unfocusedBorderColor = Color(0xFF334155)
-                    ),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 320.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    if (includeCurrentGps) {
-                        item {
-                            Surface(
-                                color = Color(0xFF1E293B),
-                                shape = RoundedCornerShape(10.dp),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { onSelect(null) }
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.MyLocation,
-                                        contentDescription = null,
-                                        tint = BrandTeal,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(10.dp))
-                                    Column {
-                                        Text(
-                                            text = "My Current GPS Location",
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color.White
-                                        )
-                                        Text(
-                                            text = "Use live device coordinates",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = Color(0xFF94A3B8)
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    items(filteredSpots) { spot ->
-                        Surface(
-                            color = Color(0xFF1E293B),
-                            shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onSelect(spot) }
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Place,
-                                    contentDescription = null,
-                                    tint = if (spot.isSaved) BrandCoral else Color(0xFF38BDF8),
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Column {
-                                    Text(
-                                        text = spot.name,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        fontWeight = FontWeight.Medium,
-                                        color = Color.White,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Text(
-                                        text = "${spot.category.replaceFirstChar { it.uppercase() }} • ${spot.neighborhood}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = Color(0xFF94A3B8)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
     }
 }

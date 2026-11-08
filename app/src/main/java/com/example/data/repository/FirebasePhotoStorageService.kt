@@ -210,6 +210,7 @@ class PhotoUploadOrchestrator(private val operations: PhotoUploadOperations) {
                     spotId = spotId,
                     photoUrl = finalized.photoUrl,
                     ownerUid = userUid,
+                    photoPath = objectPath,
                     reportsCount = 0,
                     timestamp = nowMs()
                 )

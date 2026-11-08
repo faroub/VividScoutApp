@@ -1,14 +1,31 @@
 package com.example.ui.components
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -16,6 +33,7 @@ import com.example.data.local.ScoutSpotEntity
 import com.example.data.model.toEntity
 import com.example.data.model.toScoutGem
 import com.example.engine.ScoutVectorEngine
+import com.example.ui.theme.LocalAppStrings
 import com.example.ui.viewmodel.ScoutMapViewModel
 
 import androidx.compose.runtime.mutableStateOf
@@ -51,6 +69,10 @@ fun ScoutMapLifecycleHost(
     achievements: List<com.example.data.local.AchievementEntity> = emptyList(),
     onSpotDetailClick: ((ScoutSpotEntity) -> Unit)? = null,
     onDismissSpotSelect: (() -> Unit)? = null,
+    // True while the app runs on the built-in default (Lisbon) location because device
+    // location is off. Surfaces the same fallback banner as ExploreScreen over the map.
+    isUsingDefaultFallbackLocation: Boolean = false,
+    onSetFallbackCity: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -129,6 +151,55 @@ fun ScoutMapLifecycleHost(
             },
             modifier = Modifier.fillMaxSize()
         )
+
+        // Fallback-location banner shown over the map while discovery runs on the built-in
+        // default (Lisbon) location because device location is off.
+        if (isUsingDefaultFallbackLocation) {
+            val strings = LocalAppStrings.current
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = Color(0xFFFEF3C7),
+                border = BorderStroke(1.dp, Color(0xFFF59E0B)),
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
+                    .fillMaxWidth()
+                    .clickable { onSetFallbackCity?.invoke() }
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "📍",
+                        fontSize = 18.sp,
+                        color = Color(0xFF92400E)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = strings.fallbackLocationBannerText,
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                        color = Color(0xFF92400E),
+                        modifier = Modifier.weight(1f)
+                    )
+                    if (onSetFallbackCity != null) {
+                        Surface(
+                            shape = RoundedCornerShape(999.dp),
+                            color = Color(0xFFD97706)
+                        ) {
+                            Text(
+                                text = strings.fallbackLocationBannerAction,
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                color = Color.White,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                fontSize = 10.sp
+                            )
+                        }
+                    }
+                }
+            }
+        }
 
         internalSpotDetail?.let { spot ->
             SpotDetailBottomSheet(

@@ -107,6 +107,9 @@
     <string name="location_feature_distances">Real-time walking distance and estimated minutes</string>
     <string name="location_feature_bakeries">Instant alerts when hot pastry batches come out of the oven</string>
     <string name="location_privacy_note">How location is used: to discover nearby spots, your GPS coordinates are sent to VividScout\'s cloud and to external place providers (OpenTripMap, GeoNames, OpenStreetMap) for that search. Coordinates are not stored on your profile; logs round them to ~1 km precision.</string>
+    <!-- Shown while the app runs on DefaultLocationConfig's built-in fallback (Lisbon) because device location is off. -->
+    <string name="fallback_location_banner_text">Showing Lisbon because location is off</string>
+    <string name="fallback_location_banner_action">Set city</string>
     <string name="allow_location">Allow GPS Access</string>
     <string name="keep_default_gps">Keep Default Lisbon GPS</string>
     <string name="location_denied_title">Location Permission Needed</string>

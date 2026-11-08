@@ -13,7 +13,10 @@
  *     content type is not trusted), within the decompression-bomb safety bounds, and
  *   - is re-encoded in place into the canonical published JPEG with all metadata
  *     (including EXIF/GPS) stripped,
- * and only then creates the metadata document with a server-generated document id.
+ * and only then creates the metadata document with a server-derived document id. The
+ * public photo document carries no ownerUid (anonymous UIDs are stable identifiers);
+ * ownership is recorded in the server-written ownership index
+ * (functions/ownershipIndex.js) and is inherent in the canonical path itself.
  *
  * Tests must import this module (not copy its logic).
  */
@@ -22,6 +25,7 @@ const { HttpsError } = require("firebase-functions/v2/https");
 const sharp = require("sharp");
 const crypto = require("crypto");
 const { decideRateLimitInTransaction } = require("./rateLimits");
+const { ownershipIndexRef } = require("./ownershipIndex");
 
 const PHOTOS_COLLECTION = "spot_photos";
 const STORAGE_PATH_PREFIX = "spot_photos/";
@@ -286,13 +290,20 @@ async function finalizePhotoUploadDocument(db, bucket, ownerUid, data, options =
     // All reads precede all writes (Firestore transaction requirement).
     const photoDoc = await transaction.get(photoRef);
     const claimDoc = await transaction.get(claimRef);
+    const indexRef = ownershipIndexRef(db, PHOTOS_COLLECTION, photoRef.id);
+    const indexDoc = await transaction.get(indexRef);
 
-    // Replay: the object is registered. Verify the record belongs to this caller, this
-    // spot, and this exact object path — an inconsistent record is never returned as
-    // another user's photo.
+    // Replay: the object is registered. Ownership is proven by the canonical path
+    // itself — it embeds the caller's uid under spot_photos/{uid}/{spotId}/{filename},
+    // and only the caller's own registration could have created that exact record —
+    // so the public photo document carries no ownerUid, and its ownership is recorded
+    // in the server-written index (replayed here for legacy documents predating it).
     if (photoDoc.exists) {
       const replay = replayResult(photoDoc, ownerUid, spotId, canonicalPath);
       if (replay) {
+        if (!indexDoc.exists) {
+          transaction.set(indexRef, { ownerUid, createdAt: nowMs });
+        }
         return replay;
       }
       throw new HttpsError(
@@ -338,16 +349,18 @@ async function finalizePhotoUploadDocument(db, bucket, ownerUid, data, options =
       }
     }
 
-    // Server-derived document id; create() never overwrites an existing document.
+    // Server-derived document id; create() never overwrites an existing document. The
+    // document carries no ownerUid (publicly readable): ownership lives in the
+    // ownership index the rules read, and in the canonical path itself.
     transaction.create(photoRef, {
       id: photoRef.id,
       spotId: spotId,
       photoPath: canonicalPath,
       photoUrl: photoUrl,
-      ownerUid: ownerUid,
       reportsCount: 0,
       timestamp: nowMs,
     });
+    transaction.set(indexRef, { ownerUid, createdAt: nowMs });
 
     return {
       photoId: photoRef.id,
@@ -362,12 +375,22 @@ async function finalizePhotoUploadDocument(db, bucket, ownerUid, data, options =
 
 /**
  * Builds the idempotent replay result from an existing registration document, or null
- * when the record does not belong to [ownerUid], [spotId], and [canonicalPath] — the
- * caller must reject such a record instead of returning another user's photo.
+ * when the record does not match [spotId] and [canonicalPath] — ownership is proven by
+ * the canonical path itself (spot_photos/{uid}/{spotId}/{filename} embeds the caller's
+ * uid, so only that caller's own registration could have produced this exact record),
+ * so the publicly readable document carries no ownerUid field. Documents written before
+ * that change still carry a legacy ownerUid: when present, it must agree with the
+ * caller, so a corrupt legacy record can never be replayed as another user's photo.
+ * The returned ownerUid is the authenticated caller's own uid, never read from the
+ * public document.
  */
 function replayResult(doc, ownerUid, spotId, canonicalPath) {
   const data = doc.data() || {};
-  if (data.ownerUid !== ownerUid || data.spotId !== spotId || data.photoPath !== canonicalPath) {
+  if (data.spotId !== spotId || data.photoPath !== canonicalPath) {
+    return null;
+  }
+  const legacyOwnerUid = data.ownerUid;
+  if (typeof legacyOwnerUid === "string" && legacyOwnerUid.length > 0 && legacyOwnerUid !== ownerUid) {
     return null;
   }
   const url = data.photoUrl;
@@ -378,7 +401,7 @@ function replayResult(doc, ownerUid, spotId, canonicalPath) {
     photoId: doc.id,
     photoUrl: url,
     spotId: data.spotId || spotId,
-    ownerUid: data.ownerUid || ownerUid,
+    ownerUid: ownerUid,
     timestamp: data.timestamp || Date.now(),
     replayed: true,
   };

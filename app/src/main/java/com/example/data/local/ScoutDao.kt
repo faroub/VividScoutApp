@@ -79,7 +79,7 @@ interface ScoutDao {
     @Query("DELETE FROM scout_spots WHERE isSaved = 0 AND isDiscovered = 0 AND isOfflineDraft = 0 AND (latitude < :minLat OR latitude > :maxLat OR longitude < :minLng OR longitude > :maxLng)")
     suspend fun deleteUnsavedDistantSpots(minLat: Double, maxLat: Double, minLng: Double, maxLng: Double)
 
-    @Query("DELETE FROM scout_spots WHERE isSaved = 0 AND isDiscovered = 0 AND isOfflineDraft = 0 AND id LIKE 'osm_fallback_%'")
+    @Query("DELETE FROM scout_spots WHERE isSaved = 0 AND isDiscovered = 0 AND isOfflineDraft = 0 AND (id LIKE 'osm_fallback_%' OR id LIKE 'fallback_%')")
     suspend fun clearFallbackSpots()
 
     @Query("DELETE FROM scout_spots WHERE isSaved = 0 AND isDiscovered = 0 AND isOfflineDraft = 0 AND timestamp < :cutoffTimestamp")

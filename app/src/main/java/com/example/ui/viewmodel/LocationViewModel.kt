@@ -80,6 +80,21 @@ class LocationViewModel(
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
+    /**
+     * True only when the app is running on the built-in default location (Lisbon) because
+     * device location is unavailable and the user has not picked a city manually. This is
+     * the "silent fallback" case that must be surfaced to the user with an explicit banner.
+     */
+    val isUsingDefaultFallbackLocation: StateFlow<Boolean> = combine(
+        _isUsingGpsLocation,
+        _manualCoordinates
+    ) { isGps, manual -> !isGps && manual == null }
+        .stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(5000),
+            !locationTracker.hasPermission.value
+        )
+
     val uiState: StateFlow<LocationUiState> = combine(
         userLocation,
         userCoordinates,

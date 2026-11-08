@@ -19,11 +19,12 @@ const RATE_LIMIT_WINDOW_MS = 3600 * 1000; // 1 hour
  * requires all transaction reads to precede writes). Returns true when the request is
  * allowed.
  *
- * Window semantics: the counter covers a fixed one-hour window from its first
- * increment; once the window is older than RATE_LIMIT_WINDOW_MS it resets to a fresh
- * count of 1.
+ * Window semantics: the counter covers a fixed window of [windowMs] (default one hour)
+ * from its first increment; once the window is older than windowMs it resets to a fresh
+ * count of 1. Callers enforcing a 24-hour community limit pass a 24-hour window — the
+ * shared helper is the single place window semantics live.
  */
-async function decideRateLimitInTransaction(transaction, ref, maxPerHour, nowMs) {
+async function decideRateLimitInTransaction(transaction, ref, maxPerWindow, nowMs, windowMs = RATE_LIMIT_WINDOW_MS) {
   const doc = await transaction.get(ref);
   if (!doc.exists) {
     transaction.set(ref, { count: 1, windowStart: nowMs });
@@ -34,12 +35,12 @@ async function decideRateLimitInTransaction(transaction, ref, maxPerHour, nowMs)
   const windowStart = data.windowStart || nowMs;
   const currentCount = data.count || 0;
 
-  if (nowMs - windowStart > RATE_LIMIT_WINDOW_MS) {
+  if (nowMs - windowStart > windowMs) {
     transaction.set(ref, { count: 1, windowStart: nowMs });
     return true;
   }
 
-  if (currentCount >= maxPerHour) {
+  if (currentCount >= maxPerWindow) {
     return false;
   }
 

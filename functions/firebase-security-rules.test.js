@@ -98,19 +98,20 @@ const storageAs = (uid) =>
   uid != null ? env.authenticatedContext(uid).storage() : env.unauthenticatedContext().storage();
 
 // ---------------------------------------------------------------------------
-// Factories mirror the exact document shapes the Android clients write.
+// Factories mirror the exact document shapes the trusted callables write (Admin SDK):
+// the public community documents carry NO ownerUid — ownership lives in the
+// server-written ownership index (ownership_index/{collectionId}/records/{docId}).
 // ---------------------------------------------------------------------------
 
-const validSubmission = (ownerUid) => ({
+const validSubmission = () => ({
   id: nextId('submission'),
-  ownerUid,
   title: 'Miradouro da Senhora do Monte',
   description: 'Best sunset viewpoint in Lisbon',
   category: 'sights',
   locationName: 'Lisbon',
   latitude: 38.7145,
   longitude: -9.1276,
-  photoUri: 'https://storage.googleapis.com/vividscout/spot.jpg',
+  photoUri: '',
   contributor: 'Alice',
   timestamp: 1700000000000,
 });
@@ -122,9 +123,8 @@ const validPrivateNote = (ownerUid, spotId) => ({
   updatedAt: 1700000000000,
 });
 
-const validTip = (ownerUid) => ({
+const validTip = () => ({
   id: nextId('tip'),
-  ownerUid,
   spotId: 'spot-1',
   spotTitle: 'Castelo de São Jorge',
   authorName: 'Alice',
@@ -140,10 +140,24 @@ const validPhoto = (ownerUid) => ({
   id: nextId('photo'),
   spotId: 'spot-1',
   photoUrl: 'https://storage.googleapis.com/vividscout/spot-photo.jpg',
-  ownerUid,
+  photoPath: `spot_photos/${ownerUid}/spot-1/photo.jpg`,
   reportsCount: 0,
   timestamp: 1700000000000,
 });
+
+// Seeds exactly like the trusted community callables (Admin SDK, which bypasses rules):
+// the public document is committed without ownerUid, together with its ownership index
+// record that firestore.rules reads (communityOwnerUid) to enforce ownership.
+const seedPublicDoc = async (collection, id, data, ownerUid) => {
+  await admin.firestore().collection(collection).doc(id).create(data);
+  await admin
+    .firestore()
+    .collection('ownership_index')
+    .doc(collection)
+    .collection('records')
+    .doc(id)
+    .set({ ownerUid, createdAt: Date.now() });
+};
 
 const futureTimestamp = () => Timestamp.fromMillis(Date.now() + 30 * 24 * 3600 * 1000);
 const pastTimestamp = () => Timestamp.fromMillis(Date.now() - 60 * 1000);
@@ -194,101 +208,126 @@ const atomicReport = async (db, photoId, uid) => {
 // ---------------------------------------------------------------------------
 
 describe('community_submissions', () => {
-  it('allows public reads without authentication', async () => {
+  const seedSubmission = async (ownerUid) => {
     const id = nextId('submission');
-    const adminLike = dbAs(ALICE);
-    await assertSucceeds(setDoc(doc(adminLike, 'community_submissions', id), validSubmission(ALICE)));
+    const data = validSubmission();
+    await seedPublicDoc('community_submissions', id, data, ownerUid);
+    return { id, data };
+  };
+
+  it('allows public reads without authentication', async () => {
+    const { id } = await seedSubmission(ALICE);
     await assertSucceeds(getDoc(doc(dbAs(null), 'community_submissions', id)));
+  });
+
+  it('never exposes an ownerUid in the public document (identifier privacy)', async () => {
+    // Anonymous Firebase UIDs are stable identifiers: publishing them would let anyone
+    // link one person's contributions across every public collection. The public
+    // document carries none; ownership lives in the server-written index.
+    const { id } = await seedSubmission(ALICE);
+    const saved = await getDoc(doc(dbAs(null), 'community_submissions', id));
+    assert.strictEqual(saved.get('ownerUid'), undefined);
   });
 
   it('rejects unauthenticated creation', async () => {
     const id = nextId('submission');
-    await assertFails(setDoc(doc(dbAs(null), 'community_submissions', id), validSubmission(ALICE)));
+    const data = validSubmission();
+    await assertFails(setDoc(doc(dbAs(null), 'community_submissions', id), data));
   });
 
-  it('allows an authenticated user to create a valid submission', async () => {
+  it('rejects ANY authenticated direct creation (trusted writer only)', async () => {
+    // firestore.rules denies direct client creation outright: submissions are written
+    // only by the trusted submitCommunitySpot Cloud Function, which validates the
+    // payload and records ownership in the index server-side. Even the legacy client
+    // shape (with ownerUid) is denied — the schema boundary moved to the callable.
     const id = nextId('submission');
-    const data = validSubmission(ALICE);
-    await assertSucceeds(setDoc(doc(dbAs(ALICE), 'community_submissions', id), data));
-    const saved = await getDoc(doc(dbAs(ALICE), 'community_submissions', id));
-    assert.strictEqual(saved.get('title'), data.title);
+    await assertFails(setDoc(doc(dbAs(ALICE), 'community_submissions', id), validSubmission()));
+    const legacyShape = { ...validSubmission(), ownerUid: ALICE };
+    await assertFails(setDoc(doc(dbAs(ALICE), 'community_submissions', id), legacyShape));
   });
 
-  it('rejects creation when ownerUid does not match the signed-in user', async () => {
-    const id = nextId('submission');
-    await assertFails(setDoc(doc(dbAs(BOB), 'community_submissions', id), validSubmission(ALICE)));
-  });
-
-  it('rejects creation with an unexpected field', async () => {
-    const id = nextId('submission');
-    const data = { ...validSubmission(ALICE), smuggled: 'field' };
-    await assertFails(setDoc(doc(dbAs(ALICE), 'community_submissions', id), data));
-  });
-
-  it('rejects creation with a missing mandatory field', async () => {
-    const id = nextId('submission');
-    const data = validSubmission(ALICE);
-    delete data.timestamp;
-    await assertFails(setDoc(doc(dbAs(ALICE), 'community_submissions', id), data));
-  });
-
-  it('rejects creation with an invalid latitude', async () => {
-    const id = nextId('submission');
-    const data = { ...validSubmission(ALICE), latitude: 95.5 };
-    await assertFails(setDoc(doc(dbAs(ALICE), 'community_submissions', id), data));
-  });
-
-  it('rejects creation with a non-numeric longitude', async () => {
-    const id = nextId('submission');
-    const data = { ...validSubmission(ALICE), longitude: '-9.14' };
-    await assertFails(setDoc(doc(dbAs(ALICE), 'community_submissions', id), data));
-  });
-
-  it('rejects creation with a non-https photoUri', async () => {
-    const id = nextId('submission');
-    const data = { ...validSubmission(ALICE), photoUri: 'ftp://files/spot.jpg' };
-    await assertFails(setDoc(doc(dbAs(ALICE), 'community_submissions', id), data));
-  });
-
-  it('allows the owner to update their own submission', async () => {
-    const id = nextId('submission');
-    const data = validSubmission(ALICE);
-    await assertSucceeds(setDoc(doc(dbAs(ALICE), 'community_submissions', id), data));
+  it('allows the owner to update their own submission (ownership index)', async () => {
+    const { id } = await seedSubmission(ALICE);
     await assertSucceeds(
       updateDoc(doc(dbAs(ALICE), 'community_submissions', id), { description: 'Updated notes' })
     );
   });
 
-  it('rejects cross-user updates', async () => {
-    const id = nextId('submission');
-    const data = validSubmission(ALICE);
-    await assertSucceeds(setDoc(doc(dbAs(ALICE), 'community_submissions', id), data));
+  it('rejects an owner update that swaps in an external photoUri', async () => {
+    const { id } = await seedSubmission(ALICE);
+    await assertFails(
+      updateDoc(doc(dbAs(ALICE), 'community_submissions', id), { photoUri: 'https://example.com/x.jpg' })
+    );
+  });
+
+  it('rejects smuggling private notes back in through an update', async () => {
+    const { id } = await seedSubmission(ALICE);
+    await assertFails(
+      updateDoc(doc(dbAs(ALICE), 'community_submissions', id), { userNotes: 'my private note' })
+    );
+  });
+
+  it('rejects an owner update that reintroduces ownerUid', async () => {
+    const { id } = await seedSubmission(ALICE);
+    await assertFails(
+      updateDoc(doc(dbAs(ALICE), 'community_submissions', id), { ownerUid: ALICE })
+    );
+  });
+
+  it('rejects cross-user updates (ownership enforced by the index)', async () => {
+    const { id } = await seedSubmission(ALICE);
     await assertFails(
       updateDoc(doc(dbAs(BOB), 'community_submissions', id), { description: 'hijacked' })
     );
   });
 
-  it('rejects deletion, including by the owner', async () => {
+  it('keeps serving the LEGACY owner of a pre-index document (migration fallback)', async () => {
+    // Documents written before the ownership index existed still carry ownerUid and no
+    // index record: ownership keeps validating against their own field until their owner
+    // replays them through the callable, which backfills the index.
     const id = nextId('submission');
-    await assertSucceeds(setDoc(doc(dbAs(ALICE), 'community_submissions', id), validSubmission(ALICE)));
+    const legacy = { ...validSubmission(), ownerUid: ALICE };
+    await admin.firestore().collection('community_submissions').doc(id).set(legacy);
+    await assertSucceeds(
+      updateDoc(doc(dbAs(ALICE), 'community_submissions', id), { description: 'legacy edit' })
+    );
+    await assertFails(
+      updateDoc(doc(dbAs(BOB), 'community_submissions', id), { description: 'hijacked' })
+    );
+  });
+
+  it('fails closed for documents with neither index record nor legacy ownerUid', async () => {
+    const id = nextId('submission');
+    await admin.firestore().collection('community_submissions').doc(id).set(validSubmission());
+    await assertFails(
+      updateDoc(doc(dbAs(ALICE), 'community_submissions', id), { description: 'claim' })
+    );
+    await assertFails(
+      updateDoc(doc(dbAs(BOB), 'community_submissions', id), { description: 'claim' })
+    );
+  });
+
+  it('keeps the ownership index unreadable by clients (rules read it, users cannot)', async () => {
+    const { id } = await seedSubmission(ALICE);
+    await assertFails(
+      getDoc(doc(dbAs(ALICE), 'ownership_index', 'community_submissions', 'records', id))
+    );
+    await assertFails(
+      getDoc(doc(dbAs(null), 'ownership_index', 'community_submissions', 'records', id))
+    );
+  });
+
+  it('rejects deletion, including by the owner', async () => {
+    const { id } = await seedSubmission(ALICE);
     await assertFails(deleteDoc(doc(dbAs(ALICE), 'community_submissions', id)));
   });
 
   it('rejects private scout notes in public submissions (creation)', async () => {
-    // firestore.rules removed "userNotes" from the allowlist: the public document
-    // must never carry a private note, because anyone can read this collection and
-    // Firestore has no field-level access control.
+    // The rules deny all client creation regardless of payload; the no-userNotes
+    // contract is additionally enforced by the trusted callable's strict key check.
     const id = nextId('submission');
-    const data = { ...validSubmission(ALICE), userNotes: 'my private note' };
+    const data = { ...validSubmission(), userNotes: 'my private note' };
     await assertFails(setDoc(doc(dbAs(ALICE), 'community_submissions', id), data));
-  });
-
-  it('rejects smuggling private notes back in through an update', async () => {
-    const id = nextId('submission');
-    await assertSucceeds(setDoc(doc(dbAs(ALICE), 'community_submissions', id), validSubmission(ALICE)));
-    await assertFails(
-      updateDoc(doc(dbAs(ALICE), 'community_submissions', id), { userNotes: 'my private note' })
-    );
   });
 });
 
@@ -440,9 +479,20 @@ describe('users/{uid}/private_spot_notes', () => {
 describe('community_tips', () => {
   const seedTip = async (ownerUid) => {
     const id = nextId('tip');
-    const data = validTip(ownerUid);
+    const data = validTip();
     data.id = id;
-    await assertSucceeds(setDoc(doc(dbAs(ownerUid), 'community_tips', id), data));
+    await seedPublicDoc('community_tips', id, data, ownerUid);
+    return { id, data };
+  };
+
+  // A legacy tip: written before the ownership index existed, so it still carries
+  // ownerUid and has no index record.
+  const seedLegacyTip = async (ownerUid) => {
+    const id = nextId('tip');
+    const data = validTip();
+    data.id = id;
+    data.ownerUid = ownerUid;
+    await admin.firestore().collection('community_tips').doc(id).set(data);
     return { id, data };
   };
 
@@ -451,60 +501,34 @@ describe('community_tips', () => {
     await assertSucceeds(getDoc(doc(dbAs(null), 'community_tips', id)));
   });
 
+  it('never exposes an ownerUid in the public document (identifier privacy)', async () => {
+    const { id } = await seedTip(ALICE);
+    const saved = await getDoc(doc(dbAs(null), 'community_tips', id));
+    assert.strictEqual(saved.get('ownerUid'), undefined);
+  });
+
   it('rejects unauthenticated creation', async () => {
     const id = nextId('tip');
-    const data = validTip(ALICE);
+    const data = validTip();
     data.id = id;
     await assertFails(setDoc(doc(dbAs(null), 'community_tips', id), data));
   });
 
-  it('allows an authenticated user to create a valid tip with zero upvotes', async () => {
-    const { id, data } = await seedTip(ALICE);
-    const saved = await getDoc(doc(dbAs(ALICE), 'community_tips', id));
-    assert.strictEqual(saved.get('upvotes'), 0);
-    assert.strictEqual(saved.get('content'), data.content);
-  });
-
-  it('rejects creation when the document id field does not match the path id', async () => {
+  it('rejects ANY authenticated direct creation (trusted writer only)', async () => {
+    // firestore.rules denies direct client creation outright: tips are written only by
+    // the trusted postCommunityTip Cloud Function, which validates the payload, sets
+    // the upvotes counter server-side, and records ownership in the index. The schema
+    // boundary lives in functions/community.js (exercised in community.test.js).
     const id = nextId('tip');
-    const data = validTip(ALICE);
-    data.id = 'some-other-id';
-    await assertFails(setDoc(doc(dbAs(ALICE), 'community_tips', id), data));
-  });
-
-  it('rejects creation with a non-zero upvotes counter', async () => {
-    const id = nextId('tip');
-    const data = validTip(ALICE);
+    const data = validTip();
     data.id = id;
-    data.upvotes = 5;
     await assertFails(setDoc(doc(dbAs(ALICE), 'community_tips', id), data));
+    // Even the legacy client shape with ownerUid is denied.
+    const legacyShape = { ...data, ownerUid: ALICE };
+    await assertFails(setDoc(doc(dbAs(ALICE), 'community_tips', id), legacyShape));
   });
 
-  it('rejects creation with an unexpected field', async () => {
-    const id = nextId('tip');
-    const data = validTip(ALICE);
-    data.id = id;
-    data.smuggled = 'field';
-    await assertFails(setDoc(doc(dbAs(ALICE), 'community_tips', id), data));
-  });
-
-  it('rejects creation with a missing mandatory field', async () => {
-    const id = nextId('tip');
-    const data = validTip(ALICE);
-    data.id = id;
-    delete data.authorName;
-    await assertFails(setDoc(doc(dbAs(ALICE), 'community_tips', id), data));
-  });
-
-  it('rejects creation with a malformed field type', async () => {
-    const id = nextId('tip');
-    const data = validTip(ALICE);
-    data.id = id;
-    data.content = 'x'.repeat(501);
-    await assertFails(setDoc(doc(dbAs(ALICE), 'community_tips', id), data));
-  });
-
-  it('allows the owner to edit tip content while preserving counters', async () => {
+  it('allows the owner to edit tip content while preserving counters (ownership index)', async () => {
     const { id } = await seedTip(ALICE);
     await assertSucceeds(
       updateDoc(doc(dbAs(ALICE), 'community_tips', id), { content: 'Edited tip text.' })
@@ -518,10 +542,59 @@ describe('community_tips', () => {
     );
   });
 
+  it('rejects an owner update that reintroduces ownerUid', async () => {
+    const { id } = await seedTip(ALICE);
+    await assertFails(
+      updateDoc(doc(dbAs(ALICE), 'community_tips', id), { ownerUid: ALICE })
+    );
+  });
+
   it('rejects cross-user edits to another user tip', async () => {
     const { id } = await seedTip(ALICE);
     await assertFails(
       updateDoc(doc(dbAs(BOB), 'community_tips', id), { content: 'hijacked' })
+    );
+  });
+
+  it('keeps serving the LEGACY owner of a pre-index tip (migration fallback)', async () => {
+    const { id } = await seedLegacyTip(ALICE);
+    await assertSucceeds(
+      updateDoc(doc(dbAs(ALICE), 'community_tips', id), { content: 'legacy edit' })
+    );
+    await assertFails(
+      updateDoc(doc(dbAs(BOB), 'community_tips', id), { content: 'hijacked' })
+    );
+  });
+
+  it('forbids introducing or changing ownerUid through any tip update', async () => {
+    const indexed = await seedTip(ALICE);
+    await assertFails(
+      updateDoc(doc(dbAs(ALICE), 'community_tips', indexed.id), { ownerUid: ALICE })
+    );
+    const legacy = await seedLegacyTip(ALICE);
+    await assertFails(
+      updateDoc(doc(dbAs(ALICE), 'community_tips', legacy.id), { ownerUid: BOB })
+    );
+  });
+
+  it('fails closed for tips with neither index record nor legacy ownerUid', async () => {
+    // Nobody can claim or edit such a document (communityOwnerUid resolves to nothing),
+    // and self-upvote protection still blocks on it.
+    const id = nextId('tip');
+    const data = validTip();
+    data.id = id;
+    await admin.firestore().collection('community_tips').doc(id).set(data);
+    await assertFails(updateDoc(doc(dbAs(ALICE), 'community_tips', id), { content: 'claim' }));
+    await assertFails(atomicVote(dbAs(ALICE), id, ALICE));
+  });
+
+  it('keeps the ownership index unreadable by clients (rules read it, users cannot)', async () => {
+    const { id } = await seedTip(ALICE);
+    await assertFails(
+      getDoc(doc(dbAs(ALICE), 'ownership_index', 'community_tips', 'records', id))
+    );
+    await assertFails(
+      getDoc(doc(dbAs(null), 'ownership_index', 'community_tips', 'records', id))
     );
   });
 
@@ -543,6 +616,52 @@ describe('community_tips', () => {
 
     await assertSucceeds(atomicVote(db, id, BOB));
     await assertFails(atomicVote(db, id, BOB));
+  });
+
+  it('rejects the tip owner upvoting their own tip (ownership via index, no self-upvotes)', async () => {
+    // firestore.rules denies the atomic upvote increment whenever communityOwnerUid
+    // (read from the ownership index) is the caller: a self-vote is a fabricated
+    // community signal.
+    const { id } = await seedTip(ALICE);
+    const db = dbAs(ALICE);
+
+    await assertFails(atomicVote(db, id, ALICE));
+
+    const tip = await getDoc(doc(db, 'community_tips', id));
+    assert.strictEqual(tip.get('upvotes'), 0);
+  });
+
+  it('rejects the LEGACY tip owner upvoting their own pre-index tip (fallback path)', async () => {
+    // The legacy ownerUid field still serves ownership: without the fallback, every
+    // pre-existing tip could be self-upvoted, weakening the no-self-upvote rule.
+    const { id } = await seedLegacyTip(ALICE);
+    const db = dbAs(ALICE);
+
+    await assertFails(atomicVote(db, id, ALICE));
+
+    const tip = await getDoc(doc(db, 'community_tips', id));
+    assert.strictEqual(tip.get('upvotes'), 0);
+  });
+
+  it('accepts an upvote from a different authenticated user than the owner', async () => {
+    const { id } = await seedTip(ALICE);
+    const db = dbAs(BOB);
+
+    await assertSucceeds(atomicVote(db, id, BOB));
+
+    const tip = await getDoc(doc(db, 'community_tips', id));
+    assert.strictEqual(tip.get('upvotes'), 1);
+  });
+
+  it('rejects a repeat vote by the same user after a successful vote', async () => {
+    const { id } = await seedTip(ALICE);
+    const db = dbAs(BOB);
+
+    await assertSucceeds(atomicVote(db, id, BOB));
+    await assertFails(atomicVote(db, id, BOB));
+
+    const tip = await getDoc(doc(db, 'community_tips', id));
+    assert.strictEqual(tip.get('upvotes'), 1);
   });
 
   it('rejects standalone vote creation (no parent counter update)', async () => {
@@ -660,13 +779,14 @@ describe('community_tips', () => {
 describe('spot_photos', () => {
   const seedPhoto = async (ownerUid) => {
     // Seeds exactly like the trusted finalizePhotoUpload Cloud Function (Admin SDK,
-    // which bypasses rules): server-generated document id, owner-scoped Storage object
-    // path, photoUrl referencing the verified object, zero initial report counter.
+    // which bypasses rules): server-derived document id, owner-scoped Storage object
+    // path, photoUrl referencing the verified object, zero initial report counter, and
+    // an ownership-index record — the public document itself carries no ownerUid.
     const id = nextId('photo');
     const data = validPhoto(ownerUid);
     data.id = id;
     data.photoPath = `spot_photos/${ownerUid}/spot-1/photo-${id}.jpg`;
-    await admin.firestore().collection('spot_photos').doc(id).create(data);
+    await seedPublicDoc('spot_photos', id, data, ownerUid);
     return { id, data };
   };
 
@@ -942,7 +1062,7 @@ describe('spot_photos', () => {
         spotId,
         photoPath: `spot_photos/${ALICE}/${spotId}/photo-${id}.jpg`,
         photoUrl: `https://firebasestorage.googleapis.com/v0/b/vividscout-rules-emulator.appspot.com/o/spot_photos%2F${ALICE}%2F${spotId}%2Fphoto-${id}.jpg`,
-        ownerUid: ALICE,
+        reportsCount: 0,
         reportsCount: 0,
         timestamp: 1_700_000_000_000 + i * 1000,
       });
@@ -954,7 +1074,7 @@ describe('spot_photos', () => {
       spotId: nextId('spot'),
       photoPath: `spot_photos/${ALICE}/other/photo-${otherId}.jpg`,
       photoUrl: 'https://firebasestorage.googleapis.com/v0/b/vividscout-rules-emulator.appspot.com/o/o.jpg',
-      ownerUid: ALICE,
+        reportsCount: 0,
       reportsCount: 0,
       timestamp: 1_700_000_000_000,
     });
@@ -991,7 +1111,7 @@ describe('spot_photos', () => {
         spotId,
         photoPath: `spot_photos/${ALICE}/${spotId}/photo-${id}.jpg`,
         photoUrl: `https://firebasestorage.googleapis.com/v0/b/vividscout-rules-emulator.appspot.com/o/spot_photos%2F${ALICE}%2F${spotId}%2Fphoto-${id}.jpg`,
-        ownerUid: ALICE,
+        reportsCount: 0,
         reportsCount: 0,
         timestamp: 1_700_000_000_000 + i * 1000,
       });

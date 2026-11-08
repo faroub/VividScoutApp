@@ -81,14 +81,15 @@ fun ScoutSpotEntity.computedDistanceMeters(userLat: Double, userLng: Double): Fl
 /**
  * True for the illustrative "Offline Demo Spot" records that [com.example.data.network.OverpassRetrofitClient.generateNearbyFallbackSpots]
  * synthesizes around the user's coordinates when every Overpass mirror fails or returns
- * zero elements. Derived from the `osm_fallback_` id prefix assigned at generation time —
- * the stable machine marker — so no schema change or migration is needed and rows already
- * on existing installs classify correctly at read time. Demo records must never be
- * presented as verified real-world places, published as community submissions, or
- * included in shared trips as real destinations.
+ * zero elements. Derived from the id prefix assigned at generation time — the stable
+ * machine marker (the current `fallback_` prefix, and the legacy `osm_fallback_` prefix
+ * still present on rows persisted before the id scheme changed) — so no schema change or
+ * migration is needed and rows already on existing installs classify correctly at read
+ * time. Demo records must never be presented as verified real-world places, published
+ * as community submissions, or included in shared trips as real destinations.
  */
 val ScoutSpotEntity.isDemoFallbackSpot: Boolean
-    get() = id.startsWith("osm_fallback_")
+    get() = id.startsWith("osm_fallback_") || id.startsWith("fallback_")
 
 fun ScoutSpotEntity.computedDistanceString(userLat: Double, userLng: Double): String {
     val meters = computedDistanceMeters(userLat, userLng)

@@ -33,6 +33,7 @@ const {
   REAP_MAX_OBJECTS_PER_RUN,
   MODERATION_REPORTS_THRESHOLD,
 } = require("./photos");
+const { ownershipIndexRef } = require("./ownershipIndex");
 
 const PROJECT_ID = "vividscout-rules-emulator";
 const ALICE = "alice-uid";
@@ -206,8 +207,12 @@ describe("finalizePhotoUploadDocument (emulator persistence)", () => {
     assert.strictEqual(doc.exists, true);
     assert.strictEqual(doc.get("id"), result.photoId);
     assert.strictEqual(doc.get("photoPath"), objectPath);
-    assert.strictEqual(doc.get("ownerUid"), ALICE);
+    assert.strictEqual(doc.get("ownerUid"), undefined, "the public photo document carries no ownerUid");
     assert.strictEqual(doc.get("reportsCount"), 0);
+
+    // The ownership record lives in the server-written index, not the public document.
+    const index = await ownershipIndexRef(db, PHOTOS_COLLECTION, result.photoId).get();
+    assert.strictEqual(index.get("ownerUid"), ALICE);
   });
 
   it("cannot register another user's uploaded object", async () => {

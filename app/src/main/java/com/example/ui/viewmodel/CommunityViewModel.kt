@@ -6,6 +6,7 @@ import com.example.data.local.CommunityTipEntity
 import com.example.data.p2p.MeshSyncPhase
 import com.example.data.p2p.PeerMeshSyncResult
 import com.example.data.repository.CommunityTipRepository
+import com.example.data.sync.CommunitySyncOutcome
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -95,8 +96,19 @@ class CommunityViewModel(
                 content = content,
                 isStatusUpdate = isStatusUpdate,
                 statusCategory = statusCategory
-            )
-            _postTipSuccessMessage.value = "Tip shared with the global scout community via cloud sync!"
+            ) { outcome ->
+                // The message reflects the real outcome of the cloud post: the daily
+                // community limit is surfaced explicitly, and a pending local-only post
+                // is never announced as already shared with the community.
+                _postTipSuccessMessage.value = when (outcome) {
+                    CommunitySyncOutcome.SYNCED ->
+                        "Tip shared with the global scout community via cloud sync!"
+                    CommunitySyncOutcome.RATE_LIMITED ->
+                        "Daily sharing limit reached (20 tips per 24 hours). Your note is saved locally and will share when the limit resets."
+                    CommunitySyncOutcome.PENDING ->
+                        "Tip saved locally — it will share with the community on the next sync."
+                }
+            }
             delay(3000)
             _postTipSuccessMessage.value = null
         }

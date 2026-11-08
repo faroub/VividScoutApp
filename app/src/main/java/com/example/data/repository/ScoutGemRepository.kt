@@ -276,7 +276,7 @@ open class ScoutGemRepository(
      * Discovers real, authentic, named spots near the user's location using Firebase AI Logic (Gemini 3.8 Flash).
      * Falls back to Overpass API / offline generator if AI discovery is offline or unavailable.
      */
-    suspend fun syncLiveOsmGems(
+    open suspend fun syncLiveOsmGems(
         userLat: Double = DefaultLocationConfig.DEFAULT_LAT,
         userLng: Double = DefaultLocationConfig.DEFAULT_LNG,
         radiusMeters: Int = 1500,

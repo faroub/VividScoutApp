@@ -57,4 +57,31 @@ class GeoTest {
         assertEquals("—", Geo.formatDistanceAndWalkTime(0.0, 0.0, 38.7112, -9.1423, Locale.US))
         assertEquals("—", Geo.formatDistanceAndWalkTime(Double.NaN, -9.14, 38.7112, -9.1423, Locale.US))
     }
+
+    @Test
+    fun roundForPrompt_positiveCoordinate_roundsToThreeDecimals() {
+        // 3 decimals ≈ 110 m — the prompt reveals the neighborhood, not the exact GPS fix.
+        assertEquals(38.711, Geo.roundForPrompt(38.711247), 0.0)
+        assertEquals(38.712, Geo.roundForPrompt(38.71156), 0.0) // 4th decimal safely above the midpoint
+        assertEquals(38.711, Geo.roundForPrompt(38.7112), 0.0)
+    }
+
+    @Test
+    fun roundForPrompt_negativeCoordinate_roundsTowardNearest() {
+        // Longitude -9.14234 must round to -9.142; -9.14251 rounds to -9.143 (HALF_UP).
+        assertEquals(-9.142, Geo.roundForPrompt(-9.14234), 0.0)
+        assertEquals(-9.143, Geo.roundForPrompt(-9.14251), 0.0)
+        assertEquals(-0.123, Geo.roundForPrompt(-0.12349), 0.0)
+    }
+
+    @Test
+    fun roundForPrompt_boundaryValues_stayValidCoordinates() {
+        // Boundary meridians and the equator pass through unchanged in value class.
+        assertEquals(90.0, Geo.roundForPrompt(90.0), 0.0)
+        assertEquals(-90.0, Geo.roundForPrompt(-90.0), 0.0)
+        assertEquals(180.0, Geo.roundForPrompt(179.9999), 0.0)
+        assertEquals(-180.0, Geo.roundForPrompt(-180.0), 0.0)
+        assertEquals(0.0, Geo.roundForPrompt(0.0), 0.0)
+        assertEquals(0.001, Geo.roundForPrompt(0.0009), 0.0) // smallest representable rounded step
+    }
 }

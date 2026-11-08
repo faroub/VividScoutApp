@@ -170,6 +170,40 @@ class OverpassRetrofitClient(
     }
 
     /**
+     * Deterministic id for fallback spots that have no OSM element id:
+     * "fallback_" + the first 16 hex characters (64 bits) of SHA-256 over the spot
+     * name and its coordinates rounded to 5 decimal places (~1 m).
+     *
+     * The legacy scheme ("osm_fallback_" + (lat * 10000).toInt() + ...) collided for
+     * nearby results — truncation of the 4th decimal made two distinct locations
+     * share an id — and those ids were persisted to Room, so generated spots could
+     * alias each other across batches.
+     *
+     * Legacy persisted ids: rows already in the database keep their "osm_fallback_"
+     * prefix. They are still classified as demo records
+     * (ScoutSpotEntity.isDemoFallbackSpot matches BOTH prefixes) and are still swept
+     * by ScoutDao.clearFallbackSpots (which deletes both patterns), so no destructive
+     * migration is required and no existing data is rewritten. Legacy rows simply age
+     * out as transient cache the next time real data arrives for the area.
+     *
+     * If exact renormalization of legacy ids were ever required, a Room migration
+     * would have to delete the legacy fallback rows (they are regenerable, unsaved
+     * cache — never user data) or rewrite each id by recomputing it from
+     * title/latitude/longitude with a full primary-key update of every referencing
+     * row. Both are one-off, backup-first operations; neither is implemented here.
+     */
+    private fun stableFallbackSpotId(name: String, lat: Double, lng: Double): String {
+        val key = "$name|${roundTo5Decimals(lat)}|${roundTo5Decimals(lng)}"
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(key.toByteArray(Charsets.UTF_8))
+        val hex = digest.joinToString("") { "%02x".format(it) }
+        return "fallback_${hex.take(16)}"
+    }
+
+    private fun roundTo5Decimals(value: Double): Double =
+        java.math.BigDecimal(value).setScale(5, java.math.RoundingMode.HALF_UP).toDouble()
+
+    /**
      * Generates realistic nearby fallback spots around the user's active GPS coordinates
      * if Overpass API returns 0 elements or experiences network/rate-limiting errors.
      */
@@ -200,7 +234,7 @@ class OverpassRetrofitClient(
             val spotLng = userLng + deltaLng
 
             val spotTitle = "${template.first} #${index + 1}"
-            val spotId = "osm_fallback_${(userLat * 10000).toInt()}_${(userLng * 10000).toInt()}_$index"
+            val spotId = stableFallbackSpotId(spotTitle, spotLat, spotLng)
             val photoResult = com.example.util.LocationPhotoResolver.resolvePhotoSynchronous(
                 title = spotTitle,
                 category = template.second,

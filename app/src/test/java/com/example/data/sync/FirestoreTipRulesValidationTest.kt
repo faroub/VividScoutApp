@@ -4,11 +4,23 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+/**
+ * Mirrors the firestore.rules constraints for community tip documents so the client
+ * can generate compliant writes and the contract stays documented on the Kotlin side.
+ *
+ * The rules deny direct client creation of community_tips entirely: tips are written by
+ * the trusted postCommunityTip Cloud Function (functions/community.js). Ownership is no
+ * longer expressed in the document — anonymous UIDs are stable identifiers, so the
+ * public document carries no ownerUid, and the rules enforce ownership through the
+ * server-written ownership index (see firestore.rules communityOwnerUid). The mirror
+ * below therefore models the persisted document shape (no ownerUid field) and the
+ * update-side constraints: field types/lengths and the immutability of the
+ * server-owned vote counters.
+ */
 class FirestoreTipRulesValidationTest {
 
     data class MockTipData(
         val id: String,
-        val ownerUid: String,
         val spotId: String,
         val spotTitle: String,
         val authorName: String,
@@ -22,7 +34,6 @@ class FirestoreTipRulesValidationTest {
 
     fun isValidTipDocument(data: MockTipData): Boolean {
         return data.id.length in 1..128 &&
-                data.ownerUid.length in 1..128 &&
                 data.spotId.length in 1..128 &&
                 data.spotTitle.length in 2..120 &&
                 data.authorName.length in 2..50 &&
@@ -32,13 +43,16 @@ class FirestoreTipRulesValidationTest {
                 data.upvotes in 0..1000000
     }
 
-    fun isOwnerUpdateAllowed(
+    /**
+     * The client-side half of the rules update branch: a content refresh may only
+     * touch the client-controlled fields and must keep the server-owned counters
+     * byte-for-byte identical. Ownership itself is enforced server-side through the
+     * ownership index, so it is intentionally not part of this mirror.
+     */
+    fun isCounterPreservingUpdate(
         existingDoc: MockTipData,
-        updatedDoc: MockTipData,
-        authUid: String
+        updatedDoc: MockTipData
     ): Boolean {
-        if (authUid != existingDoc.ownerUid) return false
-        if (updatedDoc.ownerUid != existingDoc.ownerUid) return false
         if (!isValidTipDocument(updatedDoc)) return false
 
         if (updatedDoc.upvotes != existingDoc.upvotes) return false
@@ -51,7 +65,6 @@ class FirestoreTipRulesValidationTest {
     fun createTip_validatesFieldLengthsAndTypes() {
         val validTip = MockTipData(
             id = "tip_100",
-            ownerUid = "uid_alice",
             spotId = "spot_1",
             spotTitle = "Miradouro De Santa Luzia",
             authorName = "Alice",
@@ -75,7 +88,6 @@ class FirestoreTipRulesValidationTest {
     fun ownerUpdate_attemptingToModifyUpvotesOrLegacyUpvotes_isRejected() {
         val existingTip = MockTipData(
             id = "tip_100",
-            ownerUid = "uid_alice",
             spotId = "spot_1",
             spotTitle = "Miradouro De Santa Luzia",
             authorName = "Alice",
@@ -86,19 +98,16 @@ class FirestoreTipRulesValidationTest {
         )
 
         val validEdit = existingTip.copy(content = "Updated tip content with more detail")
-        assertTrue("Owner content update without upvote changes MUST be allowed",
-            isOwnerUpdateAllowed(existingTip, validEdit, "uid_alice"))
+        assertTrue("Content update without upvote changes MUST be allowed",
+            isCounterPreservingUpdate(existingTip, validEdit))
 
         val illegalUpvoteEdit = existingTip.copy(content = "Updated content", upvotes = 10)
-        assertFalse("Owner update attempting to modify upvotes MUST be rejected by rules",
-            isOwnerUpdateAllowed(existingTip, illegalUpvoteEdit, "uid_alice"))
+        assertFalse("Update attempting to modify upvotes MUST be rejected by rules",
+            isCounterPreservingUpdate(existingTip, illegalUpvoteEdit))
 
         val illegalLegacyEdit = existingTip.copy(content = "Updated content", legacyUpvotes = 50)
-        assertFalse("Owner update attempting to modify legacyUpvotes MUST be rejected by rules",
-            isOwnerUpdateAllowed(existingTip, illegalLegacyEdit, "uid_alice"))
-
-        assertFalse("Non-owner edit MUST be rejected by rules",
-            isOwnerUpdateAllowed(existingTip, validEdit, "uid_bob"))
+        assertFalse("Update attempting to modify legacyUpvotes MUST be rejected by rules",
+            isCounterPreservingUpdate(existingTip, illegalLegacyEdit))
     }
 
     @Test

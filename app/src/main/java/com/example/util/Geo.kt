@@ -1,5 +1,7 @@
 package com.example.util
 
+import java.math.BigDecimal
+import java.math.RoundingMode
 import java.util.Locale
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -13,6 +15,16 @@ import kotlin.math.sqrt
 object Geo {
 
     const val AVERAGE_WALKING_SPEED_MPS = 1.3 // 1.3 meters per second (~4.68 km/h)
+
+    /**
+     * Rounds a coordinate to 3 decimal places (~110 m at the equator) before it is
+     * embedded in a prompt sent to an external model. Three decimals keep the location
+     * useful for nearby-place discovery while avoiding transmitting a precise GPS fix.
+     * Exact, unrounded coordinates remain in use everywhere else: distance math, Room
+     * persistence, and logs.
+     */
+    fun roundForPrompt(value: Double): Double =
+        BigDecimal(value).setScale(3, RoundingMode.HALF_UP).toDouble()
 
     /**
      * Calculates straight-line geodesic distance in meters between two lat/lng points using the Haversine formula.

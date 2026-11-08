@@ -152,6 +152,7 @@ fun ExploreScreen(
     hasLocationPermission: Boolean = true,
     onRequestLocationPermission: () -> Unit = {},
     isUsingGpsLocation: Boolean = true,
+    isUsingDefaultFallbackLocation: Boolean = false,
     selectedGlobalCity: String? = null,
     onGpsClick: () -> Unit = {},
     syncStatus: com.example.ui.components.OfflineSyncStatus = com.example.ui.components.OfflineSyncStatus(),
@@ -181,7 +182,58 @@ fun ExploreScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // 0. Fallback Location Status Indicator Banner
-            if (!isUsingGpsLocation) {
+            // 0a. Default (Lisbon) fallback: device location is off and the user never picked a
+            // city, so discovery silently runs on DefaultLocationConfig's built-in coordinates.
+            // The banner makes that explicit and offers the city picker.
+            if (isUsingDefaultFallbackLocation) {
+                item {
+                    Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = Color(0xFFFEF3C7),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFF59E0B)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onGpsClick() }
+                                .testTag("explore_fallback_location_banner")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(
+                                    modifier = Modifier.weight(1f),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(text = "📍", fontSize = 18.sp)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = strings.fallbackLocationBannerText,
+                                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                        color = Color(0xFF92400E)
+                                    )
+                                }
+                                Surface(
+                                    shape = RoundedCornerShape(999.dp),
+                                    color = Color(0xFFD97706)
+                                ) {
+                                    Text(
+                                        text = strings.fallbackLocationBannerAction,
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                        color = Color.White,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                        fontSize = 10.sp
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            // 0b. Manually selected city (device GPS off): the user chose this location, so the
+            // banner is informational only.
+            if (!isUsingGpsLocation && !isUsingDefaultFallbackLocation) {
                 item {
                     Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
                         Surface(

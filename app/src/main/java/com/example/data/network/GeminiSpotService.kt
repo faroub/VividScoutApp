@@ -3,6 +3,7 @@ package com.example.data.network
 import com.example.data.local.ScoutSpotEntity
 import com.example.data.location.LocationTracker
 import com.example.data.model.ScoutCategory
+import com.example.util.Geo
 import com.example.util.SafeLog
 import com.google.firebase.Firebase
 import com.google.firebase.ai.ai
@@ -96,12 +97,12 @@ open class GeminiSpotService {
 
             val prompt = """
                 You are VividScout, an expert local travel guide and urban exploration AI.
-                Find 4 to 6 authentic, real, verified, named places, historical spots, or dining gems located around coordinates ($userLat, $userLng) within a $radiusMeters meter radius.
-                
+                Find 4 to 6 authentic, real, verified, named places, historical spots, or dining gems located around coordinates (${Geo.roundForPrompt(userLat)}, ${Geo.roundForPrompt(userLng)}) within a $radiusMeters meter radius.
+
                 Guidelines:
                 1. $queryInstruction
                 2. Do NOT invent fake or unnamed places. Provide real, famous, or well-known local spots (e.g., real castles, viewpoints, taverns, historic monuments, museums, squares).
-                3. Calculate accurate relative coordinates (latitude, longitude) for each spot within approx 2km of ($userLat, $userLng).
+                3. Calculate accurate relative coordinates (latitude, longitude) for each spot within approx 2km of (${Geo.roundForPrompt(userLat)}, ${Geo.roundForPrompt(userLng)}).
                 4. For each spot, write an engaging 2-3 sentence audio lore narrative suitable for audio guide listening.
                 5. Return the result strictly matching the JSON schema.
             """.trimIndent()

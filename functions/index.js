@@ -19,6 +19,13 @@ const { finalizePhotoUploadDocument, PHOTO_FINALIZE_RATE_LIMIT_MAX_PER_HOUR, rea
 const { validateNearbyPlacesRequest } = require("./validation");
 const { firestoreDatabaseId } = require("./firestoreDatabase");
 const { decideRateLimitInTransaction, RATE_LIMIT_WINDOW_MS } = require("./rateLimits");
+const {
+  postCommunityTipDocument,
+  submitCommunitySpotDocument,
+  TIP_RATE_LIMIT_MAX_PER_DAY,
+  SUBMISSION_RATE_LIMIT_MAX_PER_DAY,
+  COMMUNITY_RATE_LIMIT_WINDOW_MS,
+} = require("./community");
 
 const app = initializeApp();
 const db = getFirestore(app, firestoreDatabaseId());
@@ -309,6 +316,72 @@ exports.finalizePhotoUpload = onCall(
       rateLimit: {
         ref: db.collection("rate_limits").doc(`photo_finalize_${auth.uid}`),
         maxPerHour: PHOTO_FINALIZE_RATE_LIMIT_MAX_PER_HOUR,
+      },
+    });
+  }
+);
+
+/**
+ * Firebase Cloud Function: postCommunityTip
+ *
+ * The only trusted writer of community_tips documents. Firestore Rules deny direct
+ * client creation, so a tip becomes public only after strict server-side validation
+ * (the exact field contract of firestore.rules, enforced here because the rules
+ * language is the schema boundary of last resort). The caller's UID never reaches the
+ * public document: ownership is recorded in the server-written ownership index, which
+ * the rules read to enforce owner-only edits and to block self-upvotes
+ * (see functions/ownershipIndex.js). Posts are idempotent — a retry of the same tip id
+ * replays and refreshes the verified owner's document — and the per-UID limit
+ * (20 tips per rolling 24 hours) is consumed inside the same transaction as the create,
+ * so it is consumed only by genuinely new tips. Enforces authentication and App Check.
+ */
+exports.postCommunityTip = onCall(
+  {
+    cors: true,
+    enforceAppCheck: true
+  },
+  async (request) => {
+    const auth = request.auth;
+    if (!auth || !auth.uid) {
+      throw new HttpsError("unauthenticated", "User authentication required to post a community tip.");
+    }
+
+    return postCommunityTipDocument(db, auth.uid, request.data || {}, {
+      rateLimit: {
+        ref: db.collection("rate_limits").doc(`community_tips_post_${auth.uid}`),
+        maxPerWindow: TIP_RATE_LIMIT_MAX_PER_DAY,
+        windowMs: COMMUNITY_RATE_LIMIT_WINDOW_MS,
+      },
+    });
+  }
+);
+
+/**
+ * Firebase Cloud Function: submitCommunitySpot
+ *
+ * The only trusted writer of community_submissions documents. Same guarantees as
+ * postCommunityTip for scout-spot submissions: strict server-side validation (including
+ * the photoUri restriction to the caller's own Storage paths), no ownerUid in the public
+ * document, ownership through the index, idempotent replays of the same submission id,
+ * and the per-UID limit (10 submissions per rolling 24 hours) consumed atomically with a
+ * genuinely new submission only. Enforces authentication and App Check.
+ */
+exports.submitCommunitySpot = onCall(
+  {
+    cors: true,
+    enforceAppCheck: true
+  },
+  async (request) => {
+    const auth = request.auth;
+    if (!auth || !auth.uid) {
+      throw new HttpsError("unauthenticated", "User authentication required to submit a community spot.");
+    }
+
+    return submitCommunitySpotDocument(db, auth.uid, request.data || {}, {
+      rateLimit: {
+        ref: db.collection("rate_limits").doc(`community_submissions_post_${auth.uid}`),
+        maxPerWindow: SUBMISSION_RATE_LIMIT_MAX_PER_DAY,
+        windowMs: COMMUNITY_RATE_LIMIT_WINDOW_MS,
       },
     });
   }

@@ -23,6 +23,8 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.SetOptions
 import com.google.firebase.firestore.firestore
+import com.google.firebase.functions.FirebaseFunctions
+import com.google.firebase.functions.FirebaseFunctionsException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.tasks.await
@@ -35,20 +37,65 @@ private const val USERS_COLLECTION = "users"
 private const val PRIVATE_NOTES_COLLECTION = "private_spot_notes"
 
 /**
+ * The write-side classification of a local spot's image reference for the public
+ * submission document (firestore.rules isValidPhotoUri accepts only '' or an owned
+ * Storage path). Pure so the security boundary is unit-testable.
+ */
+enum class SubmissionPhotoKind { None, NeedsUpload, AlreadyUploaded, Rejected }
+
+internal fun classifySubmissionPhoto(imageUrl: String?): SubmissionPhotoKind = when {
+    imageUrl.isNullOrBlank() -> SubmissionPhotoKind.None
+    imageUrl.startsWith("ic_cat_") -> SubmissionPhotoKind.None
+    imageUrl.startsWith("content://") -> SubmissionPhotoKind.NeedsUpload
+    imageUrl.startsWith("spot_photos/") -> SubmissionPhotoKind.AlreadyUploaded
+    else -> SubmissionPhotoKind.Rejected
+}
+
+/**
+ * The display-side classification of a submission document's stored photoUri. Pure so
+ * the never-render-an-external-URL contract is unit-testable.
+ */
+enum class SubmissionDisplayPhoto { NoPhoto, StoragePath, ExternalRejected }
+
+internal fun classifySubmissionPhotoForDisplay(rawPhotoUri: String?): SubmissionDisplayPhoto = when {
+    rawPhotoUri.isNullOrBlank() -> SubmissionDisplayPhoto.NoPhoto
+    rawPhotoUri.startsWith("spot_photos/") -> SubmissionDisplayPhoto.StoragePath
+    else -> SubmissionDisplayPhoto.ExternalRejected
+}
+
+/**
+ * Outcome of a community post attempt through the trusted callables. PENDING covers
+ * every non-destructive failure (no auth, no network, backend error, rejected payload):
+ * the local record stays queued and is retried later. RATE_LIMITED is surfaced to the
+ * user as an explicit message instead of a silent queued retry. SYNCED means the
+ * server confirmed the write.
+ */
+enum class CommunitySyncOutcome { SYNCED, PENDING, RATE_LIMITED }
+
+/**
  * Manages bidirectional cloud synchronization between local Room entities and Firebase Firestore.
  * Handles uploading offline drafts (isOfflineDraft == true) and user-authored community tips,
  * and fetching community-shared gems and peer tips from the cloud.
  */
 object FirestoreSyncManager {
 
-    private fun getFirestore(context: Context): FirebaseFirestore? {
+    private fun getFirebaseApp(context: Context): FirebaseApp? {
         return try {
-            configureAppCheck(context)
-            val app = if (FirebaseApp.getApps(context).isNotEmpty()) {
+            if (FirebaseApp.getApps(context).isNotEmpty()) {
                 FirebaseApp.getInstance()
             } else {
                 FirebaseApp.initializeApp(context)
-            } ?: return null
+            }
+        } catch (e: Exception) {
+            SafeLog.d(TAG, "Failed to initialize Firebase app: ${e.message}")
+            null
+        }
+    }
+
+    private fun getFirestore(context: Context): FirebaseFirestore? {
+        return try {
+            configureAppCheck(context)
+            val app = getFirebaseApp(context) ?: return null
 
             val databaseId = try {
                 context.getString(R.string.firestore_database_id)
@@ -96,8 +143,10 @@ object FirestoreSyncManager {
      * field-level access control, so every field of a publicly readable document is world-visible.
      * Instead the note is persisted under the owner-scoped path
      * users/{uid}/private_spot_notes/{spotId}, written with the authenticated UID — never a
-     * caller-provided one. Both writes are idempotent (set-merge), so a retry after a partial
-     * failure cannot leak the note into the public document.
+     * caller-provided one. Both writes are idempotent (the callable replays the same id; the note
+     * uses set-merge), so a retry after a partial failure cannot leak the note into the public
+     * document. The submission document carries no ownerUid: ownership is recorded server-side
+     * in the ownership index, invisible in the public collection.
      */
     suspend fun syncDraftSpotToCloud(
         context: Context,
@@ -116,27 +165,64 @@ object FirestoreSyncManager {
             SafeLog.w(TAG, "Cannot sync draft '${spot.id}': Firebase Auth required for Firestore writes")
             return@withContext false
         }
-        val firestore = getFirestore(context) ?: return@withContext false
-        val currentUid = FirebaseAuth.getInstance().currentUser?.uid ?: ""
         try {
+            // The public submission may carry only '' or an owned Storage path
+            // (firestore.rules isValidPhotoUri). A locally selected photo (content://)
+            // is uploaded through the trusted finalizePhotoUpload pipeline now — sync
+            // requires auth and network anyway — and the canonical path is stored.
+            // Legacy/fabricated external URLs are never rewritten into the document.
+            val photoKind = classifySubmissionPhoto(spot.imageUrl)
+            if (photoKind == SubmissionPhotoKind.Rejected) {
+                SafeLog.w(TAG, "Dropping non Storage photo reference from submission '${spot.id}'")
+            }
+            val submissionPhotoPath = when (photoKind) {
+                SubmissionPhotoKind.None, SubmissionPhotoKind.Rejected -> ""
+                SubmissionPhotoKind.AlreadyUploaded -> spot.imageUrl ?: ""
+                SubmissionPhotoKind.NeedsUpload -> {
+                    val localUri = spot.imageUrl?.let { android.net.Uri.parse(it) }
+                        ?: return@withContext false
+                    val upload = com.example.data.repository.FirebasePhotoStorageService()
+                        .uploadSpotPhotoFromUri(spot.id, context, localUri)
+                    val photo = upload.getOrElse { e ->
+                        SafeLog.w(TAG, "Submission photo upload failed for draft '${spot.id}': ${e.message}; draft stays queued")
+                        return@withContext false
+                    }
+                    photo.photoPath
+                }
+            }
+
             val docData = hashMapOf(
                 "id" to spot.id,
-                "ownerUid" to currentUid,
                 "title" to spot.title,
                 "description" to spot.description,
                 "category" to spot.category,
                 "locationName" to spot.locationName,
                 "latitude" to spot.latitude,
                 "longitude" to spot.longitude,
-                "photoUri" to (spot.imageUrl ?: ""),
+                "photoUri" to submissionPhotoPath,
                 "contributor" to spot.contributor,
                 "timestamp" to spot.timestamp
             )
 
-            firestore.collection(SUBMISSIONS_COLLECTION)
-                .document(spot.id)
-                .set(docData, SetOptions.merge())
-                .await()
+            // Community submissions are written ONLY by the trusted submitCommunitySpot
+            // Cloud Function (firestore.rules denies direct client creation): the
+            // payload carries the client-controlled fields, the upvote/ownership state
+            // stays server-owned, and a retry of the same id replays instead of
+            // duplicating. A resource-exhausted response means the 24-hour per-UID
+            // limit was hit — the draft stays queued locally and syncs when the window
+            // resets; no false success is reported.
+            val app = getFirebaseApp(context) ?: return@withContext false
+            try {
+                FirebaseFunctions.getInstance(app).getHttpsCallable("submitCommunitySpot")
+                    .call(docData).await()
+            } catch (e: FirebaseFunctionsException) {
+                if (e.code == FirebaseFunctionsException.Code.RESOURCE_EXHAUSTED) {
+                    SafeLog.w(TAG, "Submission '${spot.id}' hit the daily post limit; the draft stays queued and syncs when the limit resets")
+                } else {
+                    SafeLog.w(TAG, "Failed to submit community spot '${spot.id}' via Cloud Function: ${e.message}")
+                }
+                return@withContext false
+            }
 
             // The private note belongs under the owner-scoped collection only. A failure
             // here fails the whole sync so the draft is retried later (both writes are
@@ -221,8 +307,11 @@ object FirestoreSyncManager {
     }
 
     /**
-     * Posts a community tip or status update to the Firestore 'community_tips' collection.
-     * Idempotent: On retries, preserves existing cloud upvotes and legacyUpvotes fields.
+     * Posts a community tip or status update to the Firestore 'community_tips' collection
+     * through the trusted postCommunityTip Cloud Function (firestore.rules denies
+     * direct client creation). Idempotent: a retry of the same tip id replays the
+     * already-published document on the backend, which preserves the server-owned
+     * upvotes counters and never duplicates the tip.
      *
      * Sample/demo tips (seed tips, simulated peer-mesh gossip) are refused: they are
      * illustrative content authored by the app, never real community contributions,
@@ -232,61 +321,53 @@ object FirestoreSyncManager {
         context: Context,
         tip: CommunityTipEntity,
         tipDao: CommunityTipDao? = null
-    ): Boolean = withContext(Dispatchers.IO) {
+    ): CommunitySyncOutcome = withContext(Dispatchers.IO) {
         if (tip.isSampleContent) {
             SafeLog.w(TAG, "Refusing to upload sample tip '${tip.id}' as a real community contribution")
-            return@withContext false
+            return@withContext CommunitySyncOutcome.PENDING
         }
         if (!ensureFirebaseAuth(context)) {
-            SafeLog.w(TAG, "Cannot post tip '${tip.id}': Firebase Auth required for Firestore writes")
-            return@withContext false
+            SafeLog.w(TAG, "Cannot post tip '${tip.id}': Firebase Auth required for community posts")
+            return@withContext CommunitySyncOutcome.PENDING
         }
-        val firestore = getFirestore(context) ?: return@withContext false
-        val currentUid = FirebaseAuth.getInstance().currentUser?.uid ?: ""
+        val app = getFirebaseApp(context) ?: return@withContext CommunitySyncOutcome.PENDING
         try {
-            val tipRef = firestore.collection(TIPS_COLLECTION).document(tip.id)
-            val docSnap = tipRef.get().await()
+            // Payload mirrors the client-controlled fields accepted server-side by
+            // functions/community.js. The upvotes counter and the ownership record are
+            // server-owned and intentionally absent from the payload.
+            val payload = hashMapOf<String, Any>(
+                "id" to tip.id,
+                "spotId" to tip.spotId,
+                "spotTitle" to tip.spotTitle,
+                "authorName" to tip.authorName,
+                "content" to tip.content,
+                "timestamp" to tip.timestamp,
+                "isStatusUpdate" to tip.isStatusUpdate,
+                "statusCategory" to tip.statusCategory,
+                "legacyUpvotes" to tip.legacyUpvotes
+            )
 
-            if (docSnap.exists()) {
-                val originalOwnerUid = docSnap.getString("ownerUid") ?: currentUid
-                // Idempotent Retry: Preserve original ownerUid, existing cloud upvotes, and legacyUpvotes!
-                val updateData = hashMapOf<String, Any>(
-                    "id" to tip.id,
-                    "ownerUid" to originalOwnerUid,
-                    "spotId" to tip.spotId,
-                    "spotTitle" to tip.spotTitle,
-                    "authorName" to tip.authorName,
-                    "content" to tip.content,
-                    "timestamp" to tip.timestamp,
-                    "isStatusUpdate" to tip.isStatusUpdate,
-                    "statusCategory" to tip.statusCategory
-                )
-                tipRef.set(updateData, SetOptions.merge()).await()
-            } else {
-                val createData = hashMapOf<String, Any>(
-                    "id" to tip.id,
-                    "ownerUid" to currentUid,
-                    "spotId" to tip.spotId,
-                    "spotTitle" to tip.spotTitle,
-                    "authorName" to tip.authorName,
-                    "content" to tip.content,
-                    "timestamp" to tip.timestamp,
-                    "isStatusUpdate" to tip.isStatusUpdate,
-                    "statusCategory" to tip.statusCategory,
-                    "legacyUpvotes" to tip.legacyUpvotes,
-                    "upvotes" to 0
-                )
-                tipRef.set(createData).await()
-            }
+            FirebaseFunctions.getInstance(app).getHttpsCallable("postCommunityTip")
+                .call(payload).await()
 
             tipDao?.markTipAsSynced(tip.id)
             SafeLog.i(TAG, "Posted community tip '${tip.id}' to cloud Firestore")
-            true
+            CommunitySyncOutcome.SYNCED
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
+        } catch (e: FirebaseFunctionsException) {
+            if (e.code == FirebaseFunctionsException.Code.RESOURCE_EXHAUSTED) {
+                // The 24-hour per-UID limit: the tip stays local and is retried once the
+                // window resets — surfaced to the user as an explicit message.
+                SafeLog.w(TAG, "Community tip '${tip.id}' hit the daily post limit; it stays local and will sync when the limit resets")
+                CommunitySyncOutcome.RATE_LIMITED
+            } else {
+                SafeLog.w(TAG, "Failed to post community tip '${tip.id}' via Cloud Function: ${e.message}")
+                CommunitySyncOutcome.PENDING
+            }
         } catch (e: Exception) {
-            SafeLog.e(TAG, "Failed to post community tip to Firestore: ${e.message}", e)
-            false
+            SafeLog.e(TAG, "Failed to post community tip '${tip.id}' to Firestore: ${e.message}", e)
+            CommunitySyncOutcome.PENDING
         }
     }
 
@@ -391,7 +472,7 @@ object FirestoreSyncManager {
         val pendingTips = tipDao.getLocallyAuthoredTipsSync().filter { !it.isSyncedToCloud }
         var successCount = 0
         for (tip in pendingTips) {
-            if (postCommunityTipToCloud(context, tip, tipDao)) {
+            if (postCommunityTipToCloud(context, tip, tipDao) == CommunitySyncOutcome.SYNCED) {
                 successCount++
             }
         }
@@ -497,6 +578,7 @@ object FirestoreSyncManager {
             val existingDraftIds = scoutDao.getAllSpotsSync().filter { it.isOfflineDraft }.map { it.id }.toSet()
             val existingAllIds = scoutDao.getAllSpotsSync().map { it.id }.toSet()
             val remoteSpots = mutableListOf<ScoutSpotEntity>()
+            var externalPhotoUriSkipped = 0
 
             while (hasMoreSubPages && totalSubsFetched < 300) {
                 var subQuery = firestore.collection(SUBMISSIONS_COLLECTION)
@@ -533,6 +615,33 @@ object FirestoreSyncManager {
                     val title = rawTitle.trim().take(120)
                     if (title.length < 2) continue
 
+                    // Photo handling: submissions store either '' or an owned Storage
+                    // path. The download URL is resolved at display/materialization time
+                    // so the stored document never carries a third-party URL. Legacy
+                    // documents with external URLs are NOT rendered (fetching them would
+                    // expose every viewer's IP to a third-party host) — they are counted,
+                    // logged, and shown without a photo. No legacy data is deleted.
+                    val rawPhotoUri = doc.getString("photoUri")
+                    val displayImageUrl = when (classifySubmissionPhotoForDisplay(rawPhotoUri)) {
+                        SubmissionDisplayPhoto.NoPhoto -> "ic_cat_sights"
+                        SubmissionDisplayPhoto.ExternalRejected -> {
+                            externalPhotoUriSkipped++
+                            "ic_cat_sights"
+                        }
+                        SubmissionDisplayPhoto.StoragePath -> {
+                            try {
+                                com.google.firebase.storage.FirebaseStorage.getInstance()
+                                    .getReference(rawPhotoUri!!)
+                                    .downloadUrl.await().toString()
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                SafeLog.w(TAG, "Submission photo '$rawPhotoUri' could not be resolved; showing no photo")
+                                "ic_cat_sights"
+                            }
+                        }
+                    }
+
                     val rawCategory = doc.getString("category") ?: "sights"
                     val normalizedCategory = ScoutCategory.normalize(rawCategory)
 
@@ -551,7 +660,7 @@ object FirestoreSyncManager {
                             walkMinutes = 5,
                             rating = null,
                             reviewCount = null,
-                            imageUrl = doc.getString("photoUri") ?: "ic_cat_sights",
+                            imageUrl = displayImageUrl,
                             badgeLabel = "COMMUNITY SCOUT",
                             statusBadge = "Community Shared",
                             tagsRaw = "Community Shared|||Cloud Sync",
@@ -581,6 +690,9 @@ object FirestoreSyncManager {
             if (remoteSpots.isNotEmpty()) {
                 scoutDao.insertSpots(remoteSpots)
                 newGemsCount = remoteSpots.size
+            }
+            if (externalPhotoUriSkipped > 0) {
+                SafeLog.w(TAG, "Skipped $externalPhotoUriSkipped community submission photo(s) with non Storage URLs (legacy external URLs are never rendered; no data was deleted)")
             }
 
             // 3. Restore this user's own private notes from the owner-scoped collection

@@ -11,6 +11,7 @@ import com.example.data.local.TipVoteEntity
 import com.example.data.p2p.MeshSyncPhase
 import com.example.data.p2p.PeerMeshSyncEngine
 import com.example.data.p2p.PeerMeshSyncResult
+import com.example.data.sync.CommunitySyncOutcome
 import com.example.data.sync.FirestoreSyncManager
 import com.example.data.sync.FirestoreTipUpvoteCloud
 import com.example.data.sync.TipUpvoteCloud
@@ -44,7 +45,8 @@ class CommunityTipRepository(
         content: String,
         isStatusUpdate: Boolean = false,
         statusCategory: String = "INSIGHT",
-        authorName: String = "@you"
+        authorName: String = "@you",
+        onPostOutcome: (CommunitySyncOutcome) -> Unit = {}
     ): CommunityTipEntity = withContext(Dispatchers.IO) {
         val newTip = CommunityTipEntity(
             id = "user_tip_${UUID.randomUUID().toString().take(8)}",
@@ -60,11 +62,13 @@ class CommunityTipRepository(
             isLocallyAuthored = true
         )
         dao.insertTip(newTip)
-        val cloudSynced = context?.let { ctx ->
+        val cloudOutcome = context?.let { ctx ->
             FirestoreSyncManager.postCommunityTipToCloud(ctx, newTip, dao)
-        } ?: false
+        } ?: CommunitySyncOutcome.PENDING
 
-        if (cloudSynced) {
+        onPostOutcome(cloudOutcome)
+
+        if (cloudOutcome == CommunitySyncOutcome.SYNCED) {
             newTip.copy(isSyncedToCloud = true)
         } else {
             newTip

@@ -42,6 +42,7 @@ fun MainTabContent(
     offlineMapsState: OfflineMapsUiState,
     profileState: ProfileUiState,
     locationState: LocationUiState,
+    isUsingDefaultFallbackLocation: Boolean = false,
     requestLocationPermission: () -> Unit,
     context: Context
 ) {
@@ -71,6 +72,7 @@ fun MainTabContent(
                         userCoordinates = locationState.safeCoordinates,
                         hasLocationPermission = locationState.hasLocationPermission,
                         isUsingGpsLocation = locationState.isUsingGpsLocation,
+                        isUsingDefaultFallbackLocation = isUsingDefaultFallbackLocation,
                         selectedGlobalCity = exploreState.selectedGlobalCity,
                         onGpsClick = { exploreViewModel.openGlobalCityDialog() },
                         onRequestLocationPermission = { requestLocationPermission() },

@@ -107,6 +107,8 @@
     <string name="location_feature_distances">حساب فوري للمسافات ومدة المشي التقريبية</string>
     <string name="location_feature_bakeries">تنبيهات فورية عند خروج الفطائر الطازجة من الفرن</string>
     <string name="location_privacy_note">كيفية استخدام الموقع: لاكتشاف الأماكن القريبة، يتم إرسال إحداثيات GPS إلى خوادم VividScout وإلى مزودي خرائط خارجيين (OpenTripMap وGeoNames وOpenStreetMap) لإجراء البحث. لا تُخزَّن الإحداثيات في ملفك الشخصي، ويتم تقريبها في السجلات إلى نحو 1 كم.</string>
+    <string name="fallback_location_banner_text">يتم عرض لشبونة لأن خدمة الموقع غير مفعّلة</string>
+    <string name="fallback_location_banner_action">اختر المدينة</string>
     <string name="allow_location">السماح بالوصول إلى الموقع</string>
     <string name="keep_default_gps">الإبقاء على موقع لشبونة الافتراضي</string>
     <string name="location_denied_title">إذن الموقع مطلوب</string>

@@ -1,0 +1,396 @@
+/**
+ * Tests for the production community post helpers (functions/community.js).
+ *
+ * These tests import the REAL production module — they never copy or reimplement its
+ * logic. community_tips and community_submissions documents are written ONLY by the
+ * trusted postCommunityTip and submitCommunitySpot Cloud Functions (firestore.rules
+ * denies direct client creation), so this module is the trusted schema and ownership
+ * boundary exercised here. The post tests run the actual production
+ * postCommunityTipDocument() / submitCommunitySpotDocument() against the genuine
+ * Firestore emulator through the Admin SDK (the same Firestore instance the Cloud
+ * Functions use at runtime), so server-owned counters, ownership-index records,
+ * idempotent replays, and rate-limit windows are verified against real persistence,
+ * not a mock.
+ *
+ * Runs as part of:
+ *   firebase emulators:exec --only firestore,storage "npm --prefix functions test"
+ * (the suite refuses to start without the emulator host environment set, so it can
+ * never touch a production project).
+ */
+
+const { describe, it, before, after } = require("node:test");
+const assert = require("node:assert/strict");
+const admin = require("firebase-admin");
+const {
+  postCommunityTipDocument,
+  submitCommunitySpotDocument,
+  validateCommunityTipPayload,
+  validateCommunitySubmissionPayload,
+  TIPS_COLLECTION,
+  SUBMISSIONS_COLLECTION,
+  TIP_RATE_LIMIT_MAX_PER_DAY,
+  SUBMISSION_RATE_LIMIT_MAX_PER_DAY,
+  COMMUNITY_RATE_LIMIT_WINDOW_MS,
+  TIP_LIMIT_MESSAGE,
+  SUBMISSION_LIMIT_MESSAGE,
+} = require("./community");
+const { ownershipIndexRef, OWNERSHIP_INDEX_COLLECTION, OWNERSHIP_INDEX_RECORDS_COLLECTION } = require("./ownershipIndex");
+
+const PROJECT_ID = "vividscout-rules-emulator";
+const ALICE = "alice-uid";
+const BOB = "bob-uid";
+
+let db = null;
+
+before(() => {
+  if (!process.env.FIRESTORE_EMULATOR_HOST) {
+    throw new Error(
+      "Refusing to run: FIRESTORE_EMULATOR_HOST must be set. " +
+        'Run via: firebase emulators:exec --only firestore,storage "npm --prefix functions test"'
+    );
+  }
+  if (admin.apps.length === 0) {
+    admin.initializeApp({ projectId: PROJECT_ID });
+  }
+  db = admin.firestore();
+});
+
+after(async () => {
+  if (admin.apps.length > 0) {
+    await admin.app().delete();
+  }
+});
+
+// Each post gets its own rate-limit counter document: the tests in this file share one
+// emulator project, and a limit counter is per-UID state, so reusing one key across
+// tests would leak budget between them (exactly like a shared production key would).
+let limitCounter = 0;
+const tipRateLimitFor = () => {
+  limitCounter += 1;
+  return {
+    ref: db.collection("rate_limits").doc(`community_tips_post_test_${limitCounter}`),
+    maxPerWindow: TIP_RATE_LIMIT_MAX_PER_DAY,
+    windowMs: COMMUNITY_RATE_LIMIT_WINDOW_MS,
+  };
+};
+
+const submissionRateLimitFor = () => {
+  limitCounter += 1;
+  return {
+    ref: db.collection("rate_limits").doc(`community_submissions_post_test_${limitCounter}`),
+    maxPerWindow: SUBMISSION_RATE_LIMIT_MAX_PER_DAY,
+    windowMs: COMMUNITY_RATE_LIMIT_WINDOW_MS,
+  };
+};
+
+const NOW = 1_750_000_000_000;
+const counterCount = async (ref) => {
+  const doc = await ref.get();
+  return doc.exists ? (doc.data() || {}).count || 0 : 0;
+};
+
+const validTipPayload = (id) => ({
+  id: id || `tip-${Math.random().toString(36).slice(2, 10)}`,
+  spotId: "spot-1",
+  spotTitle: "Castelo de São Jorge",
+  authorName: "Alice",
+  content: "Arrive early to beat the crowds.",
+  timestamp: NOW,
+  isStatusUpdate: false,
+  statusCategory: "INSIGHT",
+  legacyUpvotes: 0,
+});
+
+const validSubmissionPayload = (id) => ({
+  id: id || `submission-${Math.random().toString(36).slice(2, 10)}`,
+  title: "Miradouro da Senhora do Monte",
+  description: "Best sunset viewpoint in Lisbon",
+  category: "sights",
+  locationName: "Lisbon",
+  latitude: 38.7145,
+  longitude: -9.1276,
+  photoUri: "",
+  contributor: "Alice",
+  timestamp: NOW,
+});
+
+const expectInvalid = (payload) => {
+  assert.throws(() => validateCommunityTipPayload(payload), (error) => {
+    assert.strictEqual(error.code, "invalid-argument", `expected invalid-argument, got ${error.code}`);
+    return true;
+  });
+};
+
+const expectInvalidSubmission = (payload, ownerUid) => {
+  assert.throws(() => validateCommunitySubmissionPayload(payload, ownerUid), (error) => {
+    assert.strictEqual(error.code, "invalid-argument", `expected invalid-argument, got ${error.code}`);
+    return true;
+  });
+};
+
+// ---------------------------------------------------------------------------
+// Payload validation (client-controlled fields only; server-owned fields rejected)
+// ---------------------------------------------------------------------------
+
+describe("validateCommunityTipPayload", () => {
+  it("accepts a valid tip payload", () => {
+    const validated = validateCommunityTipPayload(validTipPayload());
+    assert.strictEqual(validated.upvotes, undefined, "upvotes is server-owned and never accepted");
+    assert.ok(!("ownerUid" in validated), "ownerUid is server-owned and never accepted");
+  });
+
+  it("rejects a payload carrying ownerUid or upvotes", () => {
+    expectInvalid({ ...validTipPayload(), ownerUid: ALICE });
+    expectInvalid({ ...validTipPayload(), upvotes: 0 });
+  });
+
+  it("rejects missing, unexpected, oversized, and mistyped fields", () => {
+    const missing = validTipPayload();
+    delete missing.authorName;
+    expectInvalid(missing);
+    expectInvalid({ ...validTipPayload(), smuggled: "field" });
+    expectInvalid({ ...validTipPayload(), content: "x".repeat(501) });
+    expectInvalid({ ...validTipPayload(), spotTitle: "A" });
+    expectInvalid({ ...validTipPayload(), statusCategory: "X" });
+    expectInvalid({ ...validTipPayload(), legacyUpvotes: -1 });
+    expectInvalid({ ...validTipPayload(), timestamp: "1700000000000" });
+    expectInvalid({ ...validTipPayload(), isStatusUpdate: "yes" });
+    expectInvalid("not-an-object");
+  });
+});
+
+describe("validateCommunitySubmissionPayload", () => {
+  it("accepts a valid submission payload", () => {
+    const validated = validateCommunitySubmissionPayload(validSubmissionPayload(), ALICE);
+    assert.ok(!("ownerUid" in validated), "ownerUid is server-owned and never accepted");
+  });
+
+  it("rejects ownerUid and validates coordinates", () => {
+    assert.throws(() => validateCommunitySubmissionPayload({ ...validSubmissionPayload(), ownerUid: ALICE }, ALICE), /Unexpected field 'ownerUid'/);
+    assert.throws(() => validateCommunitySubmissionPayload({ ...validSubmissionPayload(), latitude: 95.5 }, ALICE));
+    assert.throws(() => validateCommunitySubmissionPayload({ ...validSubmissionPayload(), latitude: 0, longitude: 0 }, ALICE));
+  });
+
+  it("rejects photoUri values that are not empty or the caller's own Storage path", () => {
+    assert.throws(() => validateCommunitySubmissionPayload({ ...validSubmissionPayload(), photoUri: "https://example.com/x.jpg" }, ALICE));
+    assert.throws(() => validateCommunitySubmissionPayload({ ...validSubmissionPayload(), photoUri: `spot_photos/${BOB}/spot-1/photo.jpg` }, ALICE));
+    // The caller's own path is accepted:
+    validateCommunitySubmissionPayload(
+      { ...validSubmissionPayload(), photoUri: `spot_photos/${ALICE}/spot-1/photo.jpg` },
+      ALICE
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// postCommunityTipDocument (real persistence against the Firestore emulator)
+// ---------------------------------------------------------------------------
+
+describe("postCommunityTipDocument", () => {
+  it("creates a tip without ownerUid and records the ownership index atomically", async () => {
+    const payload = validTipPayload();
+    const result = await postCommunityTipDocument(db, ALICE, payload, {
+      rateLimit: tipRateLimitFor(),
+      nowMs: NOW,
+    });
+
+    assert.strictEqual(result.tipId, payload.id);
+    assert.strictEqual(result.replayed, false);
+
+    const doc = await db.collection(TIPS_COLLECTION).doc(payload.id).get();
+    assert.strictEqual(doc.get("upvotes"), 0, "the server sets the initial counter");
+    assert.strictEqual(doc.get("ownerUid"), undefined, "the public document carries no ownerUid");
+    assert.strictEqual(doc.get("legacyUpvotes"), 0);
+
+    const index = await ownershipIndexRef(db, TIPS_COLLECTION, payload.id).get();
+    assert.strictEqual(index.get("ownerUid"), ALICE, "the ownership index names the true owner");
+  });
+
+  it("replays an identical post idempotently without consuming rate-limit budget", async () => {
+    const payload = validTipPayload();
+    const rateLimit = tipRateLimitFor();
+
+    const first = await postCommunityTipDocument(db, ALICE, payload, { rateLimit, nowMs: NOW });
+    const second = await postCommunityTipDocument(db, ALICE, { ...payload, content: "refreshed text" }, { rateLimit, nowMs: NOW + 1 });
+
+    assert.strictEqual(second.replayed, true, "the retry replays instead of duplicating");
+    assert.strictEqual(first.tipId, second.tipId);
+
+    const snapshot = await db.collection(TIPS_COLLECTION).where("id", "==", payload.id).get();
+    assert.strictEqual(snapshot.size, 1, "exactly one tip document");
+    const doc = snapshot.docs[0];
+    assert.strictEqual(doc.get("content"), "refreshed text", "client-controlled fields refresh on replay");
+    assert.strictEqual(doc.get("upvotes"), 0, "the server-owned counter is never touched by a replay");
+
+    assert.strictEqual(await counterCount(rateLimit.ref), 1, "a replay never consumes rate-limit budget");
+  });
+
+  it("rejects a replay attempt by a different owner", async () => {
+    const payload = validTipPayload();
+    await postCommunityTipDocument(db, ALICE, payload, { rateLimit: tipRateLimitFor(), nowMs: NOW });
+
+    await assert.rejects(
+      () => postCommunityTipDocument(db, BOB, payload, { rateLimit: tipRateLimitFor(), nowMs: NOW }),
+      (error) => error.code === "permission-denied"
+    );
+  });
+
+  it("backfills the ownership index when replaying a legacy pre-index tip", async () => {
+    const payload = validTipPayload();
+    await db.collection(TIPS_COLLECTION).doc(payload.id).set({ ...payload, ownerUid: ALICE, upvotes: 3 });
+
+    const indexBefore = await ownershipIndexRef(db, TIPS_COLLECTION, payload.id).get();
+    assert.strictEqual(indexBefore.exists, false);
+
+    const result = await postCommunityTipDocument(db, ALICE, payload, {
+      rateLimit: tipRateLimitFor(),
+      nowMs: NOW,
+    });
+    assert.strictEqual(result.replayed, true);
+
+    const indexAfter = await ownershipIndexRef(db, TIPS_COLLECTION, payload.id).get();
+    assert.strictEqual(indexAfter.get("ownerUid"), ALICE, "the replay migrated the legacy ownership into the index");
+    const doc = await db.collection(TIPS_COLLECTION).doc(payload.id).get();
+    assert.strictEqual(doc.get("upvotes"), 3, "the legacy server-owned counters are preserved");
+    assert.strictEqual(doc.get("ownerUid"), ALICE, "the legacy field remains untouched on the document");
+  });
+
+  it("enforces the per-UID 24-hour limit: the 20th tip is accepted, the 21st is rejected", async () => {
+    const rateLimit = tipRateLimitFor();
+    for (let i = 0; i < TIP_RATE_LIMIT_MAX_PER_DAY; i += 1) {
+      const result = await postCommunityTipDocument(db, ALICE, validTipPayload(), {
+        rateLimit,
+        nowMs: NOW,
+      });
+      assert.strictEqual(result.replayed, false, `tip ${i + 1} must be a genuinely new post`);
+    }
+
+    await assert.rejects(
+      () => postCommunityTipDocument(db, ALICE, validTipPayload(), { rateLimit, nowMs: NOW }),
+      (error) => {
+        assert.strictEqual(error.code, "resource-exhausted");
+        assert.strictEqual(error.message, TIP_LIMIT_MESSAGE);
+        return true;
+      }
+    );
+  });
+
+  it("resets the window after 24 hours", async () => {
+    const rateLimit = tipRateLimitFor();
+    for (let i = 0; i < TIP_RATE_LIMIT_MAX_PER_DAY; i += 1) {
+      await postCommunityTipDocument(db, ALICE, validTipPayload(), { rateLimit, nowMs: NOW });
+    }
+    const afterWindow = await postCommunityTipDocument(db, ALICE, validTipPayload(), {
+      rateLimit,
+      nowMs: NOW + COMMUNITY_RATE_LIMIT_WINDOW_MS + 1,
+    });
+    assert.strictEqual(afterWindow.replayed, false, "a new window admits a fresh post");
+  });
+
+  it("keeps each user's limit independent", async () => {
+    const aliceLimit = tipRateLimitFor();
+    for (let i = 0; i < TIP_RATE_LIMIT_MAX_PER_DAY; i += 1) {
+      await postCommunityTipDocument(db, ALICE, validTipPayload(), { rateLimit: aliceLimit, nowMs: NOW });
+    }
+    const bobResult = await postCommunityTipDocument(db, BOB, validTipPayload(), {
+      rateLimit: tipRateLimitFor(),
+      nowMs: NOW,
+    });
+    assert.strictEqual(bobResult.replayed, false, "Alice's exhaustion does not touch Bob's budget");
+  });
+
+  it("consumes a slot only when the post actually commits", async () => {
+    const rateLimit = tipRateLimitFor();
+    // A rejected post (validation failure happens before the transaction) consumes none.
+    await assert.rejects(() => postCommunityTipDocument(db, ALICE, "not-an-object", { rateLimit, nowMs: NOW }));
+    assert.strictEqual(await counterCount(rateLimit.ref), 0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// submitCommunitySpotDocument (real persistence against the Firestore emulator)
+// ---------------------------------------------------------------------------
+
+describe("submitCommunitySpotDocument", () => {
+  it("creates a submission without ownerUid and records the ownership index", async () => {
+    const payload = validSubmissionPayload();
+    const result = await submitCommunitySpotDocument(db, ALICE, payload, {
+      rateLimit: submissionRateLimitFor(),
+      nowMs: NOW,
+    });
+
+    assert.strictEqual(result.submissionId, payload.id);
+    assert.strictEqual(result.replayed, false);
+
+    const doc = await db.collection(SUBMISSIONS_COLLECTION).doc(payload.id).get();
+    assert.strictEqual(doc.get("ownerUid"), undefined, "the public document carries no ownerUid");
+    const index = await ownershipIndexRef(db, SUBMISSIONS_COLLECTION, payload.id).get();
+    assert.strictEqual(index.get("ownerUid"), ALICE);
+  });
+
+  it("replays an identical submission idempotently without consuming budget", async () => {
+    const payload = validSubmissionPayload();
+    const rateLimit = submissionRateLimitFor();
+
+    const first = await submitCommunitySpotDocument(db, ALICE, payload, { rateLimit, nowMs: NOW });
+    const second = await submitCommunitySpotDocument(db, ALICE, { ...payload, description: "updated" }, { rateLimit, nowMs: NOW + 1 });
+
+    assert.strictEqual(second.replayed, true);
+    assert.strictEqual(first.submissionId, second.submissionId);
+
+    const snapshot = await db.collection(SUBMISSIONS_COLLECTION).where("id", "==", payload.id).get();
+    assert.strictEqual(snapshot.size, 1);
+    assert.strictEqual(await counterCount(rateLimit.ref), 1);
+  });
+
+  it("rejects a replay attempt by a different owner and backfills a legacy submission", async () => {
+    const bobPayload = validSubmissionPayload();
+    await submitCommunitySpotDocument(db, BOB, bobPayload, { rateLimit: submissionRateLimitFor(), nowMs: NOW });
+    await assert.rejects(
+      () => submitCommunitySpotDocument(db, ALICE, bobPayload, { rateLimit: submissionRateLimitFor(), nowMs: NOW }),
+      (error) => error.code === "permission-denied"
+    );
+
+    // Legacy submission (ownerUid field, no index) replays through its true owner.
+    const legacy = validSubmissionPayload();
+    await db.collection(SUBMISSIONS_COLLECTION).doc(legacy.id).set({ ...legacy, ownerUid: ALICE });
+    const replayed = await submitCommunitySpotDocument(db, ALICE, legacy, {
+      rateLimit: submissionRateLimitFor(),
+      nowMs: NOW,
+    });
+    assert.strictEqual(replayed.replayed, true);
+    const index = await ownershipIndexRef(db, SUBMISSIONS_COLLECTION, legacy.id).get();
+    assert.strictEqual(index.get("ownerUid"), ALICE, "the legacy ownership was migrated into the index");
+  });
+
+  it("enforces the per-UID 24-hour limit: the 10th submission is accepted, the 11th is rejected", async () => {
+    const rateLimit = submissionRateLimitFor();
+    for (let i = 0; i < SUBMISSION_RATE_LIMIT_MAX_PER_DAY; i += 1) {
+      const result = await submitCommunitySpotDocument(db, ALICE, validSubmissionPayload(), {
+        rateLimit,
+        nowMs: NOW,
+      });
+      assert.strictEqual(result.replayed, false, `submission ${i + 1} must be a genuinely new post`);
+    }
+
+    await assert.rejects(
+      () => submitCommunitySpotDocument(db, ALICE, validSubmissionPayload(), { rateLimit, nowMs: NOW }),
+      (error) => {
+        assert.strictEqual(error.code, "resource-exhausted");
+        assert.strictEqual(error.message, SUBMISSION_LIMIT_MESSAGE);
+        return true;
+      }
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ownership index addressing
+// ---------------------------------------------------------------------------
+
+describe("ownershipIndexRef", () => {
+  it("addresses records under ownership_index/{collectionId}/records/{docId}", () => {
+    const ref = ownershipIndexRef(db, TIPS_COLLECTION, "tip-1");
+    assert.strictEqual(ref.path, `${OWNERSHIP_INDEX_COLLECTION}/${TIPS_COLLECTION}/${OWNERSHIP_INDEX_RECORDS_COLLECTION}/tip-1`);
+  });
+});

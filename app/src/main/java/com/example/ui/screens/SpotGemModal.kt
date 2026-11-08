@@ -1,7 +1,12 @@
 package com.example.ui.screens
 
+import android.content.Intent
 import android.location.Location
+import android.net.Uri
 import java.util.Locale
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
@@ -65,6 +70,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -248,12 +254,29 @@ fun SpotGemModal(
     selectedGlobalCity: String? = null
 ) {
     val strings = LocalAppStrings.current
+    val context = LocalContext.current
 
     var spotName by remember { mutableStateOf("Miradouro Secreto do Beco do Forno") }
     var spotNotes by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf("eats") }
-    var photoSelected by remember { mutableStateOf(false) }
+    var selectedPhotoUri: Uri? by remember { mutableStateOf(null) }
+    val photoSelected = selectedPhotoUri != null
     var isSubmittedSuccess by remember { mutableStateOf(false) }
+
+    // Real photo picker: the selected image is stored as its content:// reference and
+    // uploaded through the trusted finalizePhotoUpload pipeline when the draft syncs
+    // (FirestoreSyncManager). A persistable read grant is requested so the reference
+    // survives process death while the draft waits offline in the retry queue.
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+        }
+        selectedPhotoUri = uri
+    }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -492,7 +515,11 @@ fun SpotGemModal(
                                 .clip(RoundedCornerShape(18.dp))
                                 .background(PrimaryContainer.copy(alpha = 0.08f))
                                 .border(1.5.dp, PrimaryContainer, RoundedCornerShape(18.dp))
-                                .clickable { photoSelected = !photoSelected }
+                                .clickable {
+                                    photoPickerLauncher.launch(
+                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                    )
+                                }
                                 .padding(16.dp)
                                 .testTag("photo_verification_dropzone"),
                             contentAlignment = Alignment.Center
@@ -634,7 +661,7 @@ fun SpotGemModal(
                             onSubmit(
                                 spotName,
                                 selectedCategory,
-                                if (photoSelected) "https://lh3.googleusercontent.com/aida-public/AB6AXuB7xEP9h28BmLIl7Blc9HlVd6pFvRCzWVE0iDC6Ca1oPEDNOlydMy8IbMDvHPNp5_0uUlGCZu5Cw6Bm39F_KkbvLPOmcgrXHSU-a4h7PVnRNgle66SM05K7w8EOWeQ5yG6-5OzUUMA-vVU40aqUdOAWyXH1crmx9Vp2tTTAQ1QTNNEvtbnoukMI4v0qHyR2ad0mL70ALOBm16NlvPATzNielDDSV7Rp-pzWtZzzWv8pTeMZBuNBXfjY" else null,
+                                if (photoSelected) selectedPhotoUri?.toString() else null,
                                 spotNotes
                             )
                         },

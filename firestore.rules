@@ -1,4 +1,7 @@
-// Rate limiting and abuse prevention must be enforced via Firebase App Check in the Firebase Console.
+// Abuse prevention and data integrity rely on three layers, each enforcing different controls:
+// - App Check: only the genuine app can invoke backend services (callable Cloud Functions enforce it in code; Firestore/Storage enforcement is a Console toggle).
+// - These rules: authentication, per-owner access, schema/field validation, atomic vote/report accounting, immutability, and shared-trip expiry.
+// - Cloud Functions (Admin SDK): the only writers of community tips/submissions, shared trips, and photo metadata — server-side per-UID rate limiting (including 24-hour community post limits), the ownership index that lets the rules enforce ownership without publishing UIDs, trusted photo registration with real image-byte validation, idempotent shared-trip publishing, and moderation/cleanup.
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -11,12 +14,40 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == ownerUid;
     }
 
+    // The owner of a public community document (community_tips, community_submissions,
+    // spot_photos): those documents carry NO ownerUid, because anonymous Firebase UIDs
+    // are stable identifiers and publishing them would let anyone link one person's
+    // contributions across every public collection. Ownership is recorded instead in the
+    // server-written ownership index (functions/ownershipIndex.js; written only by the
+    // trusted callables, whose Admin SDK writes bypass these rules). This function reads
+    // the index through the rules get()/exists() functions, which bypass the referenced
+    // document's read permission (verified against the Firestore emulator), so the index
+    // stays client-unreadable while ownership is still enforced here, at the trusted
+    // boundary. A missing index record fails closed for every caller.
+    //
+    // Legacy documents written before the index existed still carry ownerUid; they keep
+    // validating against their own field until their owner replays them through a
+    // callable, which backfills their index record. The ternary below selects the
+    // authoritative source — only the taken branch is evaluated, so the absent field on
+    // a new document never errors.
+    function communityOwnerUid(collectionId, docId, data) {
+      return exists(/databases/$(database)/documents/ownership_index/$(collectionId)/records/$(docId))
+             ? get(/databases/$(database)/documents/ownership_index/$(collectionId)/records/$(docId)).data.ownerUid
+             : data.ownerUid;
+    }
+
     function isValidCoordinates(lat, lng) {
       return lat >= -90.0 && lat <= 90.0 && lng >= -180.0 && lng <= 180.0;
     }
 
     function isValidPhotoUri(uri) {
-      return uri is string && (uri == '' || (uri.size() < 2048 && uri.matches('^https://.*')));
+      // An empty string means "no photo". Any actual photo must be a Storage object
+      // path under the signed-in user's own ownership-aware directory
+      // (spot_photos/{uid}/{spotId}/{filename}). An external https:// URL is rejected:
+      // every viewer's device would fetch a third-party host, exposing their IP
+      // address and allowing cross-user tracking.
+      return uri is string && (uri == '' ||
+        (uri.size() < 2048 && uri.matches('^spot_photos/' + request.auth.uid + '/[^/]+/[^/]+$')));
     }
 
     match /community_submissions/{submissionId} {
@@ -26,29 +57,17 @@ service cloud.firestore {
       // users/{uid}/private_spot_notes/{spotId} (see below) and may not be written
       // into this collection.
       allow read: if true;
-      allow create: if isAuthenticated()
-                    && request.resource.data.keys().hasOnly([
-                         'id', 'ownerUid', 'title', 'description', 'category', 'locationName',
-                         'latitude', 'longitude', 'photoUri', 'contributor', 'timestamp'
-                       ])
-                    && request.resource.data.ownerUid == request.auth.uid
-                    && request.resource.data.id is string
-                    && request.resource.data.id.size() <= 128
-                    && request.resource.data.title is string
-                    && request.resource.data.title.size() >= 2
-                    && request.resource.data.title.size() <= 120
-                    && request.resource.data.category is string
-                    && request.resource.data.category.size() <= 32
-                    && request.resource.data.latitude is number
-                    && request.resource.data.longitude is number
-                    && isValidCoordinates(request.resource.data.latitude, request.resource.data.longitude)
-                    && isValidPhotoUri(request.resource.data.photoUri)
-                    && request.resource.data.timestamp is number;
 
-      allow update: if isOwner(resource.data.ownerUid)
-                    && request.resource.data.ownerUid == request.auth.uid
+      // Creation is only permitted through the trusted submitCommunitySpot Cloud
+      // Function, whose Admin SDK writes bypass these rules: it validates the payload
+      // strictly (and the 24-hour per-UID submission limit server-side) and records
+      // ownership in the server-written ownership index instead of publishing the
+      // author's UID in this publicly readable document.
+      allow create: if false;
+
+      allow update: if isOwner(communityOwnerUid('community_submissions', submissionId, resource.data))
                     && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-                         'id', 'ownerUid', 'title', 'description', 'category', 'locationName',
+                         'id', 'title', 'description', 'category', 'locationName',
                          'latitude', 'longitude', 'photoUri', 'contributor', 'timestamp'
                        ])
                     && request.resource.data.title is string
@@ -96,11 +115,15 @@ service cloud.firestore {
       allow read: if true;
 
       function isValidTipData(data) {
+        // 'ownerUid' is tolerated here ONLY because documents written before the
+        // ownership index existed still carry it: this validator sees the full
+        // post-write document. It may never be introduced or changed — the update
+        // branch's affectedKeys().hasOnly() check (without 'ownerUid') forbids that —
+        // and the trusted callable never writes it.
         return data.keys().hasOnly([
                  'id', 'ownerUid', 'spotId', 'spotTitle', 'authorName', 'content',
                  'timestamp', 'isStatusUpdate', 'statusCategory', 'legacyUpvotes', 'upvotes'
                ])
-            && data.ownerUid is string && data.ownerUid.size() <= 128
             && data.id is string && data.id.size() <= 128
             && data.spotId is string && data.spotId.size() <= 128
             && data.spotTitle is string && data.spotTitle.size() >= 2 && data.spotTitle.size() <= 120
@@ -113,21 +136,30 @@ service cloud.firestore {
             && data.upvotes is number && data.upvotes >= 0 && data.upvotes <= 1000000;
       }
 
-      allow create: if isAuthenticated()
-                    && request.resource.data.ownerUid == request.auth.uid
-                    && request.resource.data.id == tipId
-                    && isValidTipData(request.resource.data)
-                    && request.resource.data.upvotes == 0;
+      // Creation is only permitted through the trusted postCommunityTip Cloud
+      // Function, whose Admin SDK writes bypass these rules: it validates the payload
+      // strictly, sets the upvotes counter server-side, enforces the 24-hour per-UID
+      // tip limit, and records ownership in the server-written ownership index instead
+      // of publishing the author's UID in this publicly readable document.
+      allow create: if false;
 
       // Atomic upvote increment: requires vote doc NOT to exist before operation, and TO exist after operation.
       // Pre-write (!exists) + Post-write (existsAfter) prevents re-using pre-existing vote docs for replay increments.
+      // The tip owner may never upvote their own tip: a self-vote is a fabricated
+      // community signal, so the incrementer must be a different authenticated user.
+      // Ownership is read from the ownership index (communityOwnerUid), never from a
+      // public field — the document carries no ownerUid.
       allow update: if isAuthenticated() && (
         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['upvotes'])
          && request.resource.data.upvotes == resource.data.upvotes + 1
+         && request.auth.uid != communityOwnerUid('community_tips', tipId, resource.data)
          && !exists(/databases/$(database)/documents/community_tips/$(tipId)/votes/$(request.auth.uid))
          && existsAfter(/databases/$(database)/documents/community_tips/$(tipId)/votes/$(request.auth.uid))) ||
-        (isOwner(resource.data.ownerUid)
-         && request.resource.data.ownerUid == resource.data.ownerUid
+        (isOwner(communityOwnerUid('community_tips', tipId, resource.data))
+         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'id', 'spotId', 'spotTitle', 'authorName', 'content',
+              'timestamp', 'isStatusUpdate', 'statusCategory', 'legacyUpvotes', 'upvotes'
+            ])
          && isValidTipData(request.resource.data)
          && request.resource.data.upvotes == resource.data.upvotes
          && request.resource.data.legacyUpvotes == resource.data.legacyUpvotes)
@@ -231,6 +263,17 @@ service cloud.firestore {
     // photo finalization). Written exclusively by the trusted Admin SDK; clients have
     // no legitimate access to internal cleanup state.
     match /photo_cleanup_state/{stateId} {
+      allow read, write: if false;
+    }
+
+    // The server-written ownership index for public community documents
+    // (community_tips, community_submissions, spot_photos): maps each document id to its
+    // owner UID so the rules can enforce ownership (owner-only edits, no self-upvotes)
+    // without publishing UIDs in the publicly readable documents. Written only by the
+    // trusted callables through the Admin SDK; clients have no direct read or write
+    // access — the rules get()/exists() calls that validate ownership bypass the read
+    // permission by design (see communityOwnerUid above).
+    match /ownership_index/{collectionId}/records/{recordId} {
       allow read, write: if false;
     }
 

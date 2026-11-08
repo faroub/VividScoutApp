@@ -6,6 +6,7 @@ plugins {
   alias(libs.plugins.google.devtools.ksp)
   alias(libs.plugins.secrets)
   alias(libs.plugins.google.services)
+  alias(libs.plugins.detekt)
 }
 
 android {
@@ -75,6 +76,10 @@ android {
       if (rootProject.file("debug.keystore").exists()) {
         signingConfig = signingConfigs.getByName("debugConfig")
       }
+      // JaCoCo instrumentation for local unit tests: enables AGP's
+      // createDebugUnitTestCoverage (JaCoCoReport) task so coverage can be measured
+      // without changing any test behavior.
+      enableUnitTestCoverage = true
     }
   }
   compileOptions {
@@ -115,6 +120,23 @@ secrets {
 }
 
 googleServices { missingGoogleServicesStrategy = MissingGoogleServicesStrategy.WARN }
+
+// Static analysis guardrail: detekt runs with the default rule set and suppresses the
+// pre-existing findings recorded in config/detekt/baseline.xml, so CI fails only on
+// NEW findings. Regenerate the baseline only after intentionally accepting the
+// current state: ./gradlew :app:detektBaseline
+detekt {
+  baseline = file("config/detekt/baseline.xml")
+  buildUponDefaultConfig = true
+}
+
+tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
+  // detekt's parser predates JVM 25 targets (its CLI accepts up to 22); the project compiles to Java 11.
+  jvmTarget = "11"
+}
+tasks.withType<io.gitlab.arturbosch.detekt.DetektCreateBaselineTask>().configureEach {
+  jvmTarget = "11"
+}
 
 // Some unused dependencies are commented out below instead of being removed.
 // This makes it easy to add them back in the future if needed.

@@ -1708,6 +1708,28 @@
 
     <issue
         id="UnusedResources"
+        message="The resource `R.string.fallback_location_banner_text` appears to be unused"
+        errorLine1="    &lt;string name=&quot;fallback_location_banner_text&quot;>Showing Lisbon because location is off&lt;/string>"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/res/values/strings.xml"
+            line="111"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="UnusedResources"
+        message="The resource `R.string.fallback_location_banner_action` appears to be unused"
+        errorLine1="    &lt;string name=&quot;fallback_location_banner_action&quot;>Set city&lt;/string>"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/res/values/strings.xml"
+            line="112"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="UnusedResources"
         message="The resource `R.string.location_privacy_note` appears to be unused"
         errorLine1="    &lt;string name=&quot;location_privacy_note&quot;>Zero Cloud Tracking: Your GPS coordinates are processed exclusively on your device.&lt;/string>"
         errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~">

@@ -175,7 +175,7 @@ class OverpassRetrofitClientTest {
                 "Every generated fallback spot must be classifiable as a demo record",
                 spot.isDemoFallbackSpot
             )
-            assertTrue("Demo ids must carry the osm_fallback_ machine prefix", spot.id.startsWith("osm_fallback_"))
+            assertTrue("Demo ids must carry the fallback_ machine prefix", spot.id.startsWith("fallback_"))
             assertEquals(
                 "The visible badge must say it is an offline demo, not a verified place",
                 "Offline Demo Spot",
@@ -221,6 +221,48 @@ class OverpassRetrofitClientTest {
         assertEquals(1, spots.size)
         assertFalse("A real mapped OSM node must not be classified as a demo spot", spots[0].isDemoFallbackSpot)
         assertEquals("Live OSM Scout", spots[0].statusBadge)
+    }
+
+    @Test
+    fun generateNearbyFallbackSpots_differentNamesAndCoordinatesGetDistinctIds() {
+        val spots = client.generateNearbyFallbackSpots(38.7112, -9.1423, 6)
+
+        val ids = spots.map { it.id }
+        assertEquals("Every spot in a batch names and places differently — ids must be unique", 6, ids.toSet().size)
+
+        // The same spot titles generated around a center 5 m away: coordinates differ,
+        // so ids must differ as well (the old (lat * 10000).toInt() quantization could collide here).
+        val nearby = client.generateNearbyFallbackSpots(38.71125, -9.14235, 6)
+        assertEquals(
+            "Nearby generation must not share ids with the first batch",
+            0,
+            (ids.toSet() intersect nearby.map { it.id }.toSet()).size
+        )
+    }
+
+    @Test
+    fun generateNearbyFallbackSpots_sameInputProducesSameIdsAcrossRuns() {
+        val first = client.generateNearbyFallbackSpots(38.7112, -9.1423, 6).map { it.id }
+        val second = client.generateNearbyFallbackSpots(38.7112, -9.1423, 6).map { it.id }
+
+        assertEquals(
+            "Re-generating the same fallback batch must reproduce identical ids (stable, dedup-safe)",
+            first,
+            second
+        )
+    }
+
+    @Test
+    fun generateNearbyFallbackSpots_negativeCoordinatesProduceValidIds() {
+        val spots = client.generateNearbyFallbackSpots(-33.8688, 151.2093, 3)
+
+        assertEquals(3, spots.size)
+        spots.forEach { spot ->
+            assertTrue("Southern-hemisphere ids follow the same scheme", spot.id.startsWith("fallback_"))
+            assertEquals("fallback_".length + 16, spot.id.length)
+            assertTrue("The 16-char id suffix is lowercase hex", spot.id.removePrefix("fallback_").matches(Regex("^[0-9a-f]{16}$")))
+            assertTrue("Coordinates stay in the requested hemisphere", spot.latitude < 0)
+        }
     }
 
     @Test

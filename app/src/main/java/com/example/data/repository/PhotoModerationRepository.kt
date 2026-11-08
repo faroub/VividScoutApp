@@ -22,7 +22,10 @@ data class SpotPhotoData(
     val id: String,
     val spotId: String,
     val photoUrl: String,
-    val ownerUid: String,
+    // Registered photo documents carry no ownerUid (publicly readable docs never carry
+    // UIDs); kept for the local upload path, blank for server-mapped documents.
+    val ownerUid: String = "",
+    val photoPath: String = "",
     val reportsCount: Int = 0,
     val timestamp: Long = System.currentTimeMillis(),
     val moderationState: String? = null
@@ -298,19 +301,21 @@ class PhotoModerationRepository(
 
 /**
  * Maps one Firestore photo metadata document to [SpotPhotoData], or null when the
- * document lacks the mandatory photoUrl/ownerUid fields (the query stream and the
- * pagination query share this single mapping). The authoritative moderationState
- * field is carried through so [SpotPhotoData.isHidden] reflects backend removal as
- * well as the local report threshold.
+ * document lacks the mandatory photoUrl field (the query stream and the pagination
+ * query share this single mapping). The authoritative moderationState field is carried
+ * through so [SpotPhotoData.isHidden] reflects backend removal as well as the local
+ * report threshold. Registered photo documents carry no ownerUid (the ownership index
+ * is server-side); the local model keeps a blank default for parity with the upload
+ * path.
  */
 private fun DocumentSnapshot.toSpotPhotoData(spotId: String): SpotPhotoData? {
     val photoUrl = getString("photoUrl") ?: return null
-    val ownerUid = getString("ownerUid") ?: return null
     return SpotPhotoData(
         id = id,
         spotId = getString("spotId") ?: spotId,
         photoUrl = photoUrl,
-        ownerUid = ownerUid,
+        ownerUid = getString("ownerUid") ?: "",
+        photoPath = getString("photoPath") ?: "",
         reportsCount = getLong("reportsCount")?.toInt() ?: 0,
         timestamp = getLong("timestamp") ?: 0L,
         moderationState = getString("moderationState")

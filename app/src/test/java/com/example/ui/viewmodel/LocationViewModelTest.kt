@@ -162,6 +162,59 @@ class LocationViewModelTest {
         assertEquals(GpsAcquisitionStatus.AcquiringLock, viewModel.gpsStatus.value)
     }
 
+    @Test
+    fun defaultFallbackBanner_isTrueOnlyWhenNoGpsAndNoManualCity() = runTest {
+        fakeLocationTracker.hasPermissionFlow.value = false
+        viewModel = LocationViewModel(fakeLocationTracker)
+        // isUsingDefaultFallbackLocation must be collected, otherwise stateIn never starts
+        backgroundScope.launch { viewModel.isUsingDefaultFallbackLocation.collect {} }
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        // Location off and no city picked: app falls back to the built-in default (Lisbon)
+        assertTrue(
+            "Banner must show while running on the default fallback location",
+            viewModel.isUsingDefaultFallbackLocation.value
+        )
+
+        // User picks a city manually: no longer the silent default fallback
+        viewModel.setManualCoordinates(48.8566, 2.3522, "Paris, France")
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertFalse(
+            "Banner must hide once the user selected a city",
+            viewModel.isUsingDefaultFallbackLocation.value
+        )
+
+        // User switches back to GPS mode: still hidden
+        viewModel.onPermissionResult(fineGranted = true, coarseGranted = true)
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertFalse(
+            "Banner must stay hidden in GPS mode",
+            viewModel.isUsingDefaultFallbackLocation.value
+        )
+    }
+
+    @Test
+    fun defaultFallbackBanner_isFalseWhenGpsLocationIsActive() = runTest {
+        fakeLocationTracker.hasPermissionFlow.value = true
+        fakeLocationTracker.isGpsEnabled = true
+        viewModel = LocationViewModel(fakeLocationTracker)
+        backgroundScope.launch { viewModel.isUsingDefaultFallbackLocation.collect {} }
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertFalse(
+            "Banner must not show while GPS location is active",
+            viewModel.isUsingDefaultFallbackLocation.value
+        )
+
+        // Permission later revoked: back on the default fallback
+        viewModel.onPermissionResult(fineGranted = false, coarseGranted = false)
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertTrue(
+            "Banner must reappear after GPS permission is lost",
+            viewModel.isUsingDefaultFallbackLocation.value
+        )
+    }
+
     // Fake LocationTracker
     class FakeLocationTracker(context: Context = ApplicationProvider.getApplicationContext()) : LocationTracker(context) {
         val hasPermissionFlow = MutableStateFlow(false)

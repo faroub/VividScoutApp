@@ -62,6 +62,18 @@ jobs:
       - name: Assemble Android Debug APK
         run: ./gradlew assembleDebug --stacktrace
 
+      - name: Audit Functions Dependencies (production only)
+        # Fails only on high or critical advisories in production dependencies.
+        run: npm --prefix functions audit --omit=dev --audit-level=high
+
+      - name: Run detekt Static Analysis
+        # The committed daemon pin (gradle/gradle-daemon-jvm.properties) requires
+        # JDK 25, which detekt 1.23.x cannot run on. JDK 21 is provisioned on the
+        # runner via the Gradle toolchain; the pin only affects developer machines.
+        run: |
+          ./gradlew updateDaemonJvm --jvm-version 21
+          ./gradlew :app:detekt --stacktrace
+
   release-validation:
     name: Release Variant Validation (R8, Resource Shrinking, Firebase Config)
     runs-on: ubuntu-latest

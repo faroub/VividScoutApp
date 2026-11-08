@@ -115,6 +115,7 @@ fun VividScoutApp(
     val communityState by communityViewModel.uiState.collectAsState()
     val offlineMapsState by offlineMapsViewModel.uiState.collectAsState()
     val profileState by profileViewModel.uiState.collectAsState()
+    val isUsingDefaultFallbackLocation by locationViewModel.isUsingDefaultFallbackLocation.collectAsState()
 
     // Location permission plumbing (system launcher, startup prompt, refresh-on-resume)
     val permissionActions = rememberLocationPermissionActions(
@@ -226,6 +227,7 @@ fun VividScoutApp(
                             offlineMapsState = offlineMapsState,
                             profileState = profileState,
                             locationState = locationState,
+                            isUsingDefaultFallbackLocation = isUsingDefaultFallbackLocation,
                             requestLocationPermission = { permissionActions.requestLocationPermission() },
                             context = context
                         )
