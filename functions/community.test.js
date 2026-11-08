@@ -115,14 +115,14 @@ const validSubmissionPayload = (id) => ({
 });
 
 const expectInvalid = (payload) => {
-  assert.throws(() => validateCommunityTipPayload(payload), (error) => {
+  assert.throws(() => validateCommunityTipPayload(payload, NOW), (error) => {
     assert.strictEqual(error.code, "invalid-argument", `expected invalid-argument, got ${error.code}`);
     return true;
   });
 };
 
 const expectInvalidSubmission = (payload, ownerUid) => {
-  assert.throws(() => validateCommunitySubmissionPayload(payload, ownerUid), (error) => {
+  assert.throws(() => validateCommunitySubmissionPayload(payload, ownerUid, NOW), (error) => {
     assert.strictEqual(error.code, "invalid-argument", `expected invalid-argument, got ${error.code}`);
     return true;
   });
@@ -134,7 +134,7 @@ const expectInvalidSubmission = (payload, ownerUid) => {
 
 describe("validateCommunityTipPayload", () => {
   it("accepts a valid tip payload", () => {
-    const validated = validateCommunityTipPayload(validTipPayload());
+    const validated = validateCommunityTipPayload(validTipPayload(), NOW);
     assert.strictEqual(validated.upvotes, undefined, "upvotes is server-owned and never accepted");
     assert.ok(!("ownerUid" in validated), "ownerUid is server-owned and never accepted");
   });
@@ -157,28 +157,56 @@ describe("validateCommunityTipPayload", () => {
     expectInvalid({ ...validTipPayload(), isStatusUpdate: "yes" });
     expectInvalid("not-an-object");
   });
+
+  it("rejects a positive legacyUpvotes: legacy counts are server-migrated only", () => {
+    // Legacy upvote counts are imported exclusively by
+    // scripts/migrate_legacy_upvotes.js through the Admin SDK; a client-supplied
+    // legacy count would let an author fabricate community signal. The payload must
+    // always carry 0 — the stored value (if any) is preserved by a replay, never
+    // overwritten by it.
+    expectInvalid({ ...validTipPayload(), legacyUpvotes: 1 });
+    expectInvalid({ ...validTipPayload(), legacyUpvotes: 1_000_000 });
+  });
+
+  it("rejects a timestamp outside the accepted window and accepts the window boundaries", () => {
+    // Future bound: at most +5 minutes, tolerating client clock skew.
+    expectInvalid({ ...validTipPayload(), timestamp: NOW + 6 * 60 * 1000 });
+    // Age bound: no older than 30 days — offline drafts may legitimately be older
+    // than a fresh post (a draft composed offline can sit pending for weeks), so the
+    // floor extends a full 30 days, but a misdated ancient timestamp is refused.
+    expectInvalid({ ...validTipPayload(), timestamp: NOW - 30 * 24 * 3600 * 1000 - 1 });
+    // The exact boundaries are accepted (inclusive).
+    validateCommunityTipPayload({ ...validTipPayload(), timestamp: NOW + 5 * 60 * 1000 }, NOW);
+    validateCommunityTipPayload({ ...validTipPayload(), timestamp: NOW - 30 * 24 * 3600 * 1000 }, NOW);
+  });
 });
 
 describe("validateCommunitySubmissionPayload", () => {
   it("accepts a valid submission payload", () => {
-    const validated = validateCommunitySubmissionPayload(validSubmissionPayload(), ALICE);
+    const validated = validateCommunitySubmissionPayload(validSubmissionPayload(), ALICE, NOW);
     assert.ok(!("ownerUid" in validated), "ownerUid is server-owned and never accepted");
   });
 
   it("rejects ownerUid and validates coordinates", () => {
-    assert.throws(() => validateCommunitySubmissionPayload({ ...validSubmissionPayload(), ownerUid: ALICE }, ALICE), /Unexpected field 'ownerUid'/);
-    assert.throws(() => validateCommunitySubmissionPayload({ ...validSubmissionPayload(), latitude: 95.5 }, ALICE));
-    assert.throws(() => validateCommunitySubmissionPayload({ ...validSubmissionPayload(), latitude: 0, longitude: 0 }, ALICE));
+    assert.throws(() => validateCommunitySubmissionPayload({ ...validSubmissionPayload(), ownerUid: ALICE }, ALICE, NOW), /Unexpected field 'ownerUid'/);
+    assert.throws(() => validateCommunitySubmissionPayload({ ...validSubmissionPayload(), latitude: 95.5 }, ALICE, NOW));
+    assert.throws(() => validateCommunitySubmissionPayload({ ...validSubmissionPayload(), latitude: 0, longitude: 0 }, ALICE, NOW));
   });
 
   it("rejects photoUri values that are not empty or the caller's own Storage path", () => {
-    assert.throws(() => validateCommunitySubmissionPayload({ ...validSubmissionPayload(), photoUri: "https://example.com/x.jpg" }, ALICE));
-    assert.throws(() => validateCommunitySubmissionPayload({ ...validSubmissionPayload(), photoUri: `spot_photos/${BOB}/spot-1/photo.jpg` }, ALICE));
+    assert.throws(() => validateCommunitySubmissionPayload({ ...validSubmissionPayload(), photoUri: "https://example.com/x.jpg" }, ALICE, NOW));
+    assert.throws(() => validateCommunitySubmissionPayload({ ...validSubmissionPayload(), photoUri: `spot_photos/${BOB}/spot-1/photo.jpg` }, ALICE, NOW));
     // The caller's own path is accepted:
     validateCommunitySubmissionPayload(
       { ...validSubmissionPayload(), photoUri: `spot_photos/${ALICE}/spot-1/photo.jpg` },
-      ALICE
+      ALICE,
+      NOW
     );
+  });
+
+  it("rejects a timestamp outside the accepted window", () => {
+    expectInvalidSubmission({ ...validSubmissionPayload(), timestamp: NOW + 6 * 60 * 1000 });
+    expectInvalidSubmission({ ...validSubmissionPayload(), timestamp: NOW - 31 * 24 * 3600 * 1000 });
   });
 });
 

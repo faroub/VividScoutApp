@@ -75,11 +75,29 @@ service cloud.firestore {
                     && request.resource.data.title.size() <= 120
                     && request.resource.data.category is string
                     && request.resource.data.category.size() <= 32
+                    && request.resource.data.id is string
+                    && request.resource.data.id.size() <= 128
+                    && request.resource.data.description is string
+                    && request.resource.data.description.size() <= 1000
+                    && request.resource.data.locationName is string
+                    && request.resource.data.locationName.size() <= 100
+                    && request.resource.data.contributor is string
+                    && request.resource.data.contributor.size() >= 1
+                    && request.resource.data.contributor.size() <= 50
                     && request.resource.data.latitude is number
                     && request.resource.data.longitude is number
                     && isValidCoordinates(request.resource.data.latitude, request.resource.data.longitude)
                     && isValidPhotoUri(request.resource.data.photoUri)
-                    && request.resource.data.timestamp is number;
+                    && request.resource.data.timestamp is number
+                    // A SET timestamp must be dated within the window: at most 5 minutes
+                    // in the future (clock skew) and no older than 30 days (offline
+                    // drafts may legitimately be older than a fresh post). The bound
+                    // applies only when the update changes the field, so documents with
+                    // already-committed old timestamps stay editable. Mirrors the
+                    // callable's window in functions/community.js.
+                    && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['timestamp'])
+                        || (request.resource.data.timestamp <= request.time.toMillis() + 300000
+                            && request.resource.data.timestamp >= request.time.toMillis() - 2592000000));
 
       allow delete: if false;
     }
@@ -162,7 +180,12 @@ service cloud.firestore {
             ])
          && isValidTipData(request.resource.data)
          && request.resource.data.upvotes == resource.data.upvotes
-         && request.resource.data.legacyUpvotes == resource.data.legacyUpvotes)
+         && request.resource.data.legacyUpvotes == resource.data.legacyUpvotes
+         // Same timestamp window as community_submissions, applied only when the update
+         // sets the field (documents with already-committed old timestamps stay editable).
+         && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['timestamp'])
+             || (request.resource.data.timestamp <= request.time.toMillis() + 300000
+                 && request.resource.data.timestamp >= request.time.toMillis() - 2592000000)))
       );
 
       allow delete: if false;

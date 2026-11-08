@@ -329,6 +329,42 @@ describe('community_submissions', () => {
     const data = { ...validSubmission(), userNotes: 'my private note' };
     await assertFails(setDoc(doc(dbAs(ALICE), 'community_submissions', id), data));
   });
+
+  it('rejects an owner update that violates the string caps (mirror of the callable)', async () => {
+    const { id } = await seedSubmission(ALICE);
+    await assertFails(
+      updateDoc(doc(dbAs(ALICE), 'community_submissions', id), { description: 'x'.repeat(1001) })
+    );
+    await assertFails(
+      updateDoc(doc(dbAs(ALICE), 'community_submissions', id), { locationName: 'x'.repeat(101) })
+    );
+    await assertFails(
+      updateDoc(doc(dbAs(ALICE), 'community_submissions', id), { contributor: 'x'.repeat(51) })
+    );
+    await assertFails(
+      updateDoc(doc(dbAs(ALICE), 'community_submissions', id), { id: 'x'.repeat(129) })
+    );
+    // Within-bounds values still update (the same caps the trusted callable applies).
+    await assertSucceeds(
+      updateDoc(doc(dbAs(ALICE), 'community_submissions', id), { description: 'x'.repeat(1000) })
+    );
+  });
+
+  it('rejects an owner update that sets a timestamp outside the accepted window', async () => {
+    const { id } = await seedSubmission(ALICE);
+    // More than 5 minutes in the future is misdated (the +5 minutes tolerates clock skew).
+    await assertFails(
+      updateDoc(doc(dbAs(ALICE), 'community_submissions', id), { timestamp: Date.now() + 10 * 60 * 1000 })
+    );
+    // More than 30 days in the past is misdated (the 30-day floor tolerates long-offline drafts).
+    await assertFails(
+      updateDoc(doc(dbAs(ALICE), 'community_submissions', id), { timestamp: Date.now() - 31 * 24 * 3600 * 1000 })
+    );
+    // A freshly re-dated update is accepted.
+    await assertSucceeds(
+      updateDoc(doc(dbAs(ALICE), 'community_submissions', id), { timestamp: Date.now() })
+    );
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -532,6 +568,19 @@ describe('community_tips', () => {
     const { id } = await seedTip(ALICE);
     await assertSucceeds(
       updateDoc(doc(dbAs(ALICE), 'community_tips', id), { content: 'Edited tip text.' })
+    );
+  });
+
+  it('rejects an owner update that sets a timestamp outside the accepted window', async () => {
+    const { id } = await seedTip(ALICE);
+    await assertFails(
+      updateDoc(doc(dbAs(ALICE), 'community_tips', id), { timestamp: Date.now() + 10 * 60 * 1000 })
+    );
+    await assertFails(
+      updateDoc(doc(dbAs(ALICE), 'community_tips', id), { timestamp: Date.now() - 31 * 24 * 3600 * 1000 })
+    );
+    await assertSucceeds(
+      updateDoc(doc(dbAs(ALICE), 'community_tips', id), { timestamp: Date.now() })
     );
   });
 

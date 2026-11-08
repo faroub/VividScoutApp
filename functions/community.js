@@ -47,7 +47,15 @@ const MAX_SPOT_ID_LENGTH = 128;
 const MAX_AUTHOR_NAME_LENGTH = 50;
 const MAX_TIP_CONTENT_LENGTH = 500;
 const MAX_STATUS_CATEGORY_LENGTH = 32;
-const MAX_UPVOTES = 1_000_000;
+
+// The contributor-dated timestamp window. The client dates its own contribution, so
+// modest clock skew is tolerated (+5 minutes). Offline drafts may legitimately be older
+// than a fresh post — a draft composed offline can sit in the pending sync queue for
+// weeks — which is why the age floor is a full 30 days rather than hours or minutes;
+// anything older is refused as misdated instead of being clipped, so a bogus timestamp
+// can never become the document's preserved attribution date.
+const TIMESTAMP_MAX_FUTURE_MS = 5 * 60 * 1000;
+const TIMESTAMP_MAX_AGE_MS = 30 * 24 * 3600 * 1000;
 
 const MAX_SUBMISSION_TITLE_LENGTH = 120;
 const MAX_DESCRIPTION_LENGTH = 1000;
@@ -116,7 +124,7 @@ function isValidCoordinatePair(lat, lng) {
  * HttpsError("invalid-argument") for any violation. Returns the normalized document
  * fields the caller may persist.
  */
-function validateCommunityTipPayload(data) {
+function validateCommunityTipPayload(data, nowMs = Date.now()) {
   if (!isPlainObject(data)) {
     throw invalid("Community tip payload must be a JSON object.");
   }
@@ -156,8 +164,18 @@ function validateCommunityTipPayload(data) {
   if (!isFiniteNumber(data.timestamp)) {
     throw invalid("'timestamp' must be a finite number.");
   }
-  if (!Number.isSafeInteger(data.legacyUpvotes) || data.legacyUpvotes < 0 || data.legacyUpvotes > MAX_UPVOTES) {
-    throw invalid(`'legacyUpvotes' must be an integer between 0 and ${MAX_UPVOTES}.`);
+  if (
+    data.timestamp > nowMs + TIMESTAMP_MAX_FUTURE_MS ||
+    data.timestamp < nowMs - TIMESTAMP_MAX_AGE_MS
+  ) {
+    throw invalid("'timestamp' must be within the last 30 days and at most 5 minutes in the future.");
+  }
+  // Legacy upvote counts are imported ONLY by scripts/migrate_legacy_upvotes.js through
+  // the Admin SDK: a client-supplied legacy count would let the author fabricate
+  // community signal. The payload must always carry 0; on a replay the STORED value
+  // (if any) is preserved (the update never writes this field), never overwritten.
+  if (!Number.isSafeInteger(data.legacyUpvotes) || data.legacyUpvotes !== 0) {
+    throw invalid("'legacyUpvotes' must be 0; legacy counts are server-migrated only.");
   }
 
   return {
@@ -179,7 +197,7 @@ function validateCommunityTipPayload(data) {
  * the description/location/contributor length caps the Android client already enforces.
  * Throws HttpsError("invalid-argument") for any violation.
  */
-function validateCommunitySubmissionPayload(data, ownerUid) {
+function validateCommunitySubmissionPayload(data, ownerUid, nowMs = Date.now()) {
   if (!isPlainObject(data)) {
     throw invalid("Community submission payload must be a JSON object.");
   }
@@ -221,6 +239,12 @@ function validateCommunitySubmissionPayload(data, ownerUid) {
   }
   if (!isFiniteNumber(data.timestamp)) {
     throw invalid("'timestamp' must be a finite number.");
+  }
+  if (
+    data.timestamp > nowMs + TIMESTAMP_MAX_FUTURE_MS ||
+    data.timestamp < nowMs - TIMESTAMP_MAX_AGE_MS
+  ) {
+    throw invalid("'timestamp' must be within the last 30 days and at most 5 minutes in the future.");
   }
 
   return {
@@ -275,12 +299,12 @@ async function postCommunityTipDocument(db, ownerUid, data, options = {}) {
   if (!ownerUid) {
     throw new HttpsError("unauthenticated", "User authentication required to post a community tip.");
   }
-  const validated = validateCommunityTipPayload(data);
+  const nowMs = typeof options.nowMs === "function" ? options.nowMs() : options.nowMs ?? Date.now();
+  const validated = validateCommunityTipPayload(data, nowMs);
 
   const docRef = db.collection(TIPS_COLLECTION).doc(validated.id);
   const indexRef = ownershipIndexRef(db, TIPS_COLLECTION, validated.id);
   const rateLimit = options.rateLimit || null;
-  const nowMs = typeof options.nowMs === "function" ? options.nowMs() : options.nowMs ?? Date.now();
 
   return db.runTransaction(async (transaction) => {
     // All reads precede all writes (Firestore transaction requirement).
@@ -356,12 +380,12 @@ async function submitCommunitySpotDocument(db, ownerUid, data, options = {}) {
   if (!ownerUid) {
     throw new HttpsError("unauthenticated", "User authentication required to submit a community spot.");
   }
-  const validated = validateCommunitySubmissionPayload(data, ownerUid);
+  const nowMs = typeof options.nowMs === "function" ? options.nowMs() : options.nowMs ?? Date.now();
+  const validated = validateCommunitySubmissionPayload(data, ownerUid, nowMs);
 
   const docRef = db.collection(SUBMISSIONS_COLLECTION).doc(validated.id);
   const indexRef = ownershipIndexRef(db, SUBMISSIONS_COLLECTION, validated.id);
   const rateLimit = options.rateLimit || null;
-  const nowMs = typeof options.nowMs === "function" ? options.nowMs() : options.nowMs ?? Date.now();
 
   return db.runTransaction(async (transaction) => {
     // All reads precede all writes (Firestore transaction requirement).
