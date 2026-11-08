@@ -2,39 +2,21 @@ package com.example.data.sync
 
 import android.content.Context
 
-import com.example.R
 import com.example.data.local.CommunityTipDao
 import com.example.data.local.CommunityTipEntity
 import com.example.data.local.DiscoveredGemDao
 import com.example.data.local.ScoutDao
 import com.example.data.local.ScoutSpotEntity
-import com.example.data.local.isDemoFallbackSpot
 import com.example.data.local.TipVoteDao
-import com.example.data.local.TipVoteEntity
-import com.example.data.model.ScoutCategory
+import com.example.data.local.isDemoFallbackSpot
 import com.example.util.SafeLog
-import com.example.util.configureAppCheck
-import com.google.firebase.Firebase
-import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.DocumentSnapshot
-import com.google.firebase.firestore.FieldValue
-import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.SetOptions
-import com.google.firebase.firestore.firestore
 import com.google.firebase.functions.FirebaseFunctions
 import com.google.firebase.functions.FirebaseFunctionsException
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
-
-private const val TAG = "FirestoreSyncManager"
-private const val SUBMISSIONS_COLLECTION = "community_submissions"
-private const val TIPS_COLLECTION = "community_tips"
-private const val USERS_COLLECTION = "users"
-private const val PRIVATE_NOTES_COLLECTION = "private_spot_notes"
 
 /**
  * The write-side classification of a local spot's image reference for the public
@@ -76,65 +58,15 @@ enum class CommunitySyncOutcome { SYNCED, PENDING, RATE_LIMITED }
  * Manages bidirectional cloud synchronization between local Room entities and Firebase Firestore.
  * Handles uploading offline drafts (isOfflineDraft == true) and user-authored community tips,
  * and fetching community-shared gems and peer tips from the cloud.
+ *
+ * Structure: this object remains the public facade for private spot sync (drafts and
+ * owner-scoped notes). Community write operations (tip posts, atomic upvotes, vote
+ * reconciliation, pending-tip retries) live in [CommunitySyncWriter] and community
+ * downloads (paginated tips/submissions fetch, private-note restore) live in
+ * [CommunitySyncDownloader]. Firebase/App Check/auth bootstrapping is shared through
+ * [FirebaseAccess]. All public signatures here are unchanged thin delegations.
  */
 object FirestoreSyncManager {
-
-    private fun getFirebaseApp(context: Context): FirebaseApp? {
-        return try {
-            if (FirebaseApp.getApps(context).isNotEmpty()) {
-                FirebaseApp.getInstance()
-            } else {
-                FirebaseApp.initializeApp(context)
-            }
-        } catch (e: Exception) {
-            SafeLog.d(TAG, "Failed to initialize Firebase app: ${e.message}")
-            null
-        }
-    }
-
-    private fun getFirestore(context: Context): FirebaseFirestore? {
-        return try {
-            configureAppCheck(context)
-            val app = getFirebaseApp(context) ?: return null
-
-            val databaseId = try {
-                context.getString(R.string.firestore_database_id)
-            } catch (_: Exception) {
-                ""
-            }
-
-            if (databaseId.isNotBlank()) {
-                FirebaseFirestore.getInstance(app, databaseId)
-            } else {
-                FirebaseFirestore.getInstance(app)
-            }
-        } catch (e: Exception) {
-            SafeLog.d(TAG, "Failed to initialize Firestore instance: ${e.message}")
-            null
-        }
-    }
-
-    private suspend fun ensureFirebaseAuth(context: Context): Boolean = withContext(Dispatchers.IO) {
-        return@withContext try {
-            val app = if (FirebaseApp.getApps(context).isNotEmpty()) {
-                FirebaseApp.getInstance()
-            } else {
-                FirebaseApp.initializeApp(context)
-            } ?: return@withContext false
-
-            val auth = com.google.firebase.auth.FirebaseAuth.getInstance(app)
-            if (auth.currentUser == null) {
-                auth.signInAnonymously().await()
-                SafeLog.d(TAG, "Successfully authenticated Firebase user anonymously (${SafeLog.sanitizeUid(auth.currentUser?.uid)})")
-            }
-            auth.currentUser != null
-        } catch (e: kotlinx.coroutines.CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            SafeLog.d(TAG, "Firebase Auth sign-in skipped: ${e.message}")
-            false
-        }
-    }
 
     /**
      * Uploads an individual offline draft spot to the Firestore 'community_submissions' collection.
@@ -161,7 +93,7 @@ object FirestoreSyncManager {
             SafeLog.w(TAG, "Refusing to sync illustrative demo spot '${spot.id}' as a community submission")
             return@withContext false
         }
-        if (!ensureFirebaseAuth(context)) {
+        if (!FirebaseAccess.ensureFirebaseAuth(context)) {
             SafeLog.w(TAG, "Cannot sync draft '${spot.id}': Firebase Auth required for Firestore writes")
             return@withContext false
         }
@@ -211,7 +143,7 @@ object FirestoreSyncManager {
             // duplicating. A resource-exhausted response means the 24-hour per-UID
             // limit was hit — the draft stays queued locally and syncs when the window
             // resets; no false success is reported.
-            val app = getFirebaseApp(context) ?: return@withContext false
+            val app = FirebaseAccess.getFirebaseApp(context) ?: return@withContext false
             try {
                 FirebaseFunctions.getInstance(app).getHttpsCallable("submitCommunitySpot")
                     .call(docData).await()
@@ -260,11 +192,11 @@ object FirestoreSyncManager {
         spotId: String,
         notes: String?
     ): Boolean = withContext(Dispatchers.IO) {
-        if (!ensureFirebaseAuth(context)) {
+        if (!FirebaseAccess.ensureFirebaseAuth(context)) {
             SafeLog.w(TAG, "Cannot sync private note for '$spotId': Firebase Auth required")
             return@withContext false
         }
-        val firestore = getFirestore(context) ?: return@withContext false
+        val firestore = FirebaseAccess.getFirestore(context) ?: return@withContext false
         val currentUid = FirebaseAuth.getInstance().currentUser?.uid ?: return@withContext false
         try {
             val noteData = hashMapOf(
@@ -307,444 +239,51 @@ object FirestoreSyncManager {
     }
 
     /**
-     * Posts a community tip or status update to the Firestore 'community_tips' collection
-     * through the trusted postCommunityTip Cloud Function (firestore.rules denies
-     * direct client creation). Idempotent: a retry of the same tip id replays the
-     * already-published document on the backend, which preserves the server-owned
-     * upvotes counters and never duplicates the tip.
-     *
-     * Sample/demo tips (seed tips, simulated peer-mesh gossip) are refused: they are
-     * illustrative content authored by the app, never real community contributions,
-     * so they must never reach Firestore under a real user's identity.
+     * Posts a community tip or status update through the trusted postCommunityTip
+     * Cloud Function. See [CommunitySyncWriter.postCommunityTipToCloud].
      */
     suspend fun postCommunityTipToCloud(
         context: Context,
         tip: CommunityTipEntity,
         tipDao: CommunityTipDao? = null
-    ): CommunitySyncOutcome = withContext(Dispatchers.IO) {
-        if (tip.isSampleContent) {
-            SafeLog.w(TAG, "Refusing to upload sample tip '${tip.id}' as a real community contribution")
-            return@withContext CommunitySyncOutcome.PENDING
-        }
-        if (!ensureFirebaseAuth(context)) {
-            SafeLog.w(TAG, "Cannot post tip '${tip.id}': Firebase Auth required for community posts")
-            return@withContext CommunitySyncOutcome.PENDING
-        }
-        val app = getFirebaseApp(context) ?: return@withContext CommunitySyncOutcome.PENDING
-        try {
-            // Payload mirrors the client-controlled fields accepted server-side by
-            // functions/community.js. The upvotes counter and the ownership record are
-            // server-owned and intentionally absent from the payload.
-            val payload = hashMapOf<String, Any>(
-                "id" to tip.id,
-                "spotId" to tip.spotId,
-                "spotTitle" to tip.spotTitle,
-                "authorName" to tip.authorName,
-                "content" to tip.content,
-                "timestamp" to tip.timestamp,
-                "isStatusUpdate" to tip.isStatusUpdate,
-                "statusCategory" to tip.statusCategory,
-                "legacyUpvotes" to tip.legacyUpvotes
-            )
-
-            FirebaseFunctions.getInstance(app).getHttpsCallable("postCommunityTip")
-                .call(payload).await()
-
-            tipDao?.markTipAsSynced(tip.id)
-            SafeLog.i(TAG, "Posted community tip '${tip.id}' to cloud Firestore")
-            CommunitySyncOutcome.SYNCED
-        } catch (e: kotlinx.coroutines.CancellationException) {
-            throw e
-        } catch (e: FirebaseFunctionsException) {
-            if (e.code == FirebaseFunctionsException.Code.RESOURCE_EXHAUSTED) {
-                // The 24-hour per-UID limit: the tip stays local and is retried once the
-                // window resets — surfaced to the user as an explicit message.
-                SafeLog.w(TAG, "Community tip '${tip.id}' hit the daily post limit; it stays local and will sync when the limit resets")
-                CommunitySyncOutcome.RATE_LIMITED
-            } else {
-                SafeLog.w(TAG, "Failed to post community tip '${tip.id}' via Cloud Function: ${e.message}")
-                CommunitySyncOutcome.PENDING
-            }
-        } catch (e: Exception) {
-            SafeLog.e(TAG, "Failed to post community tip '${tip.id}' to Firestore: ${e.message}", e)
-            CommunitySyncOutcome.PENDING
-        }
-    }
+    ): CommunitySyncOutcome = CommunitySyncWriter.postCommunityTipToCloud(context, tip, tipDao)
 
     /**
-     * Synchronizes a +1 upvote for a community tip using a Firestore transaction.
-     * Checks if the vote document at community_tips/{tipId}/votes/{currentUid} already exists,
-     * rejecting second votes from the same user, and writing the vote doc together with the upvote increment.
+     * Atomically records a +1 upvote together with the vote document in a Firestore
+     * transaction, rejecting second votes. See [CommunitySyncWriter.incrementTipUpvoteInCloud].
      */
     suspend fun incrementTipUpvoteInCloud(
         context: Context,
         tipId: String
-    ): Boolean = withContext(Dispatchers.IO) {
-        if (!ensureFirebaseAuth(context)) return@withContext false
-        val firestore = getFirestore(context) ?: return@withContext false
-        val currentUid = FirebaseAuth.getInstance().currentUser?.uid
-        if (currentUid.isNullOrBlank()) {
-            SafeLog.w(TAG, "Cannot upvote tip '$tipId': No authenticated user UID found")
-            return@withContext false
-        }
-
-        try {
-            val tipRef = firestore.collection(TIPS_COLLECTION).document(tipId)
-            val voteRef = tipRef.collection("votes").document(currentUid)
-
-            val voteSuccess = firestore.runTransaction { transaction ->
-                val tipSnap = transaction.get(tipRef)
-                if (!tipSnap.exists() || !tipSnap.contains("legacyUpvotes")) {
-                    SafeLog.w(TAG, "Cannot upvote tip '$tipId': Document is missing 'legacyUpvotes' field. Aborting transaction.")
-                    return@runTransaction false
-                }
-
-                val voteSnap = transaction.get(voteRef)
-                if (voteSnap.exists()) {
-                    SafeLog.w(TAG, "User '${SafeLog.sanitizeUid(currentUid)}' has already voted on tip '$tipId'. Rejecting second vote.")
-                    return@runTransaction false
-                }
-
-                val currentUpvotes = tipSnap.getLong("upvotes") ?: 0L
-
-                val voteData = hashMapOf<String, Any>(
-                    "uid" to currentUid,
-                    "timestamp" to System.currentTimeMillis()
-                )
-
-                // Set vote doc in votes subcollection AND increment tip upvotes by 1
-                transaction.set(voteRef, voteData)
-                transaction.update(tipRef, "upvotes", currentUpvotes + 1)
-                true
-            }.await()
-
-            if (voteSuccess) {
-                SafeLog.i(TAG, "Successfully recorded vote from user '${SafeLog.sanitizeUid(currentUid)}' for tip '$tipId'")
-            }
-            voteSuccess
-        } catch (e: kotlinx.coroutines.CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            SafeLog.w(TAG, "Failed to execute upvote transaction for tip '$tipId': ${e.message}")
-            false
-        }
-    }
+    ): Boolean = CommunitySyncWriter.incrementTipUpvoteInCloud(context, tipId)
 
     /**
-     * Reconciles user vote state from Cloud Firestore when an upvote transaction encounters an ambiguous outcome or duplicate vote error.
-     * If user vote doc exists in Cloud Firestore, ensures local Room DB records the vote.
+     * Reconciles local vote state with the cloud vote document. See
+     * [CommunitySyncWriter.reconcileTipVoteInCloud].
      */
     suspend fun reconcileTipVoteInCloud(
         context: Context,
         tipId: String,
         tipDao: CommunityTipDao,
         tipVoteDao: TipVoteDao?
-    ): Boolean = withContext(Dispatchers.IO) {
-        if (!ensureFirebaseAuth(context)) return@withContext false
-        val firestore = getFirestore(context) ?: return@withContext false
-        val currentUid = FirebaseAuth.getInstance().currentUser?.uid ?: return@withContext false
-
-        try {
-            val voteRef = firestore.collection(TIPS_COLLECTION).document(tipId).collection("votes").document(currentUid)
-            val voteSnap = voteRef.get().await()
-
-            if (voteSnap.exists()) {
-                if (tipVoteDao != null && !tipVoteDao.hasUserVoted(tipId, currentUid)) {
-                    tipVoteDao.recordVoteAndIncrementCount(tipId, currentUid, tipDao)
-                }
-                return@withContext true
-            }
-        } catch (e: kotlinx.coroutines.CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            SafeLog.w(TAG, "Reconciliation check failed for tip '$tipId': ${e.message}")
-        }
-        false
-    }
+    ): Boolean = CommunitySyncWriter.reconcileTipVoteInCloud(context, tipId, tipDao, tipVoteDao)
 
     /**
-     * Retries uploading all pending locally authored community tips to Firestore.
+     * Retries uploading all pending locally authored community tips. See
+     * [CommunitySyncWriter.syncPendingTipsToCloud].
      */
     suspend fun syncPendingTipsToCloud(
         context: Context,
         tipDao: CommunityTipDao
-    ): Int = withContext(Dispatchers.IO) {
-        val pendingTips = tipDao.getLocallyAuthoredTipsSync().filter { !it.isSyncedToCloud }
-        var successCount = 0
-        for (tip in pendingTips) {
-            if (postCommunityTipToCloud(context, tip, tipDao) == CommunitySyncOutcome.SYNCED) {
-                successCount++
-            }
-        }
-        successCount
-    }
+    ): Int = CommunitySyncWriter.syncPendingTipsToCloud(context, tipDao)
 
     /**
-     * Downloads recent remote community tips and submissions from Firestore, updating local Room DB.
+     * Downloads recent remote community tips and submissions into Room. See
+     * [CommunitySyncDownloader.syncRemoteContentDown].
      */
     suspend fun syncRemoteContentDown(
         context: Context,
         tipDao: CommunityTipDao,
         scoutDao: ScoutDao
-    ): Pair<Int, Int> = withContext(Dispatchers.IO) {
-        val firestore = getFirestore(context) ?: return@withContext Pair(0, 0)
-        var newTipsCount = 0
-        var newGemsCount = 0
-
-        try {
-            // 1. Fetch remote community tips using cursor-based pagination (page size = 50, max 500)
-            var lastDoc: DocumentSnapshot? = null
-            var hasMorePages = true
-            val remoteTips = mutableListOf<CommunityTipEntity>()
-            var totalFetched = 0
-
-            while (hasMorePages && totalFetched < 500) {
-                var query = firestore.collection(TIPS_COLLECTION)
-                    .orderBy("timestamp", Query.Direction.DESCENDING)
-                    .limit(50)
-
-                if (lastDoc != null) {
-                    query = query.startAfter(lastDoc)
-                }
-
-                val pageSnapshot = query.get().await()
-                if (pageSnapshot.isEmpty) {
-                    hasMorePages = false
-                    break
-                }
-
-                for (doc in pageSnapshot.documents) {
-                    val id = doc.getString("id") ?: doc.id
-                    val spotId = doc.getString("spotId") ?: ""
-                    val rawContent = doc.getString("content") ?: ""
-                    if (spotId.isBlank() || rawContent.isBlank()) continue
-
-                    val content = rawContent.trim().take(500)
-                    val author = (doc.getString("authorName") ?: "@scout").trim().take(50)
-
-                    val hasLegacyUpvotesField = doc.contains("legacyUpvotes")
-                    val legacyVotes: Int
-                    val recordedVotes: Int
-                    val isMigrated: Boolean
-
-                    if (hasLegacyUpvotesField) {
-                        legacyVotes = (doc.getLong("legacyUpvotes") ?: 0L).toInt()
-                        recordedVotes = (doc.getLong("upvotes") ?: 0L).toInt()
-                        isMigrated = true
-                    } else {
-                        val rawUpvotes = (doc.getLong("upvotes") ?: 0L).toInt()
-                        legacyVotes = rawUpvotes
-                        recordedVotes = 0
-                        isMigrated = false
-                    }
-
-                    remoteTips.add(
-                        CommunityTipEntity(
-                            id = id.take(128),
-                            spotId = spotId.take(128),
-                            spotTitle = (doc.getString("spotTitle") ?: "Community Gem").trim().take(120),
-                            authorName = author,
-                            content = content,
-                            timestamp = doc.getLong("timestamp") ?: System.currentTimeMillis(),
-                            isStatusUpdate = doc.getBoolean("isStatusUpdate") ?: false,
-                            statusCategory = (doc.getString("statusCategory") ?: "INSIGHT").trim().take(32),
-                            legacyUpvotes = legacyVotes,
-                            upvotes = recordedVotes,
-                            peerNodeId = "cloud-firestore",
-                            isLocallyAuthored = false,
-                            isSyncedToCloud = true,
-                            isMigrated = isMigrated
-                        )
-                    )
-                }
-
-                totalFetched += pageSnapshot.size()
-                if (pageSnapshot.size() < 50) {
-                    hasMorePages = false
-                } else {
-                    lastDoc = pageSnapshot.documents.last()
-                }
-            }
-
-            if (remoteTips.isNotEmpty()) {
-                tipDao.insertTips(remoteTips)
-                newTipsCount = remoteTips.size
-            }
-
-            // 2. Fetch remote community submissions using cursor-based pagination (page size = 30, max 300)
-            var lastSubDoc: DocumentSnapshot? = null
-            var hasMoreSubPages = true
-            var totalSubsFetched = 0
-            val existingDraftIds = scoutDao.getAllSpotsSync().filter { it.isOfflineDraft }.map { it.id }.toSet()
-            val existingAllIds = scoutDao.getAllSpotsSync().map { it.id }.toSet()
-            val remoteSpots = mutableListOf<ScoutSpotEntity>()
-            var externalPhotoUriSkipped = 0
-
-            while (hasMoreSubPages && totalSubsFetched < 300) {
-                var subQuery = firestore.collection(SUBMISSIONS_COLLECTION)
-                    .orderBy("timestamp", Query.Direction.DESCENDING)
-                    .limit(30)
-
-                if (lastSubDoc != null) {
-                    subQuery = subQuery.startAfter(lastSubDoc)
-                }
-
-                val subPageSnapshot = subQuery.get().await()
-                if (subPageSnapshot.isEmpty) {
-                    hasMoreSubPages = false
-                    break
-                }
-
-                for (doc in subPageSnapshot.documents) {
-                    val id = doc.getString("id") ?: doc.id
-
-                    // Do NOT overwrite locally edited or unsynced drafts!
-                    if (id in existingDraftIds) continue
-                    if (id in existingAllIds) continue
-
-                    val rawTitle = doc.getString("title") ?: continue
-                    val lat = doc.getDouble("latitude") ?: continue
-                    val lng = doc.getDouble("longitude") ?: continue
-
-                    // Validate coordinates are geographically plausible
-                    if (lat.isNaN() || lng.isNaN() || (lat == 0.0 && lng == 0.0) || lat < -90.0 || lat > 90.0 || lng < -180.0 || lng > 180.0) {
-                        SafeLog.w(TAG, "Skipping remote submission '$id': invalid coordinates (${SafeLog.sanitizeCoordinate(lat)}, ${SafeLog.sanitizeCoordinate(lng)})")
-                        continue
-                    }
-
-                    val title = rawTitle.trim().take(120)
-                    if (title.length < 2) continue
-
-                    // Photo handling: submissions store either '' or an owned Storage
-                    // path. The download URL is resolved at display/materialization time
-                    // so the stored document never carries a third-party URL. Legacy
-                    // documents with external URLs are NOT rendered (fetching them would
-                    // expose every viewer's IP to a third-party host) — they are counted,
-                    // logged, and shown without a photo. No legacy data is deleted.
-                    val rawPhotoUri = doc.getString("photoUri")
-                    val displayImageUrl = when (classifySubmissionPhotoForDisplay(rawPhotoUri)) {
-                        SubmissionDisplayPhoto.NoPhoto -> "ic_cat_sights"
-                        SubmissionDisplayPhoto.ExternalRejected -> {
-                            externalPhotoUriSkipped++
-                            "ic_cat_sights"
-                        }
-                        SubmissionDisplayPhoto.StoragePath -> {
-                            try {
-                                com.google.firebase.storage.FirebaseStorage.getInstance()
-                                    .getReference(rawPhotoUri!!)
-                                    .downloadUrl.await().toString()
-                            } catch (e: CancellationException) {
-                                throw e
-                            } catch (e: Exception) {
-                                SafeLog.w(TAG, "Submission photo '$rawPhotoUri' could not be resolved; showing no photo")
-                                "ic_cat_sights"
-                            }
-                        }
-                    }
-
-                    val rawCategory = doc.getString("category") ?: "sights"
-                    val normalizedCategory = ScoutCategory.normalize(rawCategory)
-
-                    val description = (doc.getString("description") ?: "Shared community scout gem.").trim().take(1000)
-                    val locationName = (doc.getString("locationName") ?: "Community Location").trim().take(100)
-                    val contributor = (doc.getString("contributor") ?: "@CommunityScout").trim().take(50)
-                    val userNotes = (doc.getString("userNotes") ?: "Shared by community scout.").trim().take(500)
-
-                    remoteSpots.add(
-                        ScoutSpotEntity(
-                            id = id.take(128),
-                            title = title,
-                            description = description,
-                            category = normalizedCategory,
-                            distance = "Discovered",
-                            walkMinutes = 5,
-                            rating = null,
-                            reviewCount = null,
-                            imageUrl = displayImageUrl,
-                            badgeLabel = "COMMUNITY SCOUT",
-                            statusBadge = "Community Shared",
-                            tagsRaw = "Community Shared|||Cloud Sync",
-                            proTip = userNotes,
-                            contributor = contributor,
-                            upvotes = 1,
-                            isSaved = false,
-                            isOfflineDraft = false,
-                            isDiscovered = false,
-                            offlineCached = true,
-                            locationName = locationName,
-                            latitude = lat,
-                            longitude = lng,
-                            timestamp = doc.getLong("timestamp") ?: System.currentTimeMillis()
-                        )
-                    )
-                }
-
-                totalSubsFetched += subPageSnapshot.size()
-                if (subPageSnapshot.size() < 30) {
-                    hasMoreSubPages = false
-                } else {
-                    lastSubDoc = subPageSnapshot.documents.last()
-                }
-            }
-
-            if (remoteSpots.isNotEmpty()) {
-                scoutDao.insertSpots(remoteSpots)
-                newGemsCount = remoteSpots.size
-            }
-            if (externalPhotoUriSkipped > 0) {
-                SafeLog.w(TAG, "Skipped $externalPhotoUriSkipped community submission photo(s) with non Storage URLs (legacy external URLs are never rendered; no data was deleted)")
-            }
-
-            // 3. Restore this user's own private notes from the owner-scoped collection
-            // users/{uid}/private_spot_notes. Notes are only ever filled into spots
-            // whose local Room note is still blank — local edits always win, so an
-            // offline-first user never loses a note written on this device.
-            syncOwnPrivateNotesDown(context, scoutDao)
-        } catch (e: kotlinx.coroutines.CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            SafeLog.e(TAG, "Error synchronizing remote content from Firestore: ${e.message}", e)
-        }
-
-        Pair(newTipsCount, newGemsCount)
-    }
-
-    /**
-     * Downloads the authenticated user's own private spot notes and fills any local
-     * Room note that is still blank. Other users' notes are unreachable: the collection
-     * path key is the authenticated UID and the Firestore rules deny every access from
-     * anyone else (see users/{uid}/private_spot_notes in firestore.rules).
-     */
-    private suspend fun syncOwnPrivateNotesDown(
-        context: Context,
-        scoutDao: ScoutDao
-    ): Int = withContext(Dispatchers.IO) {
-        if (!ensureFirebaseAuth(context)) return@withContext 0
-        val firestore = getFirestore(context) ?: return@withContext 0
-        val currentUid = FirebaseAuth.getInstance().currentUser?.uid ?: return@withContext 0
-
-        var restoredCount = 0
-        try {
-            val snapshot = firestore.collection(USERS_COLLECTION)
-                .document(currentUid)
-                .collection(PRIVATE_NOTES_COLLECTION)
-                .get()
-                .await()
-
-            for (noteDoc in snapshot.documents) {
-                val spotId = noteDoc.getString("spotId") ?: continue
-                val notes = noteDoc.getString("notes") ?: continue
-                if (notes.isBlank()) continue
-                val localSpot = scoutDao.getSpotById(spotId) ?: continue
-                if (!localSpot.userNotes.isNullOrBlank()) continue
-                scoutDao.updateUserNotes(spotId, notes)
-                restoredCount++
-            }
-        } catch (e: kotlinx.coroutines.CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            SafeLog.w(TAG, "Failed to restore private spot notes: ${e.message}")
-        }
-        restoredCount
-    }
+    ): Pair<Int, Int> = CommunitySyncDownloader.syncRemoteContentDown(context, tipDao, scoutDao)
 }
