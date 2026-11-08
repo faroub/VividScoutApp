@@ -91,6 +91,7 @@ import com.example.ui.theme.BrandNight
 import com.example.ui.theme.BrandTeal
 import com.example.ui.theme.Secondary
 import com.example.util.AROffscreenDirection
+import com.example.util.SafeLog
 import com.example.util.ARProjectionUtils
 import com.example.util.ImageResolver
 import java.util.Locale
@@ -177,6 +178,10 @@ fun ARNavigationOverlay(
                             )
                         } catch (e: Exception) {
                             cameraProviderAvailable = false
+                            SafeLog.w(
+                                "ARNavigationOverlay",
+                                "Camera bind failed, running without live camera feed: ${e.message}"
+                            )
                         }
                     }, ContextCompat.getMainExecutor(ctx))
 

@@ -1,6 +1,7 @@
 package com.example.sensor
 
 import android.content.Context
+import com.example.util.SafeLog
 import android.hardware.GeomagneticField
 import android.hardware.Sensor
 import android.hardware.SensorEvent
@@ -43,6 +44,10 @@ data class CompassState(
      */
 class CompassSensorManager(context: Context) : SensorEventListener {
 
+    private companion object {
+        const val TAG = "CompassSensorManager"
+    }
+
     private val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
     private val rotationVectorSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
     private val accelerometer = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
@@ -82,7 +87,7 @@ class CompassSensorManager(context: Context) : SensorEventListener {
                 val declination = geoField.declination
                 _compassState.value = _compassState.value.copy(declinationDegrees = declination)
             } catch (e: Exception) {
-                // Fallback to 0 if calculation fails
+                SafeLog.w(TAG, "Declination calculation failed, keeping current value: ${e.message}")
             }
         }
 
@@ -133,7 +138,7 @@ class CompassSensorManager(context: Context) : SensorEventListener {
             )
             _compassState.value = _compassState.value.copy(declinationDegrees = geoField.declination)
         } catch (e: Exception) {
-            // Ignore error
+            SafeLog.w(TAG, "Declination update failed, keeping current value: ${e.message}")
         }
     }
 
