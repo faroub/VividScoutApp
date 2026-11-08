@@ -87,11 +87,11 @@
     <ID>EmptyFunctionBlock:PreScoutEngineTest.kt$PreScoutEngineTest.FakeScoutDao${}</ID>
     <ID>EmptyFunctionBlock:SpotDetailBottomSheetTest.kt$SpotDetailBottomSheetTest.&lt;no name provided&gt;${}</ID>
     <ID>FunctionNaming:ARNavigationOverlay.kt$@Composable fun ARNavigationOverlay( spots: List&lt;ScoutSpotEntity&gt;, userCoordinates: Pair&lt;Double, Double&gt;, onClose: () -&gt; Unit, onSelectSpot: (ScoutSpotEntity) -&gt; Unit, onPlanRoute: (ScoutSpotEntity) -&gt; Unit, modifier: Modifier = Modifier )</ID>
-    <ID>FunctionNaming:ARNavigationOverlay.kt$@Composable private fun ARCameraViewfinderSimulator()</ID>
-    <ID>FunctionNaming:ARNavigationOverlay.kt$@Composable private fun ARCompassHeaderHud( azimuthDegrees: Float, userCoordinates: Pair&lt;Double, Double&gt;, spotsCount: Int, hasCameraPermission: Boolean, onRequestPermission: () -&gt; Unit, onClose: () -&gt; Unit, modifier: Modifier = Modifier )</ID>
-    <ID>FunctionNaming:ARNavigationOverlay.kt$@Composable private fun AREdgeDirectionArrow( spot: ScoutSpotEntity, direction: AROffscreenDirection, distanceMeters: Float, onClick: () -&gt; Unit, modifier: Modifier = Modifier )</ID>
-    <ID>FunctionNaming:ARNavigationOverlay.kt$@Composable private fun ARSpatialMarkerPin( spot: ScoutSpotEntity, projection: com.example.util.ARProjectionPoint, isSelected: Boolean, onClick: () -&gt; Unit, modifier: Modifier = Modifier )</ID>
-    <ID>FunctionNaming:ARNavigationOverlay.kt$@Composable private fun ARSpotQuickInfoCard( spot: ScoutSpotEntity, userCoordinates: Pair&lt;Double, Double&gt;, onDismiss: () -&gt; Unit, onOpenDetails: () -&gt; Unit, onPlanRoute: () -&gt; Unit, modifier: Modifier = Modifier )</ID>
+    <ID>FunctionNaming:ARNavigationOverlaySections.kt$@Composable internal fun ARCameraViewfinderSimulator()</ID>
+    <ID>FunctionNaming:ARNavigationOverlaySections.kt$@Composable internal fun ARCompassHeaderHud( azimuthDegrees: Float, userCoordinates: Pair&lt;Double, Double&gt;, spotsCount: Int, hasCameraPermission: Boolean, onRequestPermission: () -&gt; Unit, onClose: () -&gt; Unit, modifier: Modifier = Modifier )</ID>
+    <ID>FunctionNaming:ARNavigationOverlaySections.kt$@Composable internal fun AREdgeDirectionArrow( spot: ScoutSpotEntity, direction: AROffscreenDirection, distanceMeters: Float, onClick: () -&gt; Unit, modifier: Modifier = Modifier )</ID>
+    <ID>FunctionNaming:ARNavigationOverlaySections.kt$@Composable internal fun ARSpatialMarkerPin( spot: ScoutSpotEntity, projection: com.example.util.ARProjectionPoint, isSelected: Boolean, onClick: () -&gt; Unit, modifier: Modifier = Modifier )</ID>
+    <ID>FunctionNaming:ARNavigationOverlaySections.kt$@Composable internal fun ARSpotQuickInfoCard( spot: ScoutSpotEntity, userCoordinates: Pair&lt;Double, Double&gt;, onDismiss: () -&gt; Unit, onOpenDetails: () -&gt; Unit, onPlanRoute: () -&gt; Unit, modifier: Modifier = Modifier )</ID>
     <ID>FunctionNaming:AchievementsShowcaseSection.kt$@Composable fun AchievementsShowcaseSection( achievements: List&lt;AchievementEntity&gt;, unlockedCount: Int, modifier: Modifier = Modifier )</ID>
     <ID>FunctionNaming:AchievementsShowcaseSection.kt$@Composable private fun AchievementBadgeCard( achievement: AchievementEntity, modifier: Modifier = Modifier )</ID>
     <ID>FunctionNaming:AppDialogLayer.kt$@Composable fun AppDialogLayer( exploreViewModel: ExploreViewModel, offlineMapsViewModel: OfflineMapsViewModel, profileViewModel: ProfileViewModel, locationViewModel: LocationViewModel, exploreState: ExploreUiState, offlineMapsState: OfflineMapsUiState, profileState: ProfileUiState, locationState: LocationUiState, permissionActions: LocationPermissionActions )</ID>
@@ -220,9 +220,9 @@
     <ID>InstanceOfCheckForException:GeminiSpotService.kt$GeminiSpotService$t !is TimeoutCancellationException</ID>
     <ID>InstanceOfCheckForException:GeminiSpotService.kt$GeminiSpotService$t is CancellationException</ID>
     <ID>LongMethod:ARNavigationOverlay.kt$@Composable fun ARNavigationOverlay( spots: List&lt;ScoutSpotEntity&gt;, userCoordinates: Pair&lt;Double, Double&gt;, onClose: () -&gt; Unit, onSelectSpot: (ScoutSpotEntity) -&gt; Unit, onPlanRoute: (ScoutSpotEntity) -&gt; Unit, modifier: Modifier = Modifier )</ID>
-    <ID>LongMethod:ARNavigationOverlay.kt$@Composable private fun ARCompassHeaderHud( azimuthDegrees: Float, userCoordinates: Pair&lt;Double, Double&gt;, spotsCount: Int, hasCameraPermission: Boolean, onRequestPermission: () -&gt; Unit, onClose: () -&gt; Unit, modifier: Modifier = Modifier )</ID>
-    <ID>LongMethod:ARNavigationOverlay.kt$@Composable private fun ARSpatialMarkerPin( spot: ScoutSpotEntity, projection: com.example.util.ARProjectionPoint, isSelected: Boolean, onClick: () -&gt; Unit, modifier: Modifier = Modifier )</ID>
-    <ID>LongMethod:ARNavigationOverlay.kt$@Composable private fun ARSpotQuickInfoCard( spot: ScoutSpotEntity, userCoordinates: Pair&lt;Double, Double&gt;, onDismiss: () -&gt; Unit, onOpenDetails: () -&gt; Unit, onPlanRoute: () -&gt; Unit, modifier: Modifier = Modifier )</ID>
+    <ID>LongMethod:ARNavigationOverlaySections.kt$@Composable internal fun ARCompassHeaderHud( azimuthDegrees: Float, userCoordinates: Pair&lt;Double, Double&gt;, spotsCount: Int, hasCameraPermission: Boolean, onRequestPermission: () -&gt; Unit, onClose: () -&gt; Unit, modifier: Modifier = Modifier )</ID>
+    <ID>LongMethod:ARNavigationOverlaySections.kt$@Composable internal fun ARSpatialMarkerPin( spot: ScoutSpotEntity, projection: com.example.util.ARProjectionPoint, isSelected: Boolean, onClick: () -&gt; Unit, modifier: Modifier = Modifier )</ID>
+    <ID>LongMethod:ARNavigationOverlaySections.kt$@Composable internal fun ARSpotQuickInfoCard( spot: ScoutSpotEntity, userCoordinates: Pair&lt;Double, Double&gt;, onDismiss: () -&gt; Unit, onOpenDetails: () -&gt; Unit, onPlanRoute: () -&gt; Unit, modifier: Modifier = Modifier )</ID>
     <ID>LongMethod:AStarPathfinder.kt$AStarPathfinder$fun findShortestPath( startLat: Double, startLng: Double, destLat: Double, destLng: Double, startName: String = "Starting Point", destName: String = "Destination" ): AStarRouteResult</ID>
     <ID>LongMethod:AchievementsShowcaseSection.kt$@Composable fun AchievementsShowcaseSection( achievements: List&lt;AchievementEntity&gt;, unlockedCount: Int, modifier: Modifier = Modifier )</ID>
     <ID>LongMethod:AchievementsShowcaseSection.kt$@Composable private fun AchievementBadgeCard( achievement: AchievementEntity, modifier: Modifier = Modifier )</ID>
@@ -346,9 +346,9 @@
     <ID>LongMethod:WeatherRepository.kt$WeatherRepository$suspend fun getOrFetchWeather( gemId: String, latitude: Double, longitude: Double, category: String, forceRefresh: Boolean = false ): WeatherReport</ID>
     <ID>LongMethod:WeatherSuitabilityEvaluator.kt$WeatherSuitabilityEvaluator$fun evaluate( category: String, tempC: Double, feelsLikeC: Double, precipChance: Int, condition: String ): Pair&lt;SuitabilityLevel, String&gt;</ID>
     <ID>LongMethod:WikidataSearchService.kt$WikidataSearchService$private suspend fun queryWikidataSparqlPhase( lat: Double, lon: Double, category: String, radiusKm: Double, primaryLang: String ): List&lt;ScoutSpotEntity&gt;</ID>
-    <ID>LongParameterList:ARNavigationOverlay.kt$( azimuthDegrees: Float, userCoordinates: Pair&lt;Double, Double&gt;, spotsCount: Int, hasCameraPermission: Boolean, onRequestPermission: () -&gt; Unit, onClose: () -&gt; Unit, modifier: Modifier = Modifier )</ID>
-    <ID>LongParameterList:ARNavigationOverlay.kt$( spot: ScoutSpotEntity, userCoordinates: Pair&lt;Double, Double&gt;, onDismiss: () -&gt; Unit, onOpenDetails: () -&gt; Unit, onPlanRoute: () -&gt; Unit, modifier: Modifier = Modifier )</ID>
     <ID>LongParameterList:ARNavigationOverlay.kt$( spots: List&lt;ScoutSpotEntity&gt;, userCoordinates: Pair&lt;Double, Double&gt;, onClose: () -&gt; Unit, onSelectSpot: (ScoutSpotEntity) -&gt; Unit, onPlanRoute: (ScoutSpotEntity) -&gt; Unit, modifier: Modifier = Modifier )</ID>
+    <ID>LongParameterList:ARNavigationOverlaySections.kt$( azimuthDegrees: Float, userCoordinates: Pair&lt;Double, Double&gt;, spotsCount: Int, hasCameraPermission: Boolean, onRequestPermission: () -&gt; Unit, onClose: () -&gt; Unit, modifier: Modifier = Modifier )</ID>
+    <ID>LongParameterList:ARNavigationOverlaySections.kt$( spot: ScoutSpotEntity, userCoordinates: Pair&lt;Double, Double&gt;, onDismiss: () -&gt; Unit, onOpenDetails: () -&gt; Unit, onPlanRoute: () -&gt; Unit, modifier: Modifier = Modifier )</ID>
     <ID>LongParameterList:ARProjectionUtils.kt$ARProjectionUtils$( userLat: Double, userLng: Double, targetLat: Double, targetLng: Double, deviceAzimuth: Float, devicePitch: Float, screenWidthPx: Float, screenHeightPx: Float, horizontalFovDegrees: Float = DEFAULT_HORIZONTAL_FOV_DEGREES, verticalFovDegrees: Float = DEFAULT_VERTICAL_FOV_DEGREES )</ID>
     <ID>LongParameterList:AStarPathfinder.kt$AStarPathfinder$( startLat: Double, startLng: Double, destLat: Double, destLng: Double, startName: String = "Starting Point", destName: String = "Destination" )</ID>
     <ID>LongParameterList:AStarPathfinder.kt$AStarPathfinder$( startLat: Double, startLng: Double, destLat: Double, destLng: Double, startName: String, destName: String, distance: Double )</ID>
@@ -416,28 +416,28 @@
     <ID>LoopWithTooManyJumpStatements:OverpassScraperService.kt$OverpassScraperService$for</ID>
     <ID>LoopWithTooManyJumpStatements:PlaceMerger.kt$PlaceMerger$for</ID>
     <ID>LoopWithTooManyJumpStatements:WikidataSearchService.kt$WikidataSearchService$for</ID>
-    <ID>MagicNumber:ARNavigationOverlay.kt$0xCC0F172A</ID>
-    <ID>MagicNumber:ARNavigationOverlay.kt$0xDC0F172A</ID>
-    <ID>MagicNumber:ARNavigationOverlay.kt$0xE60F172A</ID>
-    <ID>MagicNumber:ARNavigationOverlay.kt$0xF00F172A</ID>
-    <ID>MagicNumber:ARNavigationOverlay.kt$0xFF020617</ID>
-    <ID>MagicNumber:ARNavigationOverlay.kt$0xFF0F172A</ID>
-    <ID>MagicNumber:ARNavigationOverlay.kt$0xFF1E293B</ID>
-    <ID>MagicNumber:ARNavigationOverlay.kt$0xFFF59E0B</ID>
-    <ID>MagicNumber:ARNavigationOverlay.kt$0xFFFDE047</ID>
-    <ID>MagicNumber:ARNavigationOverlay.kt$1000</ID>
-    <ID>MagicNumber:ARNavigationOverlay.kt$1000f</ID>
-    <ID>MagicNumber:ARNavigationOverlay.kt$22.5f</ID>
-    <ID>MagicNumber:ARNavigationOverlay.kt$3</ID>
-    <ID>MagicNumber:ARNavigationOverlay.kt$360f</ID>
-    <ID>MagicNumber:ARNavigationOverlay.kt$4</ID>
     <ID>MagicNumber:ARNavigationOverlay.kt$40</ID>
-    <ID>MagicNumber:ARNavigationOverlay.kt$45f</ID>
-    <ID>MagicNumber:ARNavigationOverlay.kt$5</ID>
-    <ID>MagicNumber:ARNavigationOverlay.kt$6</ID>
-    <ID>MagicNumber:ARNavigationOverlay.kt$7</ID>
     <ID>MagicNumber:ARNavigationOverlay.kt$8</ID>
     <ID>MagicNumber:ARNavigationOverlay.kt$90</ID>
+    <ID>MagicNumber:ARNavigationOverlaySections.kt$0xCC0F172A</ID>
+    <ID>MagicNumber:ARNavigationOverlaySections.kt$0xDC0F172A</ID>
+    <ID>MagicNumber:ARNavigationOverlaySections.kt$0xE60F172A</ID>
+    <ID>MagicNumber:ARNavigationOverlaySections.kt$0xF00F172A</ID>
+    <ID>MagicNumber:ARNavigationOverlaySections.kt$0xFF020617</ID>
+    <ID>MagicNumber:ARNavigationOverlaySections.kt$0xFF0F172A</ID>
+    <ID>MagicNumber:ARNavigationOverlaySections.kt$0xFF1E293B</ID>
+    <ID>MagicNumber:ARNavigationOverlaySections.kt$0xFFF59E0B</ID>
+    <ID>MagicNumber:ARNavigationOverlaySections.kt$0xFFFDE047</ID>
+    <ID>MagicNumber:ARNavigationOverlaySections.kt$1000</ID>
+    <ID>MagicNumber:ARNavigationOverlaySections.kt$1000f</ID>
+    <ID>MagicNumber:ARNavigationOverlaySections.kt$22.5f</ID>
+    <ID>MagicNumber:ARNavigationOverlaySections.kt$3</ID>
+    <ID>MagicNumber:ARNavigationOverlaySections.kt$360f</ID>
+    <ID>MagicNumber:ARNavigationOverlaySections.kt$4</ID>
+    <ID>MagicNumber:ARNavigationOverlaySections.kt$45f</ID>
+    <ID>MagicNumber:ARNavigationOverlaySections.kt$5</ID>
+    <ID>MagicNumber:ARNavigationOverlaySections.kt$6</ID>
+    <ID>MagicNumber:ARNavigationOverlaySections.kt$7</ID>
     <ID>MagicNumber:ARProjectionUtils.kt$ARProjectionUtils$120f</ID>
     <ID>MagicNumber:ARProjectionUtils.kt$ARProjectionUtils$160f</ID>
     <ID>MagicNumber:ARProjectionUtils.kt$ARProjectionUtils$180f</ID>
@@ -2157,7 +2157,7 @@
     <ID>TooManyFunctions:ScoutGemRepository.kt$ScoutGemRepository</ID>
     <ID>TooManyFunctions:ScoutMapViewModel.kt$ScoutMapViewModel : ViewModel</ID>
     <ID>TooManyFunctions:ScoutRepository.kt$ScoutRepository</ID>
-    <ID>UnusedParameter:ARNavigationOverlay.kt$userCoordinates: Pair&lt;Double, Double&gt;</ID>
+    <ID>UnusedParameter:ARNavigationOverlaySections.kt$userCoordinates: Pair&lt;Double, Double&gt;</ID>
     <ID>UnusedParameter:AppDatabase.kt$AppDatabase.Companion$dao: ScoutDao</ID>
     <ID>UnusedParameter:BottomNavigationDock.kt$onAddSpotClick: () -&gt; Unit = {}</ID>
     <ID>UnusedParameter:DiscoverGemsLoadingState.kt$userCoordinates: Pair&lt;Double, Double&gt;</ID>
