@@ -1,5 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
 <!--
-  Baseline regenerated 2026-11-08 (after commit a988b31).
+  Baseline regenerated 2026-11-08 (after the dependency-bump merges: room 2.8.5,
+  retrofit 3.0.0, coroutines-test 1.11.0, robolectric 4.17, firebase-functions 7.4.0,
+  and the CI actions bumps — these upgrades resolved 8 previously-baselined warnings).
   Lint fails CI only on NEW findings (warnings beyond this baseline; abortOnError for errors).
   Rule groups and reasons (triage of all reported rules, see docs task T4):
   - (b) low risk: UnusedResources (unreferenced strings/colors, dead weight, no runtime effect);
@@ -10,9 +14,7 @@
   - Note: R.string.fallback_location_banner_* is a false positive — the strings are used through
     the LocalAppStrings indirection which lint cannot trace. Kept here so it does not surface as
     a new warning; remove on the next deliberate baseline cleanup.
-  - No (a) real-bug findings exist in the baseline.
 -->
-<?xml version="1.0" encoding="UTF-8"?>
 <issues format="6" by="lint 9.1.1" type="baseline" client="gradle" dependencies="false" name="AGP (9.1.1)" variant="all" version="9.1.1">
 
     <issue
@@ -193,50 +195,6 @@
 
     <issue
         id="GradleDependency"
-        message="A newer version of androidx.room:room-compiler than 2.7.0 is available: 2.8.5"
-        errorLine1="room = &quot;2.7.0&quot;"
-        errorLine2="       ~~~~~~~">
-        <location
-            file="$HOME/Documents/Projects/VividScoutApp/gradle/libs.versions.toml"
-            line="15"
-            column="8"/>
-    </issue>
-
-    <issue
-        id="GradleDependency"
-        message="A newer version of androidx.room:room-ktx than 2.7.0 is available: 2.8.5"
-        errorLine1="room = &quot;2.7.0&quot;"
-        errorLine2="       ~~~~~~~">
-        <location
-            file="$HOME/Documents/Projects/VividScoutApp/gradle/libs.versions.toml"
-            line="15"
-            column="8"/>
-    </issue>
-
-    <issue
-        id="GradleDependency"
-        message="A newer version of androidx.room:room-runtime than 2.7.0 is available: 2.8.5"
-        errorLine1="room = &quot;2.7.0&quot;"
-        errorLine2="       ~~~~~~~">
-        <location
-            file="$HOME/Documents/Projects/VividScoutApp/gradle/libs.versions.toml"
-            line="15"
-            column="8"/>
-    </issue>
-
-    <issue
-        id="GradleDependency"
-        message="A newer version of androidx.room:room-testing than 2.7.0 is available: 2.8.5"
-        errorLine1="room = &quot;2.7.0&quot;"
-        errorLine2="       ~~~~~~~">
-        <location
-            file="$HOME/Documents/Projects/VividScoutApp/gradle/libs.versions.toml"
-            line="15"
-            column="8"/>
-    </issue>
-
-    <issue
-        id="GradleDependency"
         message="A newer version of androidx.test:core than 1.6.1 is available: 1.7.0"
         errorLine1="core = &quot;1.6.1&quot;"
         errorLine2="       ~~~~~~~">
@@ -380,39 +338,6 @@
 
     <issue
         id="NewerVersionAvailable"
-        message="A newer version of org.jetbrains.kotlinx:kotlinx-coroutines-test than 1.10.2 is available: 1.11.0"
-        errorLine1="kotlinxCoroutinesTest = &quot;1.10.2&quot;"
-        errorLine2="                        ~~~~~~~~">
-        <location
-            file="$HOME/Documents/Projects/VividScoutApp/gradle/libs.versions.toml"
-            line="16"
-            column="25"/>
-    </issue>
-
-    <issue
-        id="NewerVersionAvailable"
-        message="A newer version of com.squareup.retrofit2:converter-moshi than 2.11.0 is available: 3.0.0"
-        errorLine1="retrofit = &quot;2.11.0&quot;"
-        errorLine2="           ~~~~~~~~">
-        <location
-            file="$HOME/Documents/Projects/VividScoutApp/gradle/libs.versions.toml"
-            line="20"
-            column="12"/>
-    </issue>
-
-    <issue
-        id="NewerVersionAvailable"
-        message="A newer version of com.squareup.retrofit2:retrofit than 2.11.0 is available: 3.0.0"
-        errorLine1="retrofit = &quot;2.11.0&quot;"
-        errorLine2="           ~~~~~~~~">
-        <location
-            file="$HOME/Documents/Projects/VividScoutApp/gradle/libs.versions.toml"
-            line="20"
-            column="12"/>
-    </issue>
-
-    <issue
-        id="NewerVersionAvailable"
         message="A newer version of org.jetbrains.kotlinx:kotlinx-coroutines-android than 1.10.2 is available: 1.11.0"
         errorLine1="kotlinxCoroutinesAndroid = &quot;1.10.2&quot;"
         errorLine2="                           ~~~~~~~~">
@@ -453,17 +378,6 @@
             file="$HOME/Documents/Projects/VividScoutApp/gradle/libs.versions.toml"
             line="29"
             column="10"/>
-    </issue>
-
-    <issue
-        id="NewerVersionAvailable"
-        message="A newer version of org.robolectric:robolectric than 4.16.1 is available: 4.17"
-        errorLine1="robolectric = &quot;4.16.1&quot;"
-        errorLine2="              ~~~~~~~~">
-        <location
-            file="$HOME/Documents/Projects/VividScoutApp/gradle/libs.versions.toml"
-            line="33"
-            column="15"/>
     </issue>
 
     <issue
@@ -2092,7 +2006,7 @@
         errorLine2="                                                        ~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/com/example/data/sync/FirestoreSyncManager.kt"
-            line="182"
+            line="114"
             column="57"/>
     </issue>
 
