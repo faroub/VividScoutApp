@@ -73,7 +73,6 @@
     <ID>CyclomaticComplexMethod:SourceAttributionRow.kt$fun formatPlaceAttribution( sourceNameOrTag: String?, license: String? = null, sourceUrl: String? = null ): PlaceAttributionData</ID>
     <ID>CyclomaticComplexMethod:SpotDetailBottomSheet.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun SpotDetailBottomSheet( spot: ScoutSpotEntity, onDismiss: () -&gt; Unit, onToggleSave: () -&gt; Unit, onToggleDiscovered: () -&gt; Unit = {}, onSaveNote: (String) -&gt; Unit = {}, onUpvote: () -&gt; Unit, onToggleAudio: () -&gt; Unit, isPlayingAudio: Boolean, onPlanRoute: (() -&gt; Unit)? = null, onPostTip: ((spotId: String, spotTitle: String, content: String, isStatus: Boolean, category: String) -&gt; Unit)? = null, onReFetchImage: (spotId: String, onResult: (Boolean, String) -&gt; Unit) -&gt; Unit = { _, _ -&gt; }, onUploadPhoto: (suspend (spotId: String, uri: android.net.Uri) -&gt; Result&lt;com.example.data.repository.SpotPhotoData&gt;)? = null, onReportPhoto: (suspend (photoId: String) -&gt; Result&lt;Int&gt;)? = null, onLoadOlderPhotos: (suspend (spotId: String, cursor: com.example.data.repository.PhotoPageCursor?) -&gt; Result&lt;com.example.data.repository.OlderPhotosPage&gt;)? = null )</ID>
     <ID>CyclomaticComplexMethod:SpotDetailPhotosSection.kt$@Composable fun SpotDetailPhotosSection( spot: ScoutSpotEntity, onUploadPhoto: (suspend (spotId: String, uri: Uri) -&gt; Result&lt;SpotPhotoData&gt;)? = null, onReportPhoto: (suspend (photoId: String) -&gt; Result&lt;Int&gt;)? = null, onLoadOlderPhotos: (suspend (spotId: String, cursor: PhotoPageCursor?) -&gt; Result&lt;OlderPhotosPage&gt;)? = null )</ID>
-    <ID>CyclomaticComplexMethod:SpotGemModal.kt$@Composable fun SpotGemModal( onDismiss: () -&gt; Unit, onSubmit: (name: String, category: String, photoUri: String?, notes: String) -&gt; Unit, draftCount: Int = 1, userLocation: Location? = null, userCoordinates: Pair&lt;Double, Double&gt; = Pair(38.7112, -9.1423), isUsingGpsLocation: Boolean = true, selectedGlobalCity: String? = null )</ID>
     <ID>CyclomaticComplexMethod:SpotPreviewPopupCard.kt$@Composable fun SpotPreviewPopupCard( spot: ScoutSpotEntity, onCardClick: () -&gt; Unit, onDismiss: () -&gt; Unit, modifier: Modifier = Modifier, userLat: Double = Double.NaN, userLng: Double = Double.NaN )</ID>
     <ID>CyclomaticComplexMethod:StartupGpsLocatingScreen.kt$@Composable fun StartupGpsLocatingScreen( status: GpsAcquisitionStatus, detectedCity: String?, onRequestPermission: () -&gt; Unit, onOpenSettings: () -&gt; Unit, onRetry: () -&gt; Unit, onManualCityClick: () -&gt; Unit, modifier: Modifier = Modifier )</ID>
     <ID>CyclomaticComplexMethod:TouristicSourcesModal.kt$@Composable private fun TouristicSourceCardItem( source: TouristicSourceInfo, isSelected: Boolean, onSelect: () -&gt; Unit, onSync: () -&gt; Unit, isSyncing: Boolean )</ID>
@@ -200,9 +199,13 @@
     <ID>FunctionNaming:SpotDetailNoteAndActions.kt$@Composable fun SpotDetailNoteAndActions( spot: ScoutSpotEntity, onSaveNote: (String) -&gt; Unit, onToggleDiscovered: () -&gt; Unit, onToggleSave: () -&gt; Unit, onUpvote: () -&gt; Unit, onPlanRoute: (() -&gt; Unit)? = null, onDismiss: () -&gt; Unit )</ID>
     <ID>FunctionNaming:SpotDetailPhotosSection.kt$@Composable fun SpotDetailPhotosSection( spot: ScoutSpotEntity, onUploadPhoto: (suspend (spotId: String, uri: Uri) -&gt; Result&lt;SpotPhotoData&gt;)? = null, onReportPhoto: (suspend (photoId: String) -&gt; Result&lt;Int&gt;)? = null, onLoadOlderPhotos: (suspend (spotId: String, cursor: PhotoPageCursor?) -&gt; Result&lt;OlderPhotosPage&gt;)? = null )</ID>
     <ID>FunctionNaming:SpotDetailWeatherSection.kt$@Composable fun SpotDetailWeatherSection(spot: ScoutSpotEntity)</ID>
-    <ID>FunctionNaming:SpotGemModal.kt$@Composable fun OfflineAlertBanner( draftCount: Int, onQueueClick: () -&gt; Unit, onDismissClick: () -&gt; Unit, modifier: Modifier = Modifier )</ID>
     <ID>FunctionNaming:SpotGemModal.kt$@Composable fun SpotGemModal( onDismiss: () -&gt; Unit, onSubmit: (name: String, category: String, photoUri: String?, notes: String) -&gt; Unit, draftCount: Int = 1, userLocation: Location? = null, userCoordinates: Pair&lt;Double, Double&gt; = Pair(38.7112, -9.1423), isUsingGpsLocation: Boolean = true, selectedGlobalCity: String? = null )</ID>
-    <ID>FunctionNaming:SpotGemModal.kt$@Composable private fun CategoryModalChip( title: String, subtitle: String, icon: ImageVector, selected: Boolean, selectedColor: Color, iconBgColor: Color, iconTint: Color, onClick: () -&gt; Unit, modifier: Modifier = Modifier )</ID>
+    <ID>FunctionNaming:SpotGemModalSections.kt$@Composable fun OfflineAlertBanner( draftCount: Int, onQueueClick: () -&gt; Unit, onDismissClick: () -&gt; Unit, modifier: Modifier = Modifier )</ID>
+    <ID>FunctionNaming:SpotGemModalSections.kt$@Composable internal fun CategoryModalChip( title: String, subtitle: String, icon: ImageVector, selected: Boolean, selectedColor: Color, iconBgColor: Color, iconTint: Color, onClick: () -&gt; Unit, modifier: Modifier = Modifier )</ID>
+    <ID>FunctionNaming:SpotGemModalSections.kt$@Composable internal fun SpotGemModalHeader( onDismiss: () -&gt; Unit )</ID>
+    <ID>FunctionNaming:SpotGemModalSections.kt$@Composable internal fun SpotGemNameAndCategoryFields( spotName: String, onSpotNameChange: (String) -&gt; Unit, selectedCategory: String, onSelectCategory: (String) -&gt; Unit )</ID>
+    <ID>FunctionNaming:SpotGemModalSections.kt$@Composable internal fun SpotGemNotesAndSubmitSection( spotNotes: String, onSpotNotesChange: (String) -&gt; Unit, isSubmittedSuccess: Boolean, onSubmitClick: () -&gt; Unit )</ID>
+    <ID>FunctionNaming:SpotGemModalSections.kt$@Composable internal fun SpotGemPhotoAndLocationSection( photoSelected: Boolean, onPickPhoto: () -&gt; Unit, isUsingGpsLocation: Boolean, userLocation: Location?, userCoordinates: Pair&lt;Double, Double&gt;, selectedGlobalCity: String? )</ID>
     <ID>FunctionNaming:SpotPreviewPopupCard.kt$@Composable fun SpotPreviewPopupCard( spot: ScoutSpotEntity, onCardClick: () -&gt; Unit, onDismiss: () -&gt; Unit, modifier: Modifier = Modifier, userLat: Double = Double.NaN, userLng: Double = Double.NaN )</ID>
     <ID>FunctionNaming:StartupGpsLocatingScreen.kt$@Composable fun StartupGpsLocatingScreen( status: GpsAcquisitionStatus, detectedCity: String?, onRequestPermission: () -&gt; Unit, onOpenSettings: () -&gt; Unit, onRetry: () -&gt; Unit, onManualCityClick: () -&gt; Unit, modifier: Modifier = Modifier )</ID>
     <ID>FunctionNaming:Theme.kt$@Composable fun VividScoutTheme( darkTheme: Boolean = false, // Design predominantly uses bright high-contrast day theme &amp; dark onboarding content: @Composable () -&gt; Unit )</ID>
@@ -327,8 +330,12 @@
     <ID>LongMethod:SpotDetailHistorySection.kt$@Composable fun SpotDetailWikidataContextCard(spot: ScoutSpotEntity)</ID>
     <ID>LongMethod:SpotDetailNoteAndActions.kt$@Composable fun SpotDetailNoteAndActions( spot: ScoutSpotEntity, onSaveNote: (String) -&gt; Unit, onToggleDiscovered: () -&gt; Unit, onToggleSave: () -&gt; Unit, onUpvote: () -&gt; Unit, onPlanRoute: (() -&gt; Unit)? = null, onDismiss: () -&gt; Unit )</ID>
     <ID>LongMethod:SpotDetailPhotosSection.kt$@Composable fun SpotDetailPhotosSection( spot: ScoutSpotEntity, onUploadPhoto: (suspend (spotId: String, uri: Uri) -&gt; Result&lt;SpotPhotoData&gt;)? = null, onReportPhoto: (suspend (photoId: String) -&gt; Result&lt;Int&gt;)? = null, onLoadOlderPhotos: (suspend (spotId: String, cursor: PhotoPageCursor?) -&gt; Result&lt;OlderPhotosPage&gt;)? = null )</ID>
-    <ID>LongMethod:SpotGemModal.kt$@Composable fun OfflineAlertBanner( draftCount: Int, onQueueClick: () -&gt; Unit, onDismissClick: () -&gt; Unit, modifier: Modifier = Modifier )</ID>
     <ID>LongMethod:SpotGemModal.kt$@Composable fun SpotGemModal( onDismiss: () -&gt; Unit, onSubmit: (name: String, category: String, photoUri: String?, notes: String) -&gt; Unit, draftCount: Int = 1, userLocation: Location? = null, userCoordinates: Pair&lt;Double, Double&gt; = Pair(38.7112, -9.1423), isUsingGpsLocation: Boolean = true, selectedGlobalCity: String? = null )</ID>
+    <ID>LongMethod:SpotGemModalSections.kt$@Composable fun OfflineAlertBanner( draftCount: Int, onQueueClick: () -&gt; Unit, onDismissClick: () -&gt; Unit, modifier: Modifier = Modifier )</ID>
+    <ID>LongMethod:SpotGemModalSections.kt$@Composable internal fun SpotGemModalHeader( onDismiss: () -&gt; Unit )</ID>
+    <ID>LongMethod:SpotGemModalSections.kt$@Composable internal fun SpotGemNameAndCategoryFields( spotName: String, onSpotNameChange: (String) -&gt; Unit, selectedCategory: String, onSelectCategory: (String) -&gt; Unit )</ID>
+    <ID>LongMethod:SpotGemModalSections.kt$@Composable internal fun SpotGemNotesAndSubmitSection( spotNotes: String, onSpotNotesChange: (String) -&gt; Unit, isSubmittedSuccess: Boolean, onSubmitClick: () -&gt; Unit )</ID>
+    <ID>LongMethod:SpotGemModalSections.kt$@Composable internal fun SpotGemPhotoAndLocationSection( photoSelected: Boolean, onPickPhoto: () -&gt; Unit, isUsingGpsLocation: Boolean, userLocation: Location?, userCoordinates: Pair&lt;Double, Double&gt;, selectedGlobalCity: String? )</ID>
     <ID>LongMethod:SpotPreviewPopupCard.kt$@Composable fun SpotPreviewPopupCard( spot: ScoutSpotEntity, onCardClick: () -&gt; Unit, onDismiss: () -&gt; Unit, modifier: Modifier = Modifier, userLat: Double = Double.NaN, userLng: Double = Double.NaN )</ID>
     <ID>LongMethod:StartupGpsLocatingScreen.kt$@Composable fun StartupGpsLocatingScreen( status: GpsAcquisitionStatus, detectedCity: String?, onRequestPermission: () -&gt; Unit, onOpenSettings: () -&gt; Unit, onRetry: () -&gt; Unit, onManualCityClick: () -&gt; Unit, modifier: Modifier = Modifier )</ID>
     <ID>LongMethod:TouristicSourcesModal.kt$@Composable fun TouristicSourcesModal( onDismiss: () -&gt; Unit, onSyncSource: (sourceId: String) -&gt; Unit, onSyncAllSources: () -&gt; Unit, isSyncing: Boolean = false )</ID>
@@ -392,7 +399,8 @@
     <ID>LongParameterList:SpotDetailBottomSheet.kt$( spot: ScoutSpotEntity, onDismiss: () -&gt; Unit, onToggleSave: () -&gt; Unit, onToggleDiscovered: () -&gt; Unit = {}, onSaveNote: (String) -&gt; Unit = {}, onUpvote: () -&gt; Unit, onToggleAudio: () -&gt; Unit, isPlayingAudio: Boolean, onPlanRoute: (() -&gt; Unit)? = null, onPostTip: ((spotId: String, spotTitle: String, content: String, isStatus: Boolean, category: String) -&gt; Unit)? = null, onReFetchImage: (spotId: String, onResult: (Boolean, String) -&gt; Unit) -&gt; Unit = { _, _ -&gt; }, onUploadPhoto: (suspend (spotId: String, uri: android.net.Uri) -&gt; Result&lt;com.example.data.repository.SpotPhotoData&gt;)? = null, onReportPhoto: (suspend (photoId: String) -&gt; Result&lt;Int&gt;)? = null, onLoadOlderPhotos: (suspend (spotId: String, cursor: com.example.data.repository.PhotoPageCursor?) -&gt; Result&lt;com.example.data.repository.OlderPhotosPage&gt;)? = null )</ID>
     <ID>LongParameterList:SpotDetailNoteAndActions.kt$( spot: ScoutSpotEntity, onSaveNote: (String) -&gt; Unit, onToggleDiscovered: () -&gt; Unit, onToggleSave: () -&gt; Unit, onUpvote: () -&gt; Unit, onPlanRoute: (() -&gt; Unit)? = null, onDismiss: () -&gt; Unit )</ID>
     <ID>LongParameterList:SpotGemModal.kt$( onDismiss: () -&gt; Unit, onSubmit: (name: String, category: String, photoUri: String?, notes: String) -&gt; Unit, draftCount: Int = 1, userLocation: Location? = null, userCoordinates: Pair&lt;Double, Double&gt; = Pair(38.7112, -9.1423), isUsingGpsLocation: Boolean = true, selectedGlobalCity: String? = null )</ID>
-    <ID>LongParameterList:SpotGemModal.kt$( title: String, subtitle: String, icon: ImageVector, selected: Boolean, selectedColor: Color, iconBgColor: Color, iconTint: Color, onClick: () -&gt; Unit, modifier: Modifier = Modifier )</ID>
+    <ID>LongParameterList:SpotGemModalSections.kt$( photoSelected: Boolean, onPickPhoto: () -&gt; Unit, isUsingGpsLocation: Boolean, userLocation: Location?, userCoordinates: Pair&lt;Double, Double&gt;, selectedGlobalCity: String? )</ID>
+    <ID>LongParameterList:SpotGemModalSections.kt$( title: String, subtitle: String, icon: ImageVector, selected: Boolean, selectedColor: Color, iconBgColor: Color, iconTint: Color, onClick: () -&gt; Unit, modifier: Modifier = Modifier )</ID>
     <ID>LongParameterList:SpotPreviewPopupCard.kt$( spot: ScoutSpotEntity, onCardClick: () -&gt; Unit, onDismiss: () -&gt; Unit, modifier: Modifier = Modifier, userLat: Double = Double.NaN, userLng: Double = Double.NaN )</ID>
     <ID>LongParameterList:StartupGpsLocatingScreen.kt$( status: GpsAcquisitionStatus, detectedCity: String?, onRequestPermission: () -&gt; Unit, onOpenSettings: () -&gt; Unit, onRetry: () -&gt; Unit, onManualCityClick: () -&gt; Unit, modifier: Modifier = Modifier )</ID>
     <ID>LongParameterList:VividScoutTopBar.kt$( onSearchClick: () -&gt; Unit, onRouteClick: () -&gt; Unit = {}, onProfileClick: () -&gt; Unit, onAddSpotClick: () -&gt; Unit = {}, onToggleHeaderStyle: () -&gt; Unit, onLanguageClick: () -&gt; Unit, onGpsClick: () -&gt; Unit = {}, onArClick: () -&gt; Unit = {}, hasLocationPermission: Boolean = true, selectedGlobalCity: String? = null, isUsingGpsLocation: Boolean = true, isPrefetchActive: Boolean = false, prefetchedCount: Int = 0, prefetchPowerMode: com.example.util.PrefetchPowerMode = com.example.util.PrefetchPowerMode.OPTIMAL_WALKING, onPrefetchClick: () -&gt; Unit = {}, modifier: Modifier = Modifier )</ID>
@@ -1191,20 +1199,20 @@
     <ID>MagicNumber:SpotDetailBottomSheet.kt$0xFFF3E8FF</ID>
     <ID>MagicNumber:SpotDetailCommunitySection.kt$3</ID>
     <ID>MagicNumber:SpotDetailHistorySection.kt$80</ID>
-    <ID>MagicNumber:SpotGemModal.kt$0xFF059669</ID>
-    <ID>MagicNumber:SpotGemModal.kt$0xFF7C3AED</ID>
-    <ID>MagicNumber:SpotGemModal.kt$0xFF92400E</ID>
-    <ID>MagicNumber:SpotGemModal.kt$0xFFB45309</ID>
-    <ID>MagicNumber:SpotGemModal.kt$0xFFCCFBF1</ID>
-    <ID>MagicNumber:SpotGemModal.kt$0xFFD1FAE5</ID>
-    <ID>MagicNumber:SpotGemModal.kt$0xFFD97706</ID>
-    <ID>MagicNumber:SpotGemModal.kt$0xFFF3E8FF</ID>
-    <ID>MagicNumber:SpotGemModal.kt$0xFFF59E0B</ID>
-    <ID>MagicNumber:SpotGemModal.kt$0xFFF97316</ID>
-    <ID>MagicNumber:SpotGemModal.kt$0xFFFEF3C7</ID>
-    <ID>MagicNumber:SpotGemModal.kt$1000</ID>
     <ID>MagicNumber:SpotGemModal.kt$38.7112</ID>
     <ID>MagicNumber:SpotGemModal.kt$9.1423</ID>
+    <ID>MagicNumber:SpotGemModalSections.kt$0xFF059669</ID>
+    <ID>MagicNumber:SpotGemModalSections.kt$0xFF7C3AED</ID>
+    <ID>MagicNumber:SpotGemModalSections.kt$0xFF92400E</ID>
+    <ID>MagicNumber:SpotGemModalSections.kt$0xFFB45309</ID>
+    <ID>MagicNumber:SpotGemModalSections.kt$0xFFCCFBF1</ID>
+    <ID>MagicNumber:SpotGemModalSections.kt$0xFFD1FAE5</ID>
+    <ID>MagicNumber:SpotGemModalSections.kt$0xFFD97706</ID>
+    <ID>MagicNumber:SpotGemModalSections.kt$0xFFF3E8FF</ID>
+    <ID>MagicNumber:SpotGemModalSections.kt$0xFFF59E0B</ID>
+    <ID>MagicNumber:SpotGemModalSections.kt$0xFFF97316</ID>
+    <ID>MagicNumber:SpotGemModalSections.kt$0xFFFEF3C7</ID>
+    <ID>MagicNumber:SpotGemModalSections.kt$1000</ID>
     <ID>MagicNumber:SpotPreviewPopupCard.kt$0xF20F172A</ID>
     <ID>MagicNumber:SpotPreviewPopupCard.kt$0xFF1E293B</ID>
     <ID>MagicNumber:SpotPreviewPopupCard.kt$0xFF94A3B8</ID>
@@ -1950,10 +1958,8 @@
     <ID>MaxLineLength:SpotDetailHistorySection.kt$text = spot.description.ifBlank { "Historic &amp; cultural landmark cataloged on Wikidata Knowledge Graph." }</ID>
     <ID>MaxLineLength:SpotDetailHistorySection.kt$val hasWikipediaExtract = spot.description.length &gt; 80 &amp;&amp; !spot.description.contains("cataloged on Wikidata", ignoreCase = true)</ID>
     <ID>MaxLineLength:SpotDetailPhotosSection.kt$Icon(imageVector = Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(14.dp))</ID>
-    <ID>MaxLineLength:SpotGemModal.kt$border = if (!isUsingGpsLocation) androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFF59E0B)) else null</ID>
-    <ID>MaxLineLength:SpotGemModal.kt$color = if (!isUsingGpsLocation) Color(0xFF92400E) else MaterialTheme.colorScheme.onSecondaryContainer</ID>
-    <ID>MaxLineLength:SpotGemModal.kt$color = if (!isUsingGpsLocation) Color(0xFFB45309) else MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.85f)</ID>
-    <ID>MaxLineLength:SpotGemModal.kt$imageVector = if (!isUsingGpsLocation) Icons.Default.PinDrop else Icons.Default.SatelliteAlt</ID>
+    <ID>MaxLineLength:SpotGemModalSections.kt$color = if (!isUsingGpsLocation) Color(0xFF92400E) else MaterialTheme.colorScheme.onSecondaryContainer</ID>
+    <ID>MaxLineLength:SpotGemModalSections.kt$color = if (!isUsingGpsLocation) Color(0xFFB45309) else MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.85f)</ID>
     <ID>MaxLineLength:StartupGpsLocatingScreen.kt$Icon(Icons.Default.LocationOn, contentDescription = null, modifier = Modifier.size(18.dp))</ID>
     <ID>MaxLineLength:StartupGpsLocatingScreen.kt$Icon(Icons.Default.MyLocation, contentDescription = null, modifier = Modifier.size(18.dp))</ID>
     <ID>MaxLineLength:StartupGpsLocatingScreen.kt$Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)</ID>
