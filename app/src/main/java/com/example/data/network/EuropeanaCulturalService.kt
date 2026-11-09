@@ -3,33 +3,40 @@ package com.example.data.network
 import com.example.util.SafeLog
 import com.example.data.local.ScoutSpotEntity
 import com.example.util.Geo
+import com.google.firebase.functions.FirebaseFunctions
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import org.json.JSONObject
-import java.net.URLEncoder
-import java.util.concurrent.TimeUnit
 
 /**
- * Service to query digital cultural heritage items from European museums and archives via Europeana Cultural API.
- * Enforces strict coordinate verification, radius filtering, and null ratings when unprovided.
+ * Service to query digital cultural heritage items from European museums and archives,
+ * routed through the secure europeanaSearch Firebase Callable Cloud Function.
+ *
+ * Zero API keys are embedded in the app: the Europeana wskey lives only in Firebase
+ * Secret Manager, the provider URL is built exclusively on the trusted backend, and
+ * this client never sees it. The callable performs the provider call, the coordinate
+ * verification, and the geodesic radius filtering; on success it returns the heritage
+ * items with the authoritative distanceMeters so the app can present honest distance
+ * and walking-time figures without re-deriving them.
+ *
+ * Strict coordinate verification, radius filtering, and null ratings remain enforced
+ * on the trusted backend; a callable failure yields an empty list (discovery proceeds
+ * with the other sources) exactly as the previous direct-HTTP behavior did.
  */
 open class EuropeanaCulturalService(
-    private val client: OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(6, TimeUnit.SECONDS)
-        .readTimeout(8, TimeUnit.SECONDS)
-        .build()
+    private val callableProvider: (suspend (HashMap<String, Any>) -> Map<String, Any?>)? = null,
+    private val functionsProvider: () -> FirebaseFunctions = { FirebaseFunctions.getInstance() }
 ) {
 
     companion object {
         private const val TAG = "EuropeanaCulturalService"
-        private const val USER_AGENT = "VividScoutApp/1.0 (Android; Europeana Cultural Heritage Resolver; contact: scout@example.com)"
-        private const val PUBLIC_API_KEY = "api2demo"
+        private const val PROVIDER_KEY = "europeana"
     }
 
     /**
-     * Queries Europeana Cultural Heritage repository for localized heritage objects with verified geographic coordinates.
+     * Queries Europeana cultural heritage repository for localized heritage objects with
+     * verified geographic coordinates, through the trusted callable.
      */
     open suspend fun fetchEuropeanaCulturalSpots(
         locationName: String = "Lisbon",
@@ -37,76 +44,82 @@ open class EuropeanaCulturalService(
         lon: Double = -9.1423,
         radiusMeters: Int = 15000
     ): List<ScoutSpotEntity> = withContext(Dispatchers.IO) {
-        val spots = mutableListOf<ScoutSpotEntity>()
-        try {
-            val encodedQuery = URLEncoder.encode(locationName, "UTF-8")
-            val url = "https://api.europeana.eu/record/v2/search.json?wskey=$PUBLIC_API_KEY&query=$encodedQuery&rows=8&profile=standard"
-
-            val request = Request.Builder()
-                .url(url)
-                .header("User-Agent", USER_AGENT)
-                .header("Accept", "application/json")
-                .build()
-
-            client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) return@use
-                val body = response.body?.string() ?: return@use
-                val root = JSONObject(body)
-                val itemsArr = root.optJSONArray("items") ?: return@use
-
-                for (i in 0 until itemsArr.length()) {
-                    val item = itemsArr.getJSONObject(i)
-                    val titleArr = item.optJSONArray("title")
-                    val title = titleArr?.optString(0)?.ifEmpty { null } ?: continue
-                    val edmIsShownBy = item.optJSONArray("edmIsShownBy")?.optString(0) ?: ""
-                    val edmConceptLabel = item.optJSONArray("edmConceptLabel")?.optJSONArray(0)?.optString(0) ?: "Cultural Heritage"
-                    val dataProvider = item.optJSONArray("dataProvider")?.optString(0) ?: "European Cultural Institution"
-                    val europeanaId = item.optString("id", "europeana_$i")
-
-                    // Extract actual coordinates provided by Europeana record
-                    val spotLat = item.optDouble("latitude", item.optDouble("edmPlaceLatitude", Double.NaN))
-                    val spotLon = item.optDouble("longitude", item.optDouble("edmPlaceLongitude", Double.NaN))
-
-                    // Coordinate validation: Reject NaN, 0.0/0.0, and out-of-bounds coordinates
-                    if (spotLat.isNaN() || spotLon.isNaN() || (spotLat == 0.0 && spotLon == 0.0)) {
-                        continue
-                    }
-                    if (spotLat < -90.0 || spotLat > 90.0 || spotLon < -180.0 || spotLon > 180.0) {
-                        continue
-                    }
-
-                    // Enforce geodesic radius filter against user coordinates
-                    val distanceMeters = Geo.calculateDistanceMeters(lat, lon, spotLat, spotLon)
-                    if (distanceMeters.isNaN() || distanceMeters > radiusMeters) {
-                        continue
-                    }
-
-                    spots.add(
-                        ScoutSpotEntity(
-                            id = "europeana_${europeanaId.hashCode()}",
-                            title = title,
-                            description = "Digital cultural heritage record archived by $dataProvider. Category: $edmConceptLabel.",
-                            category = "history",
-                            distance = Geo.formatDistance(distanceMeters),
-                            walkMinutes = Geo.calculateWalkMinutes(distanceMeters),
-                            rating = null, // Never invent ratings
-                            reviewCount = null, // Never invent review counts
-                            imageUrl = edmIsShownBy,
-                            badgeLabel = "Europeana",
-                            statusBadge = "Europeana Cultural Item",
-                            tagsRaw = "europeana|||archive|||$edmConceptLabel",
-                            proTip = "Archived by $dataProvider. License: CC BY-SA 4.0.",
-                            contributor = "@europeana_foundation",
-                            latitude = spotLat,
-                            longitude = spotLon,
-                            locationName = locationName
-                        )
-                    )
-                }
-            }
-        } catch (e: Exception) {
-            SafeLog.d(TAG, "Europeana API query handled: ${e.message}")
+        if (lat.isNaN() || !lat.isFinite() || lon.isNaN() || !lon.isFinite() ||
+            lat < -90.0 || lat > 90.0 || lon < -180.0 || lon > 180.0
+        ) {
+            SafeLog.w(TAG, "Invalid coordinates provided: lat=${SafeLog.sanitizeCoordinate(lat)}, lon=${SafeLog.sanitizeCoordinate(lon)}")
+            return@withContext emptyList()
         }
-        spots
+        if (radiusMeters < 100 || radiusMeters > 50000) {
+            SafeLog.w(TAG, "Invalid radiusMeters provided: $radiusMeters")
+            return@withContext emptyList()
+        }
+
+        try {
+            val payload = hashMapOf<String, Any>(
+                "locationName" to locationName,
+                "lat" to lat,
+                "lon" to lon,
+                "radiusMeters" to radiusMeters
+            )
+
+            val raw = if (callableProvider != null) {
+                callableProvider.invoke(payload)
+            } else {
+                val functions = try {
+                    functionsProvider()
+                } catch (e: Exception) {
+                    SafeLog.w(TAG, "FirebaseFunctions uninitialized in test environment: ${e.message}")
+                    return@withContext emptyList()
+                }
+                val result = functions.getHttpsCallable("europeanaSearch").call(payload).await()
+                @Suppress("UNCHECKED_CAST")
+                (result.data as? Map<String, Any?>).orEmpty()
+            }
+
+            @Suppress("UNCHECKED_CAST")
+            val items = (raw["items"] as? List<Map<String, Any?>>).orEmpty()
+            items.mapNotNull { item ->
+                val title = item["title"] as? String ?: return@mapNotNull null
+                val spotLat = (item["latitude"] as? Number)?.toDouble() ?: return@mapNotNull null
+                val spotLon = (item["longitude"] as? Number)?.toDouble() ?: return@mapNotNull null
+                // The callable verifies coordinates server-side; a malformed record here
+                // means the response contract was violated, so it is skipped, not shown.
+                if (spotLat.isNaN() || spotLon.isNaN() || (spotLat == 0.0 && spotLon == 0.0)) {
+                    return@mapNotNull null
+                }
+                val distanceMeters = (item["distanceMeters"] as? Number)?.toDouble()
+                    ?: Geo.calculateDistanceMeters(lat, lon, spotLat, spotLon)
+                val dataProvider = item["dataProvider"] as? String ?: "European Cultural Institution"
+                val edmConceptLabel = item["edmConceptLabel"] as? String ?: "Cultural Heritage"
+                val europeanaId = item["europeanaId"] as? String
+
+                ScoutSpotEntity(
+                    id = "europeana_${europeanaId?.hashCode() ?: title.hashCode()}",
+                    title = title,
+                    description = item["description"] as? String
+                        ?: "Digital cultural heritage record archived by $dataProvider. Category: $edmConceptLabel.",
+                    category = "history",
+                    distance = Geo.formatDistance(distanceMeters),
+                    walkMinutes = Geo.calculateWalkMinutes(distanceMeters),
+                    rating = null, // Never invent ratings
+                    reviewCount = null, // Never invent review counts
+                    imageUrl = item["imageUrl"] as? String ?: "",
+                    badgeLabel = "Europeana",
+                    statusBadge = "Europeana Cultural Item",
+                    tagsRaw = "europeana|||archive|||$edmConceptLabel",
+                    proTip = "Archived by $dataProvider. License: CC BY-SA 4.0.",
+                    contributor = "@europeana_foundation",
+                    latitude = spotLat,
+                    longitude = spotLon,
+                    locationName = item["locationName"] as? String ?: locationName
+                )
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            SafeLog.d(TAG, "Europeana query handled: ${e.message}")
+            emptyList()
+        }
     }
 }

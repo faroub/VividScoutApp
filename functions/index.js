@@ -24,6 +24,7 @@ const {
   moderateReportedPhotos
 } = require("./photos");
 const { validateNearbyPlacesRequest } = require("./validation");
+const { validateEuropeanaRequest, fetchEuropeanaRecords, EUROPEANA_RATE_LIMIT_MAX_PER_HOUR } = require("./europeana");
 const { firestoreDatabaseId } = require("./firestoreDatabase");
 const { decideRateLimitInTransaction, RATE_LIMIT_WINDOW_MS } = require("./rateLimits");
 const {
@@ -254,6 +255,56 @@ exports.nearbyPlaces = onCall(
     });
 
     return { places: validatedCandidates, providerStatus };
+  }
+);
+
+/**
+ * Firebase Cloud Function: europeanaSearch
+ *
+ * Secure backend proxy for the Europeana Cultural Heritage API. The Europeana API key
+ * (EUROPEANA_API_KEY) lives only in Firebase Secret Manager — it is never shipped in
+ * the app, and the client never builds the provider URL, so it can never leak from a
+ * device. Enforces authentication and App Check, validates the request strictly
+ * (location name, coordinates, radius) BEFORE the per-UID rate limit so a malformed
+ * request cannot consume the caller's quota, and reports the provider outcome
+ * alongside the heritage items so the app distinguishes a genuine "no heritage items
+ * here" from a provider outage. See functions/europeana.js.
+ */
+exports.europeanaSearch = onCall(
+  {
+    cors: true,
+    enforceAppCheck: true,
+    secrets: ["EUROPEANA_API_KEY"]
+  },
+  async (request) => {
+    // 1. Firebase Authentication Check
+    const auth = request.auth;
+    if (!auth || !auth.uid) {
+      throw new HttpsError("unauthenticated", "User authentication required to query europeanaSearch.");
+    }
+
+    // 2. Strict end-to-end request validation: App Check, auth, location name,
+    //    coordinates and radius bounds. Runs BEFORE the rate limit so a malformed
+    //    request cannot consume the caller's hourly quota.
+    const validated = validateEuropeanaRequest(request.data || {}, request.auth, request.app);
+    if (!validated.ok) {
+      throw new HttpsError(validated.error, validated.message);
+    }
+    const { locationName, lat, lon, radiusMeters } = validated;
+
+    // 3. Per-UID rate limit (20 searches/UID/hour).
+    const isAllowed = await checkRateLimit(auth.uid, `europeana_search_${auth.uid}`, EUROPEANA_RATE_LIMIT_MAX_PER_HOUR);
+    if (!isAllowed) {
+      throw new HttpsError(
+        "resource-exhausted",
+        `Rate limit exceeded. Maximum ${EUROPEANA_RATE_LIMIT_MAX_PER_HOUR} Europeana searches per hour per user.`
+      );
+    }
+
+    // 4. Fetch through the trusted boundary: the provider call, the coordinate
+    //    verification, and the geodesic radius filtering all run server-side.
+    const { records, status } = await fetchEuropeanaRecords(locationName, lat, lon, radiusMeters);
+    return { items: records, providerStatus: { europeana: status } };
   }
 );
 

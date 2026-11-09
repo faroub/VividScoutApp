@@ -20,17 +20,55 @@ class PlaceDataIntegrityTest {
 
     @Test
     fun europeanaService_rejectsEntriesWithoutRealCoordinates() = runBlocking {
-        val service = EuropeanaCulturalService()
-        // Querying Europeana with sample location: if records do not contain valid lat/lon, they are omitted
+        // The callable response contract: items arrive pre-verified by the trusted
+        // backend; the client mapping still defends itself against malformed records
+        // (NaN/Null-Island coordinates) instead of presenting them.
+        val malformedItems = listOf(
+            mapOf(
+                "title" to "Null Island Artifact",
+                "latitude" to 0.0,
+                "longitude" to 0.0,
+                "dataProvider" to "Museum",
+                "edmConceptLabel" to "Cultural Heritage"
+            ),
+            mapOf(
+                "title" to "NaN Record",
+                "latitude" to Double.NaN,
+                "longitude" to -9.14,
+                "dataProvider" to "Museum"
+            ),
+            mapOf(
+                "title" to "Verified Azulejo Panel",
+                "description" to "Digital cultural heritage record archived by Museu Nacional do Azulejo. Category: Visual Arts.",
+                "latitude" to 38.715,
+                "longitude" to -9.14,
+                "distanceMeters" to 350.0,
+                "imageUrl" to "https://images.example.com/azulejo.jpg",
+                "dataProvider" to "Museu Nacional do Azulejo",
+                "edmConceptLabel" to "Visual Arts",
+                "europeanaId" to "/09102/40C3A4DB5B69ADC12D8A2B9D4E69A4A2B0BD3B74",
+                "locationName" to "Lisbon"
+            )
+        )
+        val service = EuropeanaCulturalService(
+            callableProvider = { mapOf("items" to malformedItems, "providerStatus" to mapOf("europeana" to "ok")) }
+        )
+
         val spots = service.fetchEuropeanaCulturalSpots("Lisbon", 38.7112, -9.1423, 15000)
 
-        for (spot in spots) {
-            assertFalse("Latitude cannot be NaN", spot.latitude.isNaN())
-            assertFalse("Longitude cannot be NaN", spot.longitude.isNaN())
-            assertFalse("Coordinates cannot be Null Island (0,0)", spot.latitude == 0.0 && spot.longitude == 0.0)
-            assertNull("Europeana ratings must be null", spot.rating)
-            assertNull("Europeana reviewCount must be null", spot.reviewCount)
-        }
+        assertEquals("Only the coordinate-verified record survives", 1, spots.size)
+        val spot = spots.first()
+        assertEquals("Verified Azulejo Panel", spot.title)
+        assertFalse("Latitude cannot be NaN", spot.latitude.isNaN())
+        assertFalse("Longitude cannot be NaN", spot.longitude.isNaN())
+        assertFalse("Coordinates cannot be Null Island (0,0)", spot.latitude == 0.0 && spot.longitude == 0.0)
+        assertNull("Europeana ratings must be null", spot.rating)
+        assertNull("Europeana reviewCount must be null", spot.reviewCount)
+        assertEquals("Europeana", spot.badgeLabel)
+        assertEquals("Europeana Cultural Item", spot.statusBadge)
+        assertEquals("europeana_${"/09102/40C3A4DB5B69ADC12D8A2B9D4E69A4A2B0BD3B74".hashCode()}", spot.id)
+        assertTrue("Attribution must be preserved", spot.proTip!!.contains("Museu Nacional do Azulejo"))
+        assertTrue("Distance must come from the server-side measurement", spot.distance.isNotBlank())
     }
 
     @Test
