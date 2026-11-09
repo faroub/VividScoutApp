@@ -68,6 +68,26 @@ service cloud.firestore {
       // author's UID in this publicly readable document.
       allow create: if false;
 
+      // Atomic report increment: the direct-write parity path for community reporting
+      // (the reportCommunitySubmission callable is the primary path, enforced with
+      // non-anonymous sign-in and a per-UID rate limit the rules cannot express). Same
+      // invariants as the community_tips report branch above: the counter changes by
+      // exactly one (creating it on documents that predate community reporting), the
+      // reporter's report document must not exist before and must exist after, and the
+      // submission's owner may never report their own content.
+      allow update: if isAuthenticated()
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reportsCount'])
+                    && request.resource.data.reportsCount is number
+                    && (resource.data.keys().hasAny(['reportsCount'])
+                         ? request.resource.data.reportsCount == resource.data.reportsCount + 1
+                         : request.resource.data.reportsCount == 1)
+                    && request.auth.uid != communityOwnerUid('community_submissions', submissionId, resource.data)
+                    && !exists(/databases/$(database)/documents/community_submissions/$(submissionId)/reports/$(request.auth.uid))
+                    && existsAfter(/databases/$(database)/documents/community_submissions/$(submissionId)/reports/$(request.auth.uid));
+
+      // The owner of a submission may edit exactly the client-controlled fields the
+      // submitCommunitySpot callable accepts — reportsCount, moderationState and
+      // moderatedAt are server-owned and must never be client-writable.
       allow update: if isOwner(communityOwnerUid('community_submissions', submissionId, resource.data))
                     && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
                          'id', 'title', 'description', 'category', 'locationName',
@@ -103,6 +123,28 @@ service cloud.firestore {
                             && request.resource.data.timestamp >= request.time.toMillis() - 2592000000));
 
       allow delete: if false;
+
+      // Per-account unique report tracking subcollection: report document ID = user UID.
+      // A report document may ONLY be created as part of the atomic transaction that
+      // increments the parent submission's reportsCount counter (see the report update
+      // rule above). Reporter UIDs are never exposed to anyone; the submission's owner
+      // may never report their own content.
+      match /reports/{userId} {
+        allow read: if false; // Reporter UIDs are never exposed to anyone
+        allow create: if isAuthenticated()
+                      && userId == request.auth.uid
+                      && request.resource.data.keys().hasOnly(['reporterUid', 'timestamp'])
+                      && request.resource.data.reporterUid == request.auth.uid
+                      && request.resource.data.timestamp is number
+                      && (get(/databases/$(database)/documents/community_submissions/$(submissionId)).data.keys().hasAny(['reportsCount'])
+                           ? getAfter(/databases/$(database)/documents/community_submissions/$(submissionId)).data.reportsCount
+                                == get(/databases/$(database)/documents/community_submissions/$(submissionId)).data.reportsCount + 1
+                           : getAfter(/databases/$(database)/documents/community_submissions/$(submissionId)).data.reportsCount == 1)
+                      && !exists(/databases/$(database)/documents/community_submissions/$(submissionId)/reports/$(userId))
+                      && existsAfter(/databases/$(database)/documents/community_submissions/$(submissionId)/reports/$(userId))
+                      && request.auth.uid != communityOwnerUid('community_submissions', submissionId, get(/databases/$(database)/documents/community_submissions/$(submissionId)).data);
+        allow update, delete: if false; // Immutable report records
+      }
     }
 
     // Private scout notes: one document per spot per user, scoped under the owner's
@@ -176,6 +218,18 @@ service cloud.firestore {
          && request.auth.uid != communityOwnerUid('community_tips', tipId, resource.data)
          && !exists(/databases/$(database)/documents/community_tips/$(tipId)/votes/$(request.auth.uid))
          && existsAfter(/databases/$(database)/documents/community_tips/$(tipId)/votes/$(request.auth.uid))) ||
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reportsCount'])
+         && request.resource.data.reportsCount is number
+         // Legacy documents written before community reporting carry no reportsCount:
+         // the first report CREATES the counter (1), later reports increment by one.
+         && (resource.data.keys().hasAny(['reportsCount'])
+              ? request.resource.data.reportsCount == resource.data.reportsCount + 1
+              : request.resource.data.reportsCount == 1)
+         // The tip's owner may never report their own content: owners edit or delete
+         // instead of flagging themselves.
+         && request.auth.uid != communityOwnerUid('community_tips', tipId, resource.data)
+         && !exists(/databases/$(database)/documents/community_tips/$(tipId)/reports/$(request.auth.uid))
+         && existsAfter(/databases/$(database)/documents/community_tips/$(tipId)/reports/$(request.auth.uid))) ||
         (isOwner(communityOwnerUid('community_tips', tipId, resource.data))
          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
               'id', 'spotId', 'spotTitle', 'authorName', 'content',
@@ -212,6 +266,31 @@ service cloud.firestore {
                       && !exists(/databases/$(database)/documents/community_tips/$(tipId)/votes/$(userId))
                       && existsAfter(/databases/$(database)/documents/community_tips/$(tipId)/votes/$(userId));
         allow update, delete: if false; // Immutable vote records
+      }
+
+      // Per-account unique report tracking subcollection: report document ID = user UID.
+      // A report document may ONLY be created as part of the atomic transaction that
+      // increments the parent tip's reportsCount counter (see the parent update rule):
+      // the parent tip must exist before the operation, its reportsCount must increase
+      // by exactly one in this transaction (creating the counter when the document
+      // predates community reporting), and the user's own report document must not exist
+      // before it and must exist after it. The tip's owner may never report their own
+      // content. Reporter UIDs are never exposed to anyone.
+      match /reports/{userId} {
+        allow read: if false; // Reporter UIDs are never exposed to anyone
+        allow create: if isAuthenticated()
+                      && userId == request.auth.uid
+                      && request.resource.data.keys().hasOnly(['reporterUid', 'timestamp'])
+                      && request.resource.data.reporterUid == request.auth.uid
+                      && request.resource.data.timestamp is number
+                      && (get(/databases/$(database)/documents/community_tips/$(tipId)).data.keys().hasAny(['reportsCount'])
+                           ? getAfter(/databases/$(database)/documents/community_tips/$(tipId)).data.reportsCount
+                                == get(/databases/$(database)/documents/community_tips/$(tipId)).data.reportsCount + 1
+                           : getAfter(/databases/$(database)/documents/community_tips/$(tipId)).data.reportsCount == 1)
+                      && !exists(/databases/$(database)/documents/community_tips/$(tipId)/reports/$(userId))
+                      && existsAfter(/databases/$(database)/documents/community_tips/$(tipId)/reports/$(userId))
+                      && request.auth.uid != communityOwnerUid('community_tips', tipId, get(/databases/$(database)/documents/community_tips/$(tipId)).data);
+        allow update, delete: if false; // Immutable report records
       }
     }
 

@@ -25,6 +25,9 @@ const {
   postCommunityTipDocument,
   submitCommunitySpotDocument,
   castTipVoteDocument,
+  reportCommunityTipDocument,
+  reportCommunitySubmissionDocument,
+  moderateReportedCommunityContent,
   validateCommunityTipPayload,
   validateCommunitySubmissionPayload,
   TIPS_COLLECTION,
@@ -34,6 +37,9 @@ const {
   COMMUNITY_RATE_LIMIT_WINDOW_MS,
   TIP_LIMIT_MESSAGE,
   SUBMISSION_LIMIT_MESSAGE,
+  COMMUNITY_REPORTS_THRESHOLD,
+  MODERATION_STATE_HIDDEN,
+  MODERATION_STATE_REMOVED,
 } = require("./community");
 const { ownershipIndexRef, OWNERSHIP_INDEX_COLLECTION, OWNERSHIP_INDEX_RECORDS_COLLECTION } = require("./ownershipIndex");
 
@@ -554,5 +560,370 @@ describe("castTipVoteDocument", () => {
 
     const tipDoc = await db.collection(TIPS_COLLECTION).doc(secondTipId).get();
     assert.strictEqual(tipDoc.get("upvotes"), 0, "the rate-limited vote is not counted");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// reportCommunityTipDocument / reportCommunitySubmissionDocument (trusted report
+// writers behind the reportCommunityTip / reportCommunitySubmission callables)
+// ---------------------------------------------------------------------------
+
+describe("reportCommunityTipDocument", () => {
+  let reportLimitCounter = 0;
+  const reportRateLimitFor = (maxPerWindow = 3) => {
+    reportLimitCounter += 1;
+    return {
+      ref: db.collection("rate_limits").doc(`community_tip_report_test_${reportLimitCounter}`),
+      maxPerWindow,
+    };
+  };
+
+  const seedReportableTip = async (owner = ALICE) => {
+    const result = await postCommunityTipDocument(db, owner, validTipPayload(), {
+      rateLimit: tipRateLimitFor(),
+      nowMs: NOW,
+    });
+    return result.tipId;
+  };
+
+  it("creates the report document and the reportsCount counter together", async () => {
+    // postCommunityTipDocument creates tips WITHOUT a reportsCount field: the first
+    // report must create the counter (not assume it exists).
+    const tipId = await seedReportableTip();
+    const limit = reportRateLimitFor();
+
+    const result = await reportCommunityTipDocument(db, BOB, { tipId }, {
+      rateLimit: limit,
+      nowMs: NOW,
+    });
+
+    assert.deepStrictEqual(result, { reportsCount: 1 });
+
+    const reportDoc = await db.collection(TIPS_COLLECTION).doc(tipId)
+      .collection("reports").doc(BOB).get();
+    assert.strictEqual(reportDoc.exists, true);
+    assert.deepStrictEqual(reportDoc.data(), { reporterUid: BOB, timestamp: NOW });
+
+    const tipDoc = await db.collection(TIPS_COLLECTION).doc(tipId).get();
+    assert.strictEqual(tipDoc.get("reportsCount"), 1, "the counter is created at 1");
+    assert.strictEqual(await counterCount(limit.ref), 1, "an accepted report consumes one budget slot");
+  });
+
+  it("increments an existing counter exactly once per accepted report", async () => {
+    const tipId = await seedReportableTip();
+    const limit = reportRateLimitFor();
+
+    await reportCommunityTipDocument(db, BOB, { tipId }, { rateLimit: limit, nowMs: NOW });
+    await reportCommunityTipDocument(db, "carol-uid", { tipId }, { rateLimit: limit, nowMs: NOW + 1 });
+
+    const tipDoc = await db.collection(TIPS_COLLECTION).doc(tipId).get();
+    assert.strictEqual(tipDoc.get("reportsCount"), 2);
+    assert.strictEqual(await counterCount(limit.ref), 2);
+  });
+
+  it("rejects a duplicate report from the same account without consuming budget", async () => {
+    const tipId = await seedReportableTip();
+    const limit = reportRateLimitFor();
+
+    await reportCommunityTipDocument(db, BOB, { tipId }, { rateLimit: limit, nowMs: NOW });
+    await assert.rejects(
+      () => reportCommunityTipDocument(db, BOB, { tipId }, { rateLimit: limit, nowMs: NOW + 1 }),
+      (error) => error.code === "already-exists"
+    );
+
+    const tipDoc = await db.collection(TIPS_COLLECTION).doc(tipId).get();
+    assert.strictEqual(tipDoc.get("reportsCount"), 1, "the counter is not incremented twice");
+    assert.strictEqual(await counterCount(limit.ref), 1, "a rejected duplicate never consumes budget");
+  });
+
+  it("rejects the tip owner reporting their own tip with permission-denied", async () => {
+    const tipId = await seedReportableTip();
+    const limit = reportRateLimitFor();
+
+    await assert.rejects(
+      () => reportCommunityTipDocument(db, ALICE, { tipId }, { rateLimit: limit, nowMs: NOW }),
+      (error) => error.code === "permission-denied"
+    );
+
+    const tipDoc = await db.collection(TIPS_COLLECTION).doc(tipId).get();
+    assert.strictEqual(tipDoc.get("reportsCount"), undefined, "a refused self-report is not counted");
+    assert.strictEqual(await counterCount(limit.ref), 0);
+  });
+
+  it("rejects the LEGACY owner reporting their own pre-index tip (fallback path)", async () => {
+    // Legacy tips predate the ownership index; ownership resolves from the document's
+    // own ownerUid field, and a self-report must be refused there too.
+    const legacy = validTipPayload();
+    await db.collection(TIPS_COLLECTION).doc(legacy.id).set({ ...legacy, ownerUid: ALICE, upvotes: 0 });
+
+    await assert.rejects(
+      () => reportCommunityTipDocument(db, ALICE, { tipId: legacy.id }, { nowMs: NOW }),
+      (error) => error.code === "permission-denied"
+    );
+
+    const result = await reportCommunityTipDocument(db, BOB, { tipId: legacy.id }, { nowMs: NOW });
+    assert.deepStrictEqual(result, { reportsCount: 1 }, "another account may still report a legacy tip");
+  });
+
+  it("rejects a report on an already-hidden tip with failed-precondition", async () => {
+    const tipId = await seedReportableTip();
+    await reportCommunityTipDocument(db, BOB, { tipId }, { nowMs: NOW });
+    await db.collection(TIPS_COLLECTION).doc(tipId).update({ moderationState: "hidden" });
+
+    await assert.rejects(
+      () => reportCommunityTipDocument(db, "carol-uid", { tipId }, { nowMs: NOW }),
+      (error) => error.code === "failed-precondition"
+    );
+    const tipDoc = await db.collection(TIPS_COLLECTION).doc(tipId).get();
+    assert.strictEqual(tipDoc.get("reportsCount"), 1, "no report is recorded on a hidden tip");
+  });
+
+  it("rejects a report on a removed tip with failed-precondition", async () => {
+    const tipId = await seedReportableTip();
+    await db.collection(TIPS_COLLECTION).doc(tipId).update({ moderationState: "removed" });
+
+    await assert.rejects(
+      () => reportCommunityTipDocument(db, BOB, { tipId }, { nowMs: NOW }),
+      (error) => error.code === "failed-precondition"
+    );
+  });
+
+  it("rejects a report on a missing tip with not-found", async () => {
+    await assert.rejects(
+      () => reportCommunityTipDocument(db, BOB, { tipId: "tip-that-does-not-exist" }, { nowMs: NOW }),
+      (error) => error.code === "not-found"
+    );
+  });
+
+  it("rejects an unauthenticated caller", async () => {
+    await assert.rejects(
+      () => reportCommunityTipDocument(db, "", { tipId: "whatever" }, { nowMs: NOW }),
+      (error) => error.code === "unauthenticated"
+    );
+  });
+
+  it("validates the payload: non-object, unexpected field, and malformed tipId", async () => {
+    const cases = [
+      "not-an-object",
+      { submissionId: "not-the-right-key" },
+      {},
+      { tipId: "" },
+      { tipId: "has/slash" },
+      { tipId: "has space" },
+      { tipId: "a".repeat(129) },
+    ];
+    for (const payload of cases) {
+      await assert.rejects(
+        () => reportCommunityTipDocument(db, BOB, payload, { nowMs: NOW }),
+        (error) => error.code === "invalid-argument"
+      );
+    }
+  });
+
+  it("enforces the per-UID rate limit with resource-exhausted", async () => {
+    const firstTipId = await seedReportableTip();
+    const secondTipId = await seedReportableTip();
+    const limit = reportRateLimitFor(1);
+
+    await reportCommunityTipDocument(db, BOB, { tipId: firstTipId }, { rateLimit: limit, nowMs: NOW });
+    await assert.rejects(
+      () => reportCommunityTipDocument(db, BOB, { tipId: secondTipId }, { rateLimit: limit, nowMs: NOW }),
+      (error) => error.code === "resource-exhausted"
+    );
+
+    const tipDoc = await db.collection(TIPS_COLLECTION).doc(secondTipId).get();
+    assert.strictEqual(tipDoc.get("reportsCount"), undefined, "the rate-limited report is not recorded");
+  });
+});
+
+describe("reportCommunitySubmissionDocument", () => {
+  it("creates the report document and the reportsCount counter on a submission", async () => {
+    const payload = validSubmissionPayload();
+    await submitCommunitySpotDocument(db, ALICE, payload, {
+      rateLimit: submissionRateLimitFor(),
+      nowMs: NOW,
+    });
+
+    const result = await reportCommunitySubmissionDocument(db, BOB, { submissionId: payload.id }, {
+      nowMs: NOW,
+    });
+    assert.deepStrictEqual(result, { reportsCount: 1 });
+
+    const reportDoc = await db.collection(SUBMISSIONS_COLLECTION).doc(payload.id)
+      .collection("reports").doc(BOB).get();
+    assert.deepStrictEqual(reportDoc.data(), { reporterUid: BOB, timestamp: NOW });
+  });
+
+  it("rejects the submission owner reporting their own submission", async () => {
+    const payload = validSubmissionPayload();
+    await submitCommunitySpotDocument(db, ALICE, payload, {
+      rateLimit: submissionRateLimitFor(),
+      nowMs: NOW,
+    });
+
+    await assert.rejects(
+      () => reportCommunitySubmissionDocument(db, ALICE, { submissionId: payload.id }, { nowMs: NOW }),
+      (error) => error.code === "permission-denied"
+    );
+  });
+
+  it("validates that the payload names a submissionId, not a tipId", async () => {
+    await assert.rejects(
+      () => reportCommunitySubmissionDocument(db, BOB, { tipId: "wrong-key" }, { nowMs: NOW }),
+      (error) => error.code === "invalid-argument"
+    );
+    await assert.rejects(
+      () => reportCommunitySubmissionDocument(db, BOB, "not-an-object", { nowMs: NOW }),
+      (error) => error.code === "invalid-argument"
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// moderateReportedCommunityContent (soft-hide sweep for text content)
+// ---------------------------------------------------------------------------
+
+describe("moderateReportedCommunityContent", () => {
+  const SWEEP_NOW = 44_000_000;
+
+  let seedCounter = 0;
+  // Each test drives the sweep with its own threshold so the shared-emulator query
+  // (where reportsCount >= threshold) matches only that test's documents.
+  const nextSweepThreshold = () => 200 + (++seedCounter);
+
+  const seedReportedTip = async (owner = ALICE) => {
+    const tipId = (await postCommunityTipDocument(db, owner, validTipPayload(), {
+      rateLimit: tipRateLimitFor(),
+      nowMs: NOW,
+    })).tipId;
+    return tipId;
+  };
+
+  const seedReportedSubmission = async (owner = ALICE) => {
+    const payload = validSubmissionPayload();
+    await submitCommunitySpotDocument(db, owner, payload, {
+      rateLimit: submissionRateLimitFor(),
+      nowMs: NOW,
+    });
+    return payload.id;
+  };
+
+  it("hides a tip once its reports reach the threshold and keeps the document intact", async () => {
+    const threshold = nextSweepThreshold();
+    const tipId = await seedReportedTip();
+    await db.collection(TIPS_COLLECTION).doc(tipId).update({ reportsCount: threshold });
+
+    const result = await moderateReportedCommunityContent(db, {
+      threshold,
+      nowMs: () => SWEEP_NOW,
+    });
+
+    assert.deepStrictEqual(result, { processed: 1, hidden: 1, kept: 0, failed: 0 });
+    const tipDoc = await db.collection(TIPS_COLLECTION).doc(tipId).get();
+    assert.strictEqual(tipDoc.get("moderationState"), "hidden");
+    assert.strictEqual(tipDoc.get("moderatedAt"), SWEEP_NOW);
+    assert.ok(tipDoc.get("content"), "the document and its content stay fully intact for review and restore");
+  });
+
+  it("hides a submission once its reports reach the threshold", async () => {
+    const threshold = nextSweepThreshold();
+    const submissionId = await seedReportedSubmission();
+    await db.collection(SUBMISSIONS_COLLECTION).doc(submissionId).update({ reportsCount: threshold });
+
+    const result = await moderateReportedCommunityContent(db, {
+      threshold,
+      nowMs: () => SWEEP_NOW,
+    });
+
+    assert.deepStrictEqual(result, { processed: 1, hidden: 1, kept: 0, failed: 0 });
+    const submissionDoc = await db.collection(SUBMISSIONS_COLLECTION).doc(submissionId).get();
+    assert.strictEqual(submissionDoc.get("moderationState"), "hidden");
+  });
+
+  it("leaves content below the threshold untouched", async () => {
+    const threshold = nextSweepThreshold();
+    const tipId = await seedReportedTip();
+    await db.collection(TIPS_COLLECTION).doc(tipId).update({ reportsCount: threshold - 1 });
+
+    const result = await moderateReportedCommunityContent(db, {
+      threshold,
+      nowMs: () => SWEEP_NOW,
+    });
+
+    assert.deepStrictEqual(result, { processed: 0, hidden: 0, kept: 0, failed: 0 });
+    const tipDoc = await db.collection(TIPS_COLLECTION).doc(tipId).get();
+    assert.strictEqual(tipDoc.get("moderationState"), undefined);
+  });
+
+  it("is idempotent: a second sweep skips an already-hidden document", async () => {
+    const threshold = nextSweepThreshold();
+    const tipId = await seedReportedTip();
+    await db.collection(TIPS_COLLECTION).doc(tipId).update({ reportsCount: threshold });
+    await moderateReportedCommunityContent(db, { threshold, nowMs: () => SWEEP_NOW });
+
+    const result = await moderateReportedCommunityContent(db, {
+      threshold,
+      nowMs: () => SWEEP_NOW + 1,
+    });
+
+    assert.deepStrictEqual(result, { processed: 1, hidden: 0, kept: 1, failed: 0 });
+    const tipDoc = await db.collection(TIPS_COLLECTION).doc(tipId).get();
+    assert.strictEqual(tipDoc.get("moderatedAt"), SWEEP_NOW, "the first sweep's mark is not rewritten");
+  });
+
+  it("skips an already-removed document (a reviewed takedown is terminal)", async () => {
+    const threshold = nextSweepThreshold();
+    const tipId = await seedReportedTip();
+    await db.collection(TIPS_COLLECTION).doc(tipId).update({
+      reportsCount: threshold,
+      moderationState: "removed",
+    });
+
+    const result = await moderateReportedCommunityContent(db, {
+      threshold,
+      nowMs: () => SWEEP_NOW,
+    });
+
+    assert.deepStrictEqual(result, { processed: 1, hidden: 0, kept: 1, failed: 0 });
+    const tipDoc = await db.collection(TIPS_COLLECTION).doc(tipId).get();
+    assert.strictEqual(tipDoc.get("moderationState"), "removed");
+  });
+
+  it("retries a document whose hide write failed on the next sweep", async () => {
+    const threshold = nextSweepThreshold();
+    const tipId = await seedReportedTip();
+    await db.collection(TIPS_COLLECTION).doc(tipId).update({ reportsCount: threshold });
+
+    const failingDb = {
+      collection: (name) => ({
+        where: (field, op, value) => ({
+          limit: (scanLimit) => ({
+            get: async () => {
+              const snapshot = await db.collection(name).where(field, op, value).limit(scanLimit).get();
+              return {
+                empty: snapshot.empty,
+                docs: snapshot.docs.map((d) => ({
+                  data: () => d.data(),
+                  ref: {
+                    update: async () => {
+                      throw new Error("firestore write failed");
+                    },
+                  },
+                })),
+              };
+            },
+          }),
+        }),
+      }),
+    };
+
+    const failed = await moderateReportedCommunityContent(failingDb, {
+      threshold,
+      nowMs: () => SWEEP_NOW,
+    });
+    assert.deepStrictEqual(failed, { processed: 1, hidden: 0, kept: 0, failed: 1 });
+
+    const retried = await moderateReportedCommunityContent(db, { threshold, nowMs: () => SWEEP_NOW });
+    assert.deepStrictEqual(retried, { processed: 1, hidden: 1, kept: 0, failed: 0 });
   });
 });

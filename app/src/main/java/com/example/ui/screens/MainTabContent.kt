@@ -120,6 +120,7 @@ fun MainTabContent(
                         onPostTip = { spotId, spotTitle, content, isStatus, category ->
                             communityViewModel.postTip(spotId, spotTitle, content, isStatus, category)
                         },
+                        onReportTip = { communityViewModel.reportTip(it) },
                         onSpotClick = { spotId ->
                             exploreState.allSpots.find { it.id == spotId }?.let {
                                 mainViewModel.selectSpotForDetail(it)
@@ -127,6 +128,7 @@ fun MainTabContent(
                         },
                         userCoordinates = locationState.safeCoordinates,
                         successMessage = communityState.postTipSuccessMessage,
+                        reportMessage = communityState.reportMessage,
                         isUsingDefaultFallbackLocation = isUsingDefaultFallbackLocation,
                         onSelectCity = { exploreViewModel.openGlobalCityDialog() }
                     )

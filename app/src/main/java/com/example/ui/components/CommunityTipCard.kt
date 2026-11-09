@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.HourglassTop
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material.icons.filled.WarningAmber
+import androidx.compose.material.icons.outlined.Flag
 import androidx.compose.material.icons.outlined.ThumbUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -55,6 +56,7 @@ fun CommunityTipCard(
     tip: CommunityTipEntity,
     onUpvoteClick: (String) -> Unit,
     onSpotClick: ((String) -> Unit)? = null,
+    onReportClick: ((String) -> Unit)? = null,
     showSpotHeader: Boolean = true,
     modifier: Modifier = Modifier
 ) {
@@ -215,7 +217,29 @@ fun CommunityTipCard(
 
                 // Upvote Button OR Unsynced / Unmigrated Voting Note
                 val noteMessage = resolveVotingNoteMessage(tip.isSyncedToCloud, tip.isMigrated, strings)
-                if (noteMessage == null) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    // Report action: visible only for real, cloud-synced, migrated tips —
+                    // sample/demo and local-only tips are never reportable.
+                    if (onReportClick != null && noteMessage == null && !tip.isSampleContent) {
+                        IconButton(
+                            onClick = { onReportClick(tip.id) },
+                            modifier = Modifier
+                                .size(32.dp)
+                                .testTag("report_tip_${tip.id}")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Flag,
+                                contentDescription = strings.reportTipActionLabel,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+
+                    if (noteMessage == null) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
@@ -260,6 +284,7 @@ fun CommunityTipCard(
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                         )
                     }
+                }
                 }
             }
         }

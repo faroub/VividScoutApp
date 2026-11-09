@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.Radar
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material.icons.outlined.Flag
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -73,6 +74,7 @@ import com.example.ui.components.EmptyStateView
 import com.example.ui.components.FallbackLocationBanner
 import com.example.ui.components.LoadingStateView
 import com.example.ui.components.PostTipDialog
+import com.example.ui.dialogs.ReportCommunityTipDialog
 import com.example.ui.theme.BrandCoral
 import com.example.ui.theme.BrandTeal
 import com.example.ui.theme.LocalAppStrings
@@ -98,9 +100,11 @@ fun CommunityFeedScreen(
     onTriggerSync: () -> Unit,
     onUpvoteTip: (String) -> Unit,
     onPostTip: (spotId: String, spotTitle: String, content: String, isStatus: Boolean, category: String) -> Unit,
+    onReportTip: (String) -> Unit,
     onSpotClick: (String) -> Unit,
     userCoordinates: Pair<Double, Double> = Pair(38.7112, -9.1423),
     successMessage: String? = null,
+    reportMessage: String? = null,
     isUsingDefaultFallbackLocation: Boolean = false,
     onSelectCity: () -> Unit = {},
     modifier: Modifier = Modifier
@@ -108,6 +112,7 @@ fun CommunityFeedScreen(
     val strings = LocalAppStrings.current
     var activeFilter by remember { mutableStateOf(CommunityFilter.ALL) }
     var isPostModalOpen by remember { mutableStateOf(false) }
+    var reportingTipId by remember { mutableStateOf<String?>(null) }
 
     val filteredTips = remember(tips, activeFilter, spots, userCoordinates) {
         val now = System.currentTimeMillis()
@@ -237,6 +242,38 @@ fun CommunityFeedScreen(
                 }
             }
 
+            // Report Outcome Banner (after reporting a tip)
+            if (!reportMessage.isNullOrBlank()) {
+                item {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color(0xFFF43F5E).copy(alpha = 0.12f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFF43F5E).copy(alpha = 0.5f)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("report_message_banner")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Flag,
+                                contentDescription = null,
+                                tint = Color(0xFFE11D48),
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Text(
+                                text = reportMessage,
+                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                                color = Color(0xFFBE123C)
+                            )
+                        }
+                    }
+                }
+            }
+
             // Peer-to-Peer Mesh Radar & Sync Status Card (Debug Builds Only)
             if (BuildConfig.DEBUG) {
                 item {
@@ -341,6 +378,7 @@ fun CommunityFeedScreen(
                         tip = tip,
                         onUpvoteClick = onUpvoteTip,
                         onSpotClick = onSpotClick,
+                        onReportClick = { tipId -> reportingTipId = tipId },
                         showSpotHeader = true
                     )
                 }
@@ -357,6 +395,16 @@ fun CommunityFeedScreen(
             },
             availableSpots = spots
         )
+
+        // Report confirmation: a report is a moderation action, so the user confirms
+        // before the reportCommunityTip Cloud Function is called.
+        reportingTipId?.let { tipId ->
+            ReportCommunityTipDialog(
+                tipId = tipId,
+                onConfirm = { onReportTip(tipId) },
+                onDismiss = { reportingTipId = null }
+            )
+        }
     }
 }
 

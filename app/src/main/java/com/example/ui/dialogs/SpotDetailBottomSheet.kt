@@ -77,12 +77,14 @@ fun SpotDetailBottomSheet(
     onReFetchImage: (spotId: String, onResult: (Boolean, String) -> Unit) -> Unit = { _, _ -> },
     onUploadPhoto: (suspend (spotId: String, uri: android.net.Uri) -> Result<com.example.data.repository.SpotPhotoData>)? = null,
     onReportPhoto: (suspend (photoId: String) -> Result<Int>)? = null,
-    onLoadOlderPhotos: (suspend (spotId: String, cursor: com.example.data.repository.PhotoPageCursor?) -> Result<com.example.data.repository.OlderPhotosPage>)? = null
+    onLoadOlderPhotos: (suspend (spotId: String, cursor: com.example.data.repository.PhotoPageCursor?) -> Result<com.example.data.repository.OlderPhotosPage>)? = null,
+    onReportTip: ((tipId: String) -> Unit)? = null
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val strings = LocalAppStrings.current
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    var reportingTipId by remember { mutableStateOf<String?>(null) }
 
     var isPostTipOpen by remember { mutableStateOf(false) }
     val db = remember { AppDatabase.getDatabase(context) }
@@ -386,6 +388,9 @@ fun SpotDetailBottomSheet(
                         scope.launch {
                             db.communityTipDao().incrementUpvote(tipId)
                         }
+                    },
+                    onReportClick = onReportTip?.let {
+                        { tipId -> reportingTipId = tipId }
                     }
                 )
 
@@ -426,6 +431,16 @@ fun SpotDetailBottomSheet(
         },
         initialSpot = spot
     )
+
+    // Report confirmation: a report is a moderation action, so the user confirms
+    // before the reportCommunityTip Cloud Function is called.
+    reportingTipId?.let { tipId ->
+        ReportCommunityTipDialog(
+            tipId = tipId,
+            onConfirm = { onReportTip?.invoke(tipId) },
+            onDismiss = { reportingTipId = null }
+        )
+    }
 }
 
 /**

@@ -203,6 +203,25 @@ const atomicReport = async (db, photoId, uid) => {
   });
 };
 
+// Same atomic shape for community text content (community_tips / community_submissions):
+// reads ONLY the publicly readable parent, then writes the parent's reportsCount counter
+// (creating it when the document predates community reporting) and the reporter's document
+// together. Mirrors the reportCommunityTip / reportCommunitySubmission callables; reporter
+// identity is never read client-side because the rules deny every read of the subcollection.
+const atomicCommunityReport = async (db, collection, docId, uid) => {
+  const parentRef = doc(db, collection, docId);
+  const reportRef = doc(db, collection, docId, 'reports', uid);
+  await runTransaction(db, async (txn) => {
+    const parentDoc = await txn.get(parentRef);
+    if (!parentDoc.exists()) {
+      throw new Error('This content no longer exists and cannot be reported.');
+    }
+    const count = parentDoc.get('reportsCount') ?? 0;
+    txn.update(parentRef, { reportsCount: count + 1 });
+    txn.set(reportRef, { reporterUid: uid, timestamp: Date.now() });
+  });
+};
+
 // ---------------------------------------------------------------------------
 // community_submissions
 // ---------------------------------------------------------------------------
@@ -818,6 +837,128 @@ describe('community_tips', () => {
   it('rejects deletion of a tip, including by its owner', async () => {
     const { id } = await seedTip(ALICE);
     await assertFails(deleteDoc(doc(dbAs(ALICE), 'community_tips', id)));
+  });
+
+  // ---------------------------------------------------------------------------
+  // Community reporting (direct-write parity with the reportCommunityTip callable)
+  // ---------------------------------------------------------------------------
+
+  it('accepts a valid first atomic report, creating the reportsCount counter', async () => {
+    // seedPublicDoc writes tips WITHOUT a reportsCount field (like the trusted callable):
+    // the first report must create the counter through the atomic direct-write path.
+    const { id } = await seedTip(ALICE);
+    const db = dbAs(BOB);
+
+    await assertSucceeds(atomicCommunityReport(db, 'community_tips', id, BOB));
+
+    const tip = await getDoc(doc(db, 'community_tips', id));
+    assert.strictEqual(tip.get('reportsCount'), 1);
+    const report = await admin.firestore().collection('community_tips').doc(id).collection('reports').doc(BOB).get();
+    assert.strictEqual(report.get('reporterUid'), BOB);
+  });
+
+  it('accepts a second report from a different account and keeps the counter exact', async () => {
+    const { id } = await seedTip(ALICE);
+    const db = dbAs(BOB);
+
+    await assertSucceeds(atomicCommunityReport(db, 'community_tips', id, BOB));
+    await assertSucceeds(atomicCommunityReport(dbAs('carol-uid'), 'community_tips', id, 'carol-uid'));
+
+    const tip = await getDoc(doc(db, 'community_tips', id));
+    assert.strictEqual(tip.get('reportsCount'), 2);
+  });
+
+  it('rejects a duplicate report from the same account', async () => {
+    const { id } = await seedTip(ALICE);
+    const db = dbAs(BOB);
+
+    await assertSucceeds(atomicCommunityReport(db, 'community_tips', id, BOB));
+    await assertFails(atomicCommunityReport(db, 'community_tips', id, BOB));
+
+    const tip = await getDoc(doc(db, 'community_tips', id));
+    assert.strictEqual(tip.get('reportsCount'), 1);
+  });
+
+  it('rejects the tip owner reporting their own tip (ownership via the index)', async () => {
+    const { id } = await seedTip(ALICE);
+
+    await assertFails(atomicCommunityReport(dbAs(ALICE), 'community_tips', id, ALICE));
+
+    const tip = await getDoc(doc(dbAs(ALICE), 'community_tips', id));
+    assert.strictEqual(tip.get('reportsCount'), undefined, 'a refused self-report never creates the counter');
+  });
+
+  it('rejects the LEGACY tip owner reporting their own pre-index tip (fallback path)', async () => {
+    const { id } = await seedLegacyTip(ALICE);
+
+    await assertFails(atomicCommunityReport(dbAs(ALICE), 'community_tips', id, ALICE));
+
+    const tip = await getDoc(doc(dbAs(ALICE), 'community_tips', id));
+    assert.strictEqual(tip.get('reportsCount'), undefined, 'the legacy ownership fallback also blocks self-reports');
+  });
+
+  it('never exposes reporter identities: every read of the reports subcollection is denied', async () => {
+    const { id } = await seedTip(ALICE);
+    const db = dbAs(BOB);
+    await assertSucceeds(atomicCommunityReport(db, 'community_tips', id, BOB));
+
+    await assertFails(getDoc(doc(dbAs(BOB), 'community_tips', id, 'reports', BOB)));
+    await assertFails(getDoc(doc(dbAs(ALICE), 'community_tips', id, 'reports', BOB)));
+    await assertFails(getDocs(collection(dbAs(BOB), 'community_tips', id, 'reports')));
+  });
+
+  it('rejects standalone report creation (no parent counter update)', async () => {
+    const { id } = await seedTip(ALICE);
+    const db = dbAs(BOB);
+    await assertFails(
+      setDoc(doc(db, 'community_tips', id, 'reports', BOB), { reporterUid: BOB, timestamp: Date.now() })
+    );
+    const tip = await getDoc(doc(db, 'community_tips', id));
+    assert.strictEqual(tip.get('reportsCount'), undefined);
+  });
+
+  it('rejects a report counter increment that is not accompanied by a report document', async () => {
+    const { id } = await seedTip(ALICE);
+    const db = dbAs(BOB);
+    await assertFails(updateDoc(doc(db, 'community_tips', id), { reportsCount: increment(1) }));
+    const tip = await getDoc(doc(db, 'community_tips', id));
+    assert.strictEqual(tip.get('reportsCount'), undefined);
+  });
+
+  it('rejects a report document with unexpected fields', async () => {
+    const { id } = await seedTip(ALICE);
+    const db = dbAs(BOB);
+    const tipRef = doc(db, 'community_tips', id);
+    await assertFails(
+      runTransaction(db, async (txn) => {
+        const tipDoc = await txn.get(tipRef);
+        const count = tipDoc.get('reportsCount') ?? 0;
+        txn.update(tipRef, { reportsCount: count + 1 });
+        txn.set(doc(db, 'community_tips', id, 'reports', BOB), {
+          reporterUid: BOB,
+          timestamp: Date.now(),
+          extra: 'field',
+        });
+      })
+    );
+  });
+
+  it('rejects the owner editing reportsCount or moderationState (server-owned fields)', async () => {
+    const { id } = await seedTip(ALICE);
+    await assertFails(updateDoc(doc(dbAs(ALICE), 'community_tips', id), { reportsCount: 5 }));
+    await assertFails(updateDoc(doc(dbAs(ALICE), 'community_tips', id), { moderationState: 'hidden' }));
+    await assertFails(updateDoc(doc(dbAs(ALICE), 'community_tips', id), { moderatedAt: 123456 }));
+    const tip = await getDoc(doc(dbAs(ALICE), 'community_tips', id));
+    assert.strictEqual(tip.get('reportsCount'), undefined);
+    assert.strictEqual(tip.get('moderationState'), undefined);
+  });
+
+  it('keeps hidden tips publicly readable (hiding is an app-level filter, not a data lock)', async () => {
+    // The sweep marks moderationState; the document stays world-readable so the author
+    // can still see the content being reviewed and the app can show the author context.
+    const { id } = await seedTip(ALICE);
+    await admin.firestore().collection('community_tips').doc(id).update({ moderationState: 'hidden' });
+    await assertSucceeds(getDoc(doc(dbAs(null), 'community_tips', id)));
   });
 });
 

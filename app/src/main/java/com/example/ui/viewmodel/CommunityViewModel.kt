@@ -23,7 +23,8 @@ data class CommunityUiState(
     val statusUpdates: List<CommunityTipEntity> = emptyList(),
     val syncPhase: MeshSyncPhase = MeshSyncPhase.IDLE,
     val lastSyncResult: PeerMeshSyncResult? = null,
-    val postTipSuccessMessage: String? = null
+    val postTipSuccessMessage: String? = null,
+    val reportMessage: String? = null
 )
 
 class CommunityViewModel(
@@ -45,19 +46,24 @@ class CommunityViewModel(
     private val _postTipSuccessMessage = MutableStateFlow<String?>(null)
     val postTipSuccessMessage: StateFlow<String?> = _postTipSuccessMessage.asStateFlow()
 
+    private val _reportMessage = MutableStateFlow<String?>(null)
+    val reportMessage: StateFlow<String?> = _reportMessage.asStateFlow()
+
+    // Nested pair-reduction combine: Kotlin's typed combine only goes up to 5 flows,
+    // and the Array<Any?> vararg overload would force unchecked casts.
     val uiState: StateFlow<CommunityUiState> = combine(
-        allCommunityTips,
-        allStatusUpdates,
-        _meshSyncPhase,
-        _lastMeshSyncResult,
-        _postTipSuccessMessage
-    ) { tips, statuses, phase, result, msg ->
+        combine(allCommunityTips, allStatusUpdates) { tips, statuses -> tips to statuses },
+        combine(_meshSyncPhase, _lastMeshSyncResult) { phase, result -> phase to result },
+        combine(_postTipSuccessMessage, _reportMessage) { msg, reportMsg -> msg to reportMsg }
+    ) { (tips, statuses), (phase, result), msgAndReport ->
+        val (msg, reportMsg) = msgAndReport
         CommunityUiState(
             tips = tips,
             statusUpdates = statuses,
             syncPhase = phase,
             lastSyncResult = result,
-            postTipSuccessMessage = msg
+            postTipSuccessMessage = msg,
+            reportMessage = reportMsg
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), CommunityUiState())
 
@@ -123,6 +129,32 @@ class CommunityViewModel(
             }
             if (currentUid.isNotBlank()) {
                 communityRepository.upvoteTip(tipId, currentUid)
+            }
+        }
+    }
+
+    /**
+     * Reports a community tip for moderation through the trusted reportCommunityTip
+     * Cloud Function. The message reflects the real backend outcome: definitive
+     * rejections (duplicate report, self-report, hidden tip, hourly limit) surface
+     * the backend's explanation; a successful report is never announced as a takedown
+     * — it is queued for moderator review.
+     */
+    fun reportTip(tipId: String) {
+        viewModelScope.launch {
+            val currentUid = try {
+                FirebaseAuth.getInstance().currentUser?.uid ?: ""
+            } catch (e: Exception) {
+                ""
+            }
+            if (currentUid.isNotBlank()) {
+                val result = communityRepository.reportTip(tipId, currentUid)
+                _reportMessage.value = result.fold(
+                    onSuccess = { "Thanks — this tip has been reported and will be reviewed by our moderation team." },
+                    onFailure = { it.message ?: "Report failed. Please try again later." }
+                )
+                delay(3000)
+                _reportMessage.value = null
             }
         }
     }

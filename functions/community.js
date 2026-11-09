@@ -31,9 +31,26 @@ const { ownershipIndexRef } = require("./ownershipIndex");
 const TIPS_COLLECTION = "community_tips";
 const SUBMISSIONS_COLLECTION = "community_submissions";
 const VOTES_SUBCOLLECTION = "votes";
+const REPORTS_SUBCOLLECTION = "reports";
 // Voting is generously bounded: a human session casts far fewer votes than this, while
 // an abusive account scripting votes is still capped per hour.
 const TIP_VOTE_RATE_LIMIT_MAX_PER_HOUR = 100;
+// Community reporting budget (photo-report parity): flagging content is a moderation
+// action, so a single account must not be able to flood reports.
+const COMMUNITY_REPORT_RATE_LIMIT_MAX_PER_HOUR = 20;
+
+// Authoritative community moderation states — the same vocabulary photos use
+// (functions/photos.js MODERATION_STATE_*): "hidden" is what THIS sweep sets when
+// distinct accounts reach the report threshold; "removed" is set only by a human
+// moderator and is the only irreversible state.
+const MODERATION_STATE_HIDDEN = "hidden";
+const MODERATION_STATE_REMOVED = "removed";
+const isModeratedAway = (state) =>
+  state === MODERATION_STATE_HIDDEN || state === MODERATION_STATE_REMOVED;
+
+// Reports from this many distinct accounts hide community content.
+const COMMUNITY_REPORTS_THRESHOLD = 3;
+const COMMUNITY_REPORT_SCAN_LIMIT = 100;
 
 // Per-UID community post limits: a rolling 24-hour window (rateLimits.js implements the
 // counter; the window is passed per-enforcer so community limits do not change the
@@ -527,6 +544,201 @@ async function castTipVoteDocument(db, voterUid, data, options = {}) {
   });
 }
 
+/**
+ * Validates a community report callable payload: one plain object carrying exactly one
+ * key naming the target document (tipId for community_tips, submissionId for
+ * community_submissions), a non-empty document-id-looking string.
+ */
+function validateCommunityReportPayload(data, docIdKey) {
+  if (!isPlainObject(data)) {
+    throw invalid("Community report payload must be a JSON object.");
+  }
+  for (const key of Object.keys(data)) {
+    if (key !== docIdKey) {
+      throw invalid(`Unexpected field '${key}' in community report payload. Allowed: ${docIdKey}.`);
+    }
+  }
+  const docId = data[docIdKey];
+  if (
+    typeof docId !== "string" ||
+    docId.length === 0 ||
+    docId.length > MAX_ID_LENGTH ||
+    !/^[A-Za-z0-9_-]+$/.test(docId)
+  ) {
+    throw invalid(`'${docIdKey}' must be a non-empty document id of at most ${MAX_ID_LENGTH} characters.`);
+  }
+  return { docId };
+}
+
+/**
+ * The shared community-content report writer behind the reportCommunityTip and
+ * reportCommunitySubmission Cloud Functions. `collection` is TIPS_COLLECTION or
+ * SUBMISSIONS_COLLECTION. ONE Firestore transaction atomically:
+ *   - reads the target document (must exist and not already be hidden/removed);
+ *   - resolves its owner through the ownership index (legacy ownerUid fallback): the
+ *     owner may never report their own content ("edit or delete it instead"), exactly
+ *     the refusal castTipVote applies to self-votes;
+ *   - reads the per-reporter document {collection}/{docId}/reports/{reporterUid}
+ *     (reporter identities stay private — the rules deny all client reads of the
+ *     subcollection): an existing document means a duplicate report and is rejected;
+ *   - consumes one slot of the per-UID report rate limit;
+ *   - creates the reporter's document ({ reporterUid, timestamp }) and increments the
+ *     document's reportsCount by exactly one — creating the counter on documents
+ *     written before this feature existed.
+ *
+ * Direct client transaction writes (firestore.rules) remain permitted while older app
+ * versions are in the field; this callable produces the identical document shapes and
+ * invariants, and adds non-anonymous sign-in and rate-limit enforcement the rules
+ * cannot express. Returns { reportsCount } — the document's report count after this
+ * report. See docs/COMMUNITY_REPORTING_DESIGN.md.
+ */
+async function reportOnCommunityDocument(db, collection, docId, reportingUid, options = {}) {
+  if (!reportingUid) {
+    throw new HttpsError("unauthenticated", "User authentication required to report community content.");
+  }
+  const docRef = db.collection(collection).doc(docId);
+  const indexRef = ownershipIndexRef(db, collection, docId);
+  const reportRef = docRef.collection(REPORTS_SUBCOLLECTION).doc(reportingUid);
+  const rateLimit = options.rateLimit || null;
+  const nowMs = typeof options.nowMs === "function" ? options.nowMs() : options.nowMs ?? Date.now();
+
+  return db.runTransaction(async (transaction) => {
+    // All reads precede all writes (Firestore transaction requirement).
+    const doc = await transaction.get(docRef);
+    if (!doc.exists) {
+      throw new HttpsError("not-found", "This content no longer exists and cannot be reported.");
+    }
+    const data = doc.data() || {};
+    if (isModeratedAway(data.moderationState)) {
+      throw new HttpsError(
+        "failed-precondition",
+        "This content was already hidden or removed, so it can no longer be reported."
+      );
+    }
+
+    const indexDoc = await transaction.get(indexRef);
+    const owner = ownerOfExistingDocument(doc, indexDoc);
+    if (owner === reportingUid) {
+      throw new HttpsError("permission-denied", "You cannot report your own content. Edit or delete it instead.");
+    }
+
+    const existingReportDoc = await transaction.get(reportRef);
+    if (existingReportDoc.exists) {
+      throw new HttpsError(
+        "already-exists",
+        "You have already reported this content."
+      );
+    }
+
+    if (rateLimit) {
+      const allowed = await decideRateLimitInTransaction(
+        transaction,
+        rateLimit.ref,
+        rateLimit.maxPerWindow,
+        nowMs
+      );
+      if (!allowed) {
+        throw new HttpsError(
+          "resource-exhausted",
+          `Rate limit exceeded. Maximum ${rateLimit.maxPerWindow} reports per hour per user.`
+        );
+      }
+    }
+
+    const currentCount = Number(data.reportsCount) || 0;
+    transaction.set(reportRef, { reporterUid: reportingUid, timestamp: nowMs });
+    transaction.update(docRef, { reportsCount: currentCount + 1 });
+    return { reportsCount: currentCount + 1 };
+  });
+}
+
+/**
+ * The trusted community tip report writer used by the reportCommunityTip Cloud
+ * Function. See [reportOnCommunityDocument] for the transaction guarantees.
+ * Returns { reportsCount }.
+ */
+async function reportCommunityTipDocument(db, reportingUid, data, options = {}) {
+  const { docId } = validateCommunityReportPayload(data, "tipId");
+  return reportOnCommunityDocument(db, TIPS_COLLECTION, docId, reportingUid, options);
+}
+
+/**
+ * The trusted community submission report writer used by the reportCommunitySubmission
+ * Cloud Function. See [reportOnCommunityDocument] for the transaction guarantees.
+ * Returns { reportsCount }.
+ */
+async function reportCommunitySubmissionDocument(db, reportingUid, data, options = {}) {
+  const { docId } = validateCommunityReportPayload(data, "submissionId");
+  return reportOnCommunityDocument(db, SUBMISSIONS_COLLECTION, docId, reportingUid, options);
+}
+
+/**
+ * The authoritative community moderation sweep (mirrors moderateReportedPhotos in
+ * functions/photos.js). When reportsCount from DISTINCT accounts reaches the threshold
+ * the content is HIDDEN: its moderationState is set to "hidden" (the app's shared
+ * moderation-state vocabulary, the same value photos use) so it stops appearing in the
+ * app, while the document, its votes, and its reports stay fully intact for review and
+ * restore. Deleting anything is deliberately NOT part of this step: a report count
+ * alone is never sufficient grounds to make content unreachable. A takedown becomes
+ * irreversible only in the manually reviewed "removed" state.
+ *
+ * Semantics:
+ *   - scans community_tips and community_submissions whose reportsCount has reached
+ *     the threshold;
+ *   - documents already hidden or already removed are skipped (idempotent: the sweep
+ *     never re-marks a moderated document);
+ *   - a failed mark (Firestore write error) is counted as failed so the next scheduled
+ *     run retries it.
+ *
+ * Returns merged { processed, hidden, kept, failed } diagnostics over both collections.
+ * Run as a scheduled function.
+ */
+async function moderateReportedCommunityContent(db, options = {}) {
+  const threshold = options.threshold ?? COMMUNITY_REPORTS_THRESHOLD;
+  const scanLimit = options.scanLimit ?? COMMUNITY_REPORT_SCAN_LIMIT;
+  const nowMs = options.nowMs ?? null;
+
+  const result = { processed: 0, hidden: 0, kept: 0, failed: 0 };
+
+  for (const collection of [TIPS_COLLECTION, SUBMISSIONS_COLLECTION]) {
+    const snapshot = await db
+      .collection(collection)
+      .where("reportsCount", ">=", threshold)
+      .limit(scanLimit)
+      .get();
+
+    if (snapshot.empty) {
+      continue;
+    }
+
+    for (const doc of snapshot.docs) {
+      result.processed += 1;
+      const data = doc.data() || {};
+
+      // Terminal moderation states need no further automatic action: hidden is this
+      // sweep's own output, removed is a reviewed takedown.
+      if (isModeratedAway(data.moderationState)) {
+        result.kept += 1;
+        continue;
+      }
+
+      const updateData = { moderationState: MODERATION_STATE_HIDDEN };
+      if (typeof nowMs === "function") {
+        updateData.moderatedAt = nowMs();
+      }
+      try {
+        await doc.ref.update(updateData);
+        result.hidden += 1;
+      } catch (err) {
+        result.failed += 1;
+        console.warn(`[moderateReportedCommunityContent] failed to hide reported ${collection} document: ${err.message}`);
+      }
+    }
+  }
+
+  return result;
+}
+
 module.exports = {
   TIPS_COLLECTION,
   SUBMISSIONS_COLLECTION,
@@ -552,10 +764,20 @@ module.exports = {
   validateCommunityTipPayload,
   validateCommunitySubmissionPayload,
   validateTipVotePayload,
+  validateCommunityReportPayload,
   ownerOfExistingDocument,
   postCommunityTipDocument,
   submitCommunitySpotDocument,
   castTipVoteDocument,
+  reportCommunityTipDocument,
+  reportCommunitySubmissionDocument,
+  moderateReportedCommunityContent,
   VOTES_SUBCOLLECTION,
+  REPORTS_SUBCOLLECTION,
   TIP_VOTE_RATE_LIMIT_MAX_PER_HOUR,
+  COMMUNITY_REPORT_RATE_LIMIT_MAX_PER_HOUR,
+  COMMUNITY_REPORTS_THRESHOLD,
+  COMMUNITY_REPORT_SCAN_LIMIT,
+  MODERATION_STATE_HIDDEN,
+  MODERATION_STATE_REMOVED,
 };

@@ -296,6 +296,9 @@ fun VividScoutApp(
                         onPostTip = { spotId, spotTitle, content, isStatus, category ->
                             communityViewModel.postTip(spotId, spotTitle, content, isStatus, category)
                         },
+                        onReportTip = { tipId ->
+                            communityViewModel.reportTip(tipId)
+                        },
                         onReFetchImage = { spotId, callback ->
                             coroutineScope.launch {
                                 val success = exploreViewModel.refreshSpotPhoto(spotId)

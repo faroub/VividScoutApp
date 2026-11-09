@@ -144,6 +144,43 @@ internal object CommunitySyncWriter {
     }
 
     /**
+     * Submits a community-tip report through the trusted reportCommunityTip Cloud Function.
+     *
+     * The callable is the authoritative boundary: inside one Firestore transaction it
+     * re-checks the tip exists and is not already hidden/removed, rejects the tip owner's
+     * self-report and a duplicate report from this account, requires a non-anonymous
+     * sign-in, consumes the per-UID rate limit, and writes the report document together
+     * with the exact +1 reportsCount increment. Every definitive rejection surfaces here
+     * as a typed failure with a clear, recoverable message.
+     */
+    suspend fun reportTipInCloud(
+        context: Context,
+        tipId: String
+    ): Result<Int> = withContext(Dispatchers.IO) {
+        if (!FirebaseAccess.ensureFirebaseAuth(context)) {
+            return@withContext Result.failure(IllegalStateException("Authentication required to report tips."))
+        }
+        val app = FirebaseAccess.getFirebaseApp(context)
+            ?: return@withContext Result.failure(IllegalStateException("Firebase is not initialized."))
+
+        try {
+            val result = FirebaseFunctions.getInstance(app).getHttpsCallable("reportCommunityTip")
+                .call(mapOf("tipId" to tipId)).await()
+
+            val reportsCount = communityReportCountFromResponse(result.data)
+            SafeLog.i(TAG, "Reported community tip '$tipId'. reportsCount = $reportsCount")
+            Result.success(reportsCount)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: FirebaseFunctionsException) {
+            Result.failure(communityReportFailureFor(e.code, e))
+        } catch (e: Exception) {
+            SafeLog.w(TAG, "Failed to report community tip '$tipId': ${e.message}")
+            Result.failure(e)
+        }
+    }
+
+    /**
      * Reconciles user vote state from Cloud Firestore when an upvote transaction encounters an ambiguous outcome or duplicate vote error.
      * If user vote doc exists in Cloud Firestore, ensures local Room DB records the vote.
      */
@@ -191,4 +228,64 @@ internal object CommunitySyncWriter {
         }
         successCount
     }
+}
+
+/**
+ * A community-tip report rejection the UI surfaces as an explicit, recoverable message.
+ */
+class CommunityReportException(message: String, cause: Exception? = null) : Exception(message, cause)
+
+/**
+ * Maps a definitive reportCommunityTip Cloud Function rejection to the typed failure
+ * the UI surfaces. The callable's contract: already-exists = this account already
+ * reported the tip; not-found = the tip disappeared; permission-denied = the caller
+ * owns the tip (self-reports are refused); failed-precondition = the tip is
+ * hidden/removed; unauthenticated = anonymous or missing sign-in;
+ * resource-exhausted = the hourly per-UID report limit was hit. Anything else is an
+ * unexpected backend condition and passes the original exception through unchanged
+ * for generic error handling.
+ */
+internal fun communityReportFailureFor(
+    code: FirebaseFunctionsException.Code,
+    e: Exception
+): Exception = when (code) {
+    FirebaseFunctionsException.Code.ALREADY_EXISTS -> CommunityReportException(
+        "You already reported this tip. Each tip can only be reported once per account.",
+        e
+    )
+    FirebaseFunctionsException.Code.NOT_FOUND -> CommunityReportException(
+        "This tip no longer exists and cannot be reported."
+    )
+    FirebaseFunctionsException.Code.PERMISSION_DENIED -> CommunityReportException(
+        "You cannot report your own tip.",
+        e
+    )
+    FirebaseFunctionsException.Code.FAILED_PRECONDITION -> CommunityReportException(
+        "This tip is no longer available and cannot be reported.",
+        e
+    )
+    FirebaseFunctionsException.Code.UNAUTHENTICATED -> CommunityReportException(
+        "Sign in with a real account to report tips.",
+        e
+    )
+    FirebaseFunctionsException.Code.RESOURCE_EXHAUSTED -> CommunityReportException(
+        "You've reached the hourly reporting limit. Try again later.",
+        e
+    )
+    else -> {
+        SafeLog.w(TAG, "Failed to submit tip report: ${e.message}")
+        e
+    }
+}
+
+/**
+ * Reads the authoritative reportsCount the reportCommunityTip Cloud Function returns
+ * for a successful report. The callable's response shape is part of its contract;
+ * anything that does not match it is a programming error (not a user-facing
+ * condition), so it fails loudly instead of silently reporting a fabricated count.
+ */
+internal fun communityReportCountFromResponse(data: Any?): Int {
+    val reportsCount = (data as? Map<*, *>)?.get("reportsCount")
+    return (reportsCount as? Number)?.toInt()
+        ?: error("Malformed reportCommunityTip response: expected reportsCount, got '$data'")
 }

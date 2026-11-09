@@ -258,6 +258,15 @@ object FirestoreSyncManager {
     ): Boolean = CommunitySyncWriter.incrementTipUpvoteInCloud(context, tipId)
 
     /**
+     * Submits a community-tip report through the trusted reportCommunityTip Cloud
+     * Function. See [CommunitySyncWriter.reportTipInCloud].
+     */
+    suspend fun reportTipInCloud(
+        context: Context,
+        tipId: String
+    ): Result<Int> = CommunitySyncWriter.reportTipInCloud(context, tipId)
+
+    /**
      * Reconciles local vote state with the cloud vote document. See
      * [CommunitySyncWriter.reconcileTipVoteInCloud].
      */

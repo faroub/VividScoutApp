@@ -139,6 +139,31 @@ class CommunityTipRepository(
         true
     }
 
+    /**
+     * Reports a community tip for moderation through the trusted reportCommunityTip
+     * Cloud Function, mirroring the upvote gates: only real, cloud-synced, migrated
+     * tips can be reported. Sample/demo tips and local-only drafts are never
+     * reportable, and the local tip state is never mutated — reporting is purely a
+     * server-side moderation signal that leaves the record intact.
+     */
+    suspend fun reportTip(tipId: String, userId: String): Result<Int> = withContext(Dispatchers.IO) {
+        if (userId.isBlank()) {
+            return@withContext Result.failure(IllegalStateException("Authentication required to report tips."))
+        }
+
+        val tip = dao.getTipById(tipId)
+            ?: return@withContext Result.failure(IllegalStateException("This tip no longer exists."))
+
+        if (tip.isSampleContent || !tip.isSyncedToCloud || !tip.isMigrated) {
+            return@withContext Result.failure(IllegalStateException("This tip cannot be reported yet."))
+        }
+
+        val ctx = context
+            ?: return@withContext Result.failure(IllegalStateException("Cannot report tips without app context."))
+
+        FirestoreSyncManager.reportTipInCloud(ctx, tipId)
+    }
+
     suspend fun syncWithNearbyPeers(
         onPhaseChanged: (MeshSyncPhase) -> Unit = {}
     ): PeerMeshSyncResult = withContext(Dispatchers.IO) {

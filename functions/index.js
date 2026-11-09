@@ -31,10 +31,14 @@ const {
   postCommunityTipDocument,
   submitCommunitySpotDocument,
   castTipVoteDocument,
+  reportCommunityTipDocument,
+  reportCommunitySubmissionDocument,
+  moderateReportedCommunityContent,
   TIP_RATE_LIMIT_MAX_PER_DAY,
   SUBMISSION_RATE_LIMIT_MAX_PER_DAY,
   COMMUNITY_RATE_LIMIT_WINDOW_MS,
   TIP_VOTE_RATE_LIMIT_MAX_PER_HOUR,
+  COMMUNITY_REPORT_RATE_LIMIT_MAX_PER_HOUR,
 } = require("./community");
 
 const app = initializeApp();
@@ -569,6 +573,106 @@ exports.moderateReportedPhotos = onSchedule("every 15 minutes", async () => {
   if (result.processed > 0) {
     console.log(
       `[moderateReportedPhotos] processed=${result.processed} hidden=${result.hidden} kept=${result.kept} failed=${result.failed}`
+    );
+  }
+});
+
+/**
+ * Firebase Cloud Function: reportCommunityTip
+ *
+ * The trusted writer of community tip reports
+ * (community_tips/{tipId}/reports/{reporterUid}). Reports must come from a signed-in,
+ * NON-ANONYMOUS account: anonymous sign-in is free and unverified, so allowing it would
+ * let one person mint UIDs until the moderation threshold trips. Inside one Firestore
+ * transaction the callable re-checks the tip exists and is not already hidden/removed,
+ * refuses the tip owner's own report, rejects duplicate reports by the same account,
+ * consumes a per-UID rate limit (20/hour), and creates the report document together
+ * with the exact +1 reportsCount increment — the same atomic shape the rules'
+ * direct-write path enforces while older app versions are in the field. Enforces
+ * authentication and App Check. See reportCommunityTipDocument
+ * (functions/community.js) and docs/COMMUNITY_REPORTING_DESIGN.md.
+ */
+exports.reportCommunityTip = onCall(
+  {
+    cors: true,
+    enforceAppCheck: true
+  },
+  async (request) => {
+    const auth = request.auth;
+    if (!auth || !auth.uid) {
+      throw new HttpsError("unauthenticated", "User authentication required to report a community tip.");
+    }
+    // A real (non-anonymous) sign-in provider: flag weight must not be farmable.
+    const signInProvider = auth.token && auth.token.firebase && auth.token.firebase.sign_in_provider;
+    if (signInProvider === "anonymous") {
+      throw new HttpsError(
+        "unauthenticated",
+        "Sign in with a real account to report community content."
+      );
+    }
+
+    return reportCommunityTipDocument(db, auth.uid, request.data || {}, {
+      rateLimit: {
+        ref: db.collection("rate_limits").doc(`community_tip_report_${auth.uid}`),
+        maxPerWindow: COMMUNITY_REPORT_RATE_LIMIT_MAX_PER_HOUR,
+      },
+    });
+  }
+);
+
+/**
+ * Firebase Cloud Function: reportCommunitySubmission
+ *
+ * The trusted writer of community submission reports
+ * (community_submissions/{submissionId}/reports/{reporterUid}), with the identical
+ * contract as reportCommunityTip. See reportCommunitySubmissionDocument
+ * (functions/community.js) and docs/COMMUNITY_REPORTING_DESIGN.md.
+ */
+exports.reportCommunitySubmission = onCall(
+  {
+    cors: true,
+    enforceAppCheck: true
+  },
+  async (request) => {
+    const auth = request.auth;
+    if (!auth || !auth.uid) {
+      throw new HttpsError("unauthenticated", "User authentication required to report a community submission.");
+    }
+    const signInProvider = auth.token && auth.token.firebase && auth.token.firebase.sign_in_provider;
+    if (signInProvider === "anonymous") {
+      throw new HttpsError(
+        "unauthenticated",
+        "Sign in with a real account to report community content."
+      );
+    }
+
+    return reportCommunitySubmissionDocument(db, auth.uid, request.data || {}, {
+      rateLimit: {
+        ref: db.collection("rate_limits").doc(`community_submission_report_${auth.uid}`),
+        maxPerWindow: COMMUNITY_REPORT_RATE_LIMIT_MAX_PER_HOUR,
+      },
+    });
+  }
+);
+
+/**
+ * Firebase Cloud Function: moderateReportedCommunityContent (scheduled, every 15 minutes)
+ *
+ * Soft-moderation sweep for community text content, mirroring the photo sweep: a tip or
+ * submission whose reports from distinct accounts reach the threshold is HIDDEN
+ * (moderationState "hidden") so it leaves the app immediately, but the document, its
+ * votes, and its reports are deliberately kept — a report count alone never makes
+ * content permanently unreachable, and the author's content can be restored after a
+ * mistaken or abusive flagging campaign. Irreversible removal stays a separate,
+ * human-reviewed step. Documents already hidden or removed are skipped (idempotent); a
+ * failed hide mark is retried by the next sweep. See moderateReportedCommunityContent
+ * (functions/community.js).
+ */
+exports.moderateReportedCommunityContent = onSchedule("every 15 minutes", async () => {
+  const result = await moderateReportedCommunityContent(db, { nowMs: () => Date.now() });
+  if (result.processed > 0) {
+    console.log(
+      `[moderateReportedCommunityContent] processed=${result.processed} hidden=${result.hidden} kept=${result.kept} failed=${result.failed}`
     );
   }
 });

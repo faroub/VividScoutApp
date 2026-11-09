@@ -105,7 +105,8 @@ fun SpotDetailCommunitySection(
     spot: ScoutSpotEntity,
     tipsForSpot: List<CommunityTipEntity>,
     onPostTipClick: () -> Unit,
-    onUpvoteClick: (tipId: String) -> Unit
+    onUpvoteClick: (tipId: String) -> Unit,
+    onReportClick: ((tipId: String) -> Unit)? = null
 ) {
     // Community Ground Truth & Tips Section
     Surface(
@@ -172,6 +173,7 @@ fun SpotDetailCommunitySection(
                         CommunityTipCard(
                             tip = tip,
                             onUpvoteClick = onUpvoteClick,
+                            onReportClick = onReportClick,
                             showSpotHeader = false
                         )
                     }
