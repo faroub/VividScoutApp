@@ -8,8 +8,9 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldPath
 import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Query
+import com.google.firebase.functions.FirebaseFunctions
+import com.google.firebase.functions.FirebaseFunctionsException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
@@ -31,12 +32,14 @@ data class SpotPhotoData(
     val moderationState: String? = null
 ) {
     /**
-     * A photo is hidden from the UI when it crossed the report threshold OR when the
-     * trusted backend moderation sweep removed it (authoritative state, not a UI-only
-     * filter: the removal deletes the Storage object, so the URL stops serving too).
+     * A photo is hidden from the UI when the trusted moderation sweep took it away
+     * (moderationState "hidden" at the report threshold, or "removed" after manual
+     * review — both authoritative backend states) OR when it locally crossed the
+     * report threshold before the sweep ran.
      */
     val isHidden: Boolean
-        get() = moderationState == "removed" || PhotoProcessor.isPhotoHiddenByReports(reportsCount)
+        get() = moderationState == "removed" || moderationState == "hidden" ||
+            PhotoProcessor.isPhotoHiddenByReports(reportsCount)
 }
 
 /**
@@ -94,7 +97,7 @@ data class OlderPhotosPage(
 
 /**
  * Photo workflow surface: real photo upload from an Android Photo Picker [Uri],
- * atomic reporting of an existing photo document by its real Firestore document ID,
+ * reporting of an existing photo through the trusted reportPhoto Cloud Function,
  * and a bounded live stream of a spot's newest photos that distinguishes loaded
  * data, an empty result, and listener failure.
  */
@@ -106,13 +109,14 @@ interface SpotPhotoRepository {
 }
 
 /**
- * Repository enforcing atomic photo reporting, duplicate report prevention,
- * and 3-report moderation hiding logic.
+ * Repository enforcing atomic, rate-limited photo reporting through the reportPhoto
+ * Cloud Function, duplicate report prevention, and report-threshold moderation hiding.
  */
 class PhotoModerationRepository(
     private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance(),
     private val auth: FirebaseAuth = FirebaseAuth.getInstance(),
-    private val storageService: FirebasePhotoStorageService = FirebasePhotoStorageService()
+    private val storageService: FirebasePhotoStorageService = FirebasePhotoStorageService(),
+    private val functions: FirebaseFunctions = FirebaseFunctions.getInstance()
 ) : SpotPhotoRepository {
 
     companion object {
@@ -213,15 +217,15 @@ class PhotoModerationRepository(
         }
 
     /**
-     * Executes atomic photo report creation and counter increment in a single transaction.
+     * Submits a photo report through the trusted reportPhoto Cloud Function.
      *
-     * The Firestore security rules deny ALL reads of spot_photos/{photoId}/reports/{userId}
-     * (reporter identities are private), so this transaction intentionally NEVER reads the
-     * user's report document. Report uniqueness is enforced by the security rules'
-     * before/after existence checks: the parent photo's reportsCount may only increase by
-     * exactly one while the caller's report document transitions from absent to present.
-     * A duplicate attempt is therefore rejected server-side and surfaces here as a
-     [PhotoReportException] with a clear, recoverable message.
+     * The callable is the authoritative boundary: inside one Firestore transaction it
+     * re-checks the photo exists and is not already hidden/removed, rejects a duplicate
+     * report from this account, consumes the per-UID rate limit, and creates the report
+     * document together with the exact +1 reportsCount increment (the server-side
+     * equivalent of the atomic client transaction older app versions wrote directly).
+     * Every definitive rejection surfaces here as a typed failure with a clear,
+     * recoverable message.
      */
     override suspend fun reportPhoto(photoId: String): Result<Int> = withContext(Dispatchers.IO) {
         val currentUserUid = auth.currentUser?.uid
@@ -230,59 +234,16 @@ class PhotoModerationRepository(
         }
 
         try {
-            val photoRef = firestore.collection(PHOTOS_COLLECTION).document(photoId)
-            val reportRef = photoRef.collection("reports").document(currentUserUid)
+            val result = functions.getHttpsCallable("reportPhoto")
+                .call(mapOf("photoId" to photoId))
+                .await()
 
-            // Execute atomic transaction: the counter is written as an explicit
-            // transaction-read value (rather than FieldValue.increment) so the Firestore
-            // security rules child-create check can observe the before/after counter state
-            // of the atomic report transaction. Only the parent photo document is read —
-            // it is publicly readable — the report document is write-only by design.
-            val newReportCount = firestore.runTransaction { transaction ->
-                val photoDoc = transaction.get(photoRef)
-                if (!photoDoc.exists()) {
-                    throw PhotoNotFoundException("This photo no longer exists and cannot be reported.")
-                }
-
-                val currentCount = photoDoc.getLong("reportsCount")?.toInt() ?: 0
-                val updatedCount = currentCount + 1
-
-                // 1. Create per-user unique report document. Uniqueness is NOT checked by a
-                // client read (forbidden) — it is enforced by the security rules' requirement
-                // that the report document must not exist before and must exist after this
-                // transaction.
-                val reportData = hashMapOf<String, Any>(
-                    "reporterUid" to currentUserUid,
-                    "timestamp" to System.currentTimeMillis()
-                )
-                transaction.set(reportRef, reportData)
-
-                // 2. Increment reportsCount on photo document.
-                transaction.update(photoRef, "reportsCount", updatedCount)
-
-                updatedCount
-            }.await()
-
-            SafeLog.i(TAG, "Successfully submitted report for photo $photoId. New reportsCount = $newReportCount")
-            Result.success(newReportCount)
-        } catch (e: FirebaseFirestoreException) {
-            // After the parent-existence pre-check above, a rules rejection of this atomic
-            // transaction means the user's report document already exists (duplicate report
-            // from this Firebase account or a concurrent attempt), or the photo was removed
-            // mid-transaction. Reporter documents are unreadable by design, so the server
-            // rejection is the only authoritative duplicate signal — surface it clearly.
-            if (e.code == FirebaseFirestoreException.Code.PERMISSION_DENIED ||
-                e.code == FirebaseFirestoreException.Code.ABORTED
-            ) {
-                Result.failure(
-                    PhotoReportException(
-                        "You have already reported this photo. Each photo can only be reported once per account.",
-                        e
-                    )
-                )
-            } else {
-                Result.failure(e)
-            }
+            val reportsCount = reportPhotoCountFromResponse(result.data)
+            SafeLog.i(TAG, "Successfully submitted report for photo $photoId. New reportsCount = $reportsCount")
+            Result.success(reportsCount)
+        } catch (e: FirebaseFunctionsException) {
+            // Definitive rejections from the trusted backend, mapped to clear outcomes.
+            Result.failure(photoReportFailureFor(e.code, e))
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -297,6 +258,51 @@ class PhotoModerationRepository(
     fun isPhotoHidden(reportsCount: Int): Boolean {
         return PhotoProcessor.isPhotoHiddenByReports(reportsCount)
     }
+}
+
+/**
+ * Maps a definitive reportPhoto Cloud Function rejection to the typed failure the UI
+ * surfaces. The callable's contract: already-exists = this account already reported;
+ * not-found = the photo disappeared; failed-precondition = the photo is hidden/removed;
+ * unauthenticated = anonymous or missing sign-in. Anything else is an unexpected
+ * backend condition and passes the original exception through unchanged for generic
+ * error handling.
+ */
+internal fun photoReportFailureFor(
+    code: FirebaseFunctionsException.Code,
+    e: Exception
+): Exception = when (code) {
+    FirebaseFunctionsException.Code.ALREADY_EXISTS -> PhotoReportException(
+        "You have already reported this photo. Each photo can only be reported once per account.",
+        e
+    )
+    FirebaseFunctionsException.Code.NOT_FOUND -> PhotoNotFoundException(
+        "This photo no longer exists and cannot be reported."
+    )
+    FirebaseFunctionsException.Code.FAILED_PRECONDITION -> PhotoReportException(
+        "This photo is no longer available and cannot be reported.",
+        e
+    )
+    FirebaseFunctionsException.Code.UNAUTHENTICATED -> PhotoReportException(
+        "Sign in with a real account to report photos.",
+        e
+    )
+    else -> {
+        SafeLog.w("PhotoModerationRepo", "Failed to submit photo report: ${e.message}")
+        e
+    }
+}
+
+/**
+ * Reads the authoritative reportsCount the reportPhoto Cloud Function returns for a
+ * successful report. The callable's response shape is part of its contract; anything
+ * that does not match it is a programming error (not a user-facing condition), so it
+ * fails loudly instead of silently reporting a fabricated count.
+ */
+internal fun reportPhotoCountFromResponse(data: Any?): Int {
+    val reportsCount = (data as? Map<*, *>)?.get("reportsCount")
+    return (reportsCount as? Number)?.toInt()
+        ?: error("Malformed reportPhoto response: expected reportsCount, got '$data'")
 }
 
 /**

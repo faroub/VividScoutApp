@@ -15,16 +15,25 @@ const { getFirestore } = require("firebase-admin/firestore");
 const { getStorage } = require("firebase-admin/storage");
 const axios = require("axios");
 const { validateSharedTripPublishPayload, publishSharedTripDocument } = require("./sharedTrips");
-const { finalizePhotoUploadDocument, PHOTO_FINALIZE_RATE_LIMIT_MAX_PER_HOUR, reapUnregisteredPhotoObjects, moderateReportedPhotos } = require("./photos");
+const {
+  finalizePhotoUploadDocument,
+  reportPhotoDocument,
+  PHOTO_FINALIZE_RATE_LIMIT_MAX_PER_HOUR,
+  PHOTO_REPORT_RATE_LIMIT_MAX_PER_HOUR,
+  reapUnregisteredPhotoObjects,
+  moderateReportedPhotos
+} = require("./photos");
 const { validateNearbyPlacesRequest } = require("./validation");
 const { firestoreDatabaseId } = require("./firestoreDatabase");
 const { decideRateLimitInTransaction, RATE_LIMIT_WINDOW_MS } = require("./rateLimits");
 const {
   postCommunityTipDocument,
   submitCommunitySpotDocument,
+  castTipVoteDocument,
   TIP_RATE_LIMIT_MAX_PER_DAY,
   SUBMISSION_RATE_LIMIT_MAX_PER_DAY,
   COMMUNITY_RATE_LIMIT_WINDOW_MS,
+  TIP_VOTE_RATE_LIMIT_MAX_PER_HOUR,
 } = require("./community");
 
 const app = initializeApp();
@@ -399,6 +408,78 @@ exports.submitCommunitySpot = onCall(
 );
 
 /**
+ * Firebase Cloud Function: reportPhoto
+ *
+ * The trusted writer of photo reports (spot_photos/{photoId}/reports/{reporterUid}).
+ * Reports must come from a signed-in, NON-ANONYMOUS account: anonymous sign-in is free
+ * and unverified, so allowing it would let one person mint UIDs until a photo trips the
+ * moderation threshold. Inside one Firestore transaction the callable re-checks the
+ * photo exists and is not already hidden/removed, rejects duplicate reports by the same
+ * account, consumes a per-UID rate limit (20/hour), and creates the report document
+ * together with the exact +1 reportsCount increment — the same atomic shape the rules'
+ * direct-write path enforces while older app versions are in the field. Enforces
+ * authentication and App Check. See reportPhotoDocument (functions/photos.js).
+ */
+exports.reportPhoto = onCall(
+  {
+    cors: true,
+    enforceAppCheck: true
+  },
+  async (request) => {
+    const auth = request.auth;
+    if (!auth || !auth.uid) {
+      throw new HttpsError("unauthenticated", "User authentication required to report a photo.");
+    }
+    // A real (non-anonymous) sign-in provider: flag weight must not be farmable.
+    const signInProvider = auth.token && auth.token.firebase && auth.token.firebase.sign_in_provider;
+    if (signInProvider === "anonymous") {
+      throw new HttpsError(
+        "unauthenticated",
+        "Sign in with a real account to report photos."
+      );
+    }
+
+    return reportPhotoDocument(db, auth.uid, request.data || {}, {
+      rateLimit: {
+        ref: db.collection("rate_limits").doc(`photo_report_${auth.uid}`),
+        maxPerHour: PHOTO_REPORT_RATE_LIMIT_MAX_PER_HOUR,
+      },
+    });
+  }
+);
+
+/**
+ * Firebase Cloud Function: castTipVote
+ *
+ * The trusted writer of tip votes (community_tips/{tipId}/votes/{voterUid}). Inside one
+ * Firestore transaction it re-checks the tip exists, refuses the tip owner's own vote,
+ * rejects a second vote by the same account, consumes a per-UID vote rate limit
+ * (100/hour), and creates the vote document together with the exact +1 upvotes
+ * increment — the same atomic shape the rules' direct-write path enforces while older
+ * app versions are in the field. Enforces authentication and App Check. See
+ * castTipVoteDocument (functions/community.js).
+ */
+exports.castTipVote = onCall(
+  {
+    cors: true,
+    enforceAppCheck: true
+  },
+  async (request) => {
+    const auth = request.auth;
+    if (!auth || !auth.uid) {
+      throw new HttpsError("unauthenticated", "User authentication required to vote on a tip.");
+    }
+
+    return castTipVoteDocument(db, auth.uid, request.data || {}, {
+      rateLimit: {
+        ref: db.collection("rate_limits").doc(`community_tips_vote_${auth.uid}`),
+        maxPerWindow: TIP_VOTE_RATE_LIMIT_MAX_PER_HOUR,
+      },
+    });
+  }
+);
+
+/**
  * Firebase Cloud Function: reapOrphanedPhotoUploads (scheduled, hourly)
  *
  * Server-side cleanup of Storage objects under spot_photos/ whose upload never reached
@@ -425,19 +506,18 @@ exports.reapOrphanedPhotoUploads = onSchedule("every 60 minutes", async () => {
 /**
  * Firebase Cloud Function: moderateReportedPhotos (scheduled, every 15 minutes)
  *
- * Authoritative moderation of community photos. The 3-report threshold only hides a
- * photo in the app UI; anyone who already holds the object's public download URL could
- * still fetch the image. This sweep deletes the Storage object (revoking the download
- * URL with it) and marks the Firestore record "removed", making a moderated photo
- * genuinely inaccessible. Objects already gone (a concurrent reaper) are tolerated; a
- * failed delete leaves the record unmarked so the next sweep retries. Idempotent:
- * already-removed records are skipped.
+ * Soft-moderation sweep: a photo whose reports reach the threshold is HIDDEN
+ * (moderationState "hidden") so it leaves the app immediately, but its Storage object
+ * is deliberately kept — a report count alone never makes content permanently
+ * unreachable. Irreversible removal stays a separate, reviewed step. Records already
+ * hidden or removed are skipped (idempotent); a failed hide mark is retried by the
+ * next sweep.
  */
 exports.moderateReportedPhotos = onSchedule("every 15 minutes", async () => {
   const result = await moderateReportedPhotos(db, getStorage().bucket(), { nowMs: () => Date.now() });
   if (result.processed > 0) {
     console.log(
-      `[moderateReportedPhotos] processed=${result.processed} removed=${result.removed} kept=${result.kept} failed=${result.failed}`
+      `[moderateReportedPhotos] processed=${result.processed} hidden=${result.hidden} kept=${result.kept} failed=${result.failed}`
     );
   }
 });

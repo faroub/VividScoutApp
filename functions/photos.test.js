@@ -24,6 +24,7 @@ const {
   photoDocumentIdFor,
   reapUnregisteredPhotoObjects,
   moderateReportedPhotos,
+  reportPhotoDocument,
   releaseDeletionClaimFor,
   PHOTOS_COLLECTION,
   CLEANUP_CLAIM_COLLECTION,
@@ -32,6 +33,7 @@ const {
   REAP_MIN_AGE_MS,
   REAP_MAX_OBJECTS_PER_RUN,
   MODERATION_REPORTS_THRESHOLD,
+  REPORTS_SUBCOLLECTION,
 } = require("./photos");
 const { ownershipIndexRef } = require("./ownershipIndex");
 
@@ -1045,7 +1047,7 @@ describe("reapUnregisteredPhotoObjects (orphan cleanup)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// moderateReportedPhotos (authoritative backend moderation)
+// moderateReportedPhotos (authoritative backend moderation: soft-hide at threshold)
 // ---------------------------------------------------------------------------
 
 describe("moderateReportedPhotos (authoritative moderation)", () => {
@@ -1079,15 +1081,47 @@ describe("moderateReportedPhotos (authoritative moderation)", () => {
     return { id: ref.id, objectPath, ref };
   };
 
-  /** A bucket stand-in that records delete calls and can be made to fail or 404. */
-  const recordingBucket = (behavior = {}) => ({
-    file: (name) => ({
-      delete: async () => {
-        behavior.calls?.push(name);
-        if (behavior.failWith) {
-          throw behavior.failWith;
-        }
+  /** A bucket stand-in recording every file() access (the sweep must never touch Storage). */
+  const recordingBucket = () => {
+    const calls = [];
+    return {
+      calls,
+      file: (name) => {
+        calls.push(name);
+        return { delete: async () => {} };
       },
+    };
+  };
+
+  /**
+   * A db double passing the real sweep query through but failing the hide write, to
+   * verify a failed mark is retried by the next scheduled run instead of being
+   * silently claimed as hidden.
+   */
+  const dbWithFailingHide = () => ({
+    collection: (name) => ({
+      where: (field, op, value) => ({
+        limit: (scanLimit) => ({
+          get: async () => {
+            const snapshot = await db
+              .collection(name)
+              .where(field, op, value)
+              .limit(scanLimit)
+              .get();
+            return {
+              empty: snapshot.empty,
+              docs: snapshot.docs.map((doc) => ({
+                data: () => doc.data(),
+                ref: {
+                  update: async () => {
+                    throw new Error("firestore write failed");
+                  },
+                },
+              })),
+            };
+          },
+        }),
+      }),
     }),
   });
 
@@ -1095,7 +1129,7 @@ describe("moderateReportedPhotos (authoritative moderation)", () => {
     assert.strictEqual(MODERATION_REPORTS_THRESHOLD, 3);
   });
 
-  it("deletes the Storage object and marks the record removed once the threshold is reached", async () => {
+  it("hides the record once the threshold is reached and keeps the Storage object", async () => {
     const threshold = nextThreshold();
     const { ref, objectPath } = await seedReportedPhoto(threshold);
 
@@ -1104,36 +1138,32 @@ describe("moderateReportedPhotos (authoritative moderation)", () => {
       nowMs: () => FIXED_NOW,
     });
 
-    assert.deepStrictEqual(result, { processed: 1, removed: 1, kept: 0, failed: 0 });
-    const [stillExists] = await bucket.file(objectPath).exists();
-    assert.strictEqual(stillExists, false, "the moderated object is deleted, revoking its download URL");
+    assert.deepStrictEqual(result, { processed: 1, hidden: 1, kept: 0, failed: 0 });
     const doc = await ref.get();
-    assert.strictEqual(doc.get("moderationState"), "removed");
+    assert.strictEqual(doc.get("moderationState"), "hidden");
     assert.strictEqual(doc.get("moderatedAt"), FIXED_NOW);
+    const [stillExists] = await bucket.file(objectPath).exists();
+    assert.strictEqual(stillExists, true, "hiding keeps the object: a report count alone never deletes content");
   });
 
-  it("is idempotent: a second sweep re-checks an already-removed record's path and tolerates the missing object", async () => {
+  it("is idempotent: a second sweep skips an already-hidden record without touching Storage", async () => {
     const threshold = nextThreshold();
     const { ref, objectPath } = await seedReportedPhoto(threshold);
     await moderateReportedPhotos(db, bucket, { threshold, nowMs: () => FIXED_NOW });
 
-    // Already-removed records are re-verified: the owner could have re-uploaded an
-    // object to the moderated path after the first sweep deleted it (storage.rules
-    // allows create once the object is gone), so the sweep attempts the delete again.
-    // Here the object is already gone, so the 404 is tolerated and the record is kept.
-    const calls = [];
-    const result = await moderateReportedPhotos(
-      db,
-      recordingBucket({ calls, failWith: Object.assign(new Error("not found"), { code: 404 }) }),
-      { threshold, nowMs: () => FIXED_NOW }
-    );
+    const spyBucket = recordingBucket();
+    const result = await moderateReportedPhotos(db, spyBucket, {
+      threshold,
+      nowMs: () => FIXED_NOW + 1,
+    });
 
-    assert.deepStrictEqual(result, { processed: 1, removed: 0, kept: 1, failed: 0 });
-    assert.deepStrictEqual(calls, [objectPath], "the sweep re-checks the moderated path for a re-upload");
+    assert.deepStrictEqual(result, { processed: 1, hidden: 0, kept: 1, failed: 0 });
+    assert.deepStrictEqual(spyBucket.calls, [], "the sweep never touches Storage");
     const doc = await ref.get();
-    assert.strictEqual(doc.get("moderationState"), "removed");
+    assert.strictEqual(doc.get("moderationState"), "hidden");
+    assert.strictEqual(doc.get("moderatedAt"), FIXED_NOW, "the first sweep's mark is not rewritten");
     const [stillExists] = await bucket.file(objectPath).exists();
-    assert.strictEqual(stillExists, false);
+    assert.strictEqual(stillExists, true);
   });
 
   it("leaves photos below the report threshold untouched", async () => {
@@ -1145,46 +1175,33 @@ describe("moderateReportedPhotos (authoritative moderation)", () => {
       nowMs: () => FIXED_NOW,
     });
 
-    assert.deepStrictEqual(result, { processed: 0, removed: 0, kept: 0, failed: 0 });
+    assert.deepStrictEqual(result, { processed: 0, hidden: 0, kept: 0, failed: 0 });
     const doc = await ref.get();
     assert.strictEqual(doc.get("moderationState"), undefined);
     const [stillExists] = await bucket.file(objectPath).exists();
     assert.strictEqual(stillExists, true, "the object is untouched");
   });
 
-  it("leaves the record unmarked when the object delete fails, so the next sweep retries", async () => {
+  it("leaves the record unmarked when the hide write fails, so the next sweep retries", async () => {
     const threshold = nextThreshold();
     const { ref } = await seedReportedPhoto(threshold);
 
     const result = await moderateReportedPhotos(
-      db,
-      recordingBucket({ failWith: new Error("storage temporarily unavailable") }),
+      dbWithFailingHide(),
+      bucket,
       { threshold, nowMs: () => FIXED_NOW }
     );
 
-    assert.deepStrictEqual(result, { processed: 1, removed: 0, kept: 0, failed: 1 });
+    assert.deepStrictEqual(result, { processed: 1, hidden: 0, kept: 0, failed: 1 });
     const doc = await ref.get();
-    assert.strictEqual(doc.get("moderationState"), undefined, "no removal is claimed while the object is still live");
+    assert.strictEqual(doc.get("moderationState"), undefined, "no hide is claimed while the write failed");
+
+    // The next run (against the real db) hides it: the failure is transient, not terminal.
+    const retry = await moderateReportedPhotos(db, bucket, { threshold, nowMs: () => FIXED_NOW });
+    assert.deepStrictEqual(retry, { processed: 1, hidden: 1, kept: 0, failed: 0 });
   });
 
-  it("tolerates an already-deleted object (404) and still marks the record removed", async () => {
-    const threshold = nextThreshold();
-    const { ref } = await seedReportedPhoto(threshold);
-
-    const result = await moderateReportedPhotos(
-      db,
-      recordingBucket({ failWith: Object.assign(new Error("not found"), { code: 404 }) }),
-      { threshold, nowMs: () => FIXED_NOW }
-    );
-
-    assert.deepStrictEqual(result, { processed: 1, removed: 1, kept: 0, failed: 0 });
-    const doc = await ref.get();
-    assert.strictEqual(doc.get("moderationState"), "removed");
-  });
-
-  it("quarantines a record whose photoPath is missing without attempting a delete", async () => {
-    // A record without a usable photoPath cannot be fetched anyway; quarantine hides it
-    // everywhere instead of leaving a permanently visible moderated photo.
+  it("hides a record whose photoPath is missing (a permanently broken record must not stay visible)", async () => {
     const threshold = nextThreshold();
     const objectPath = nextObjectPath(ALICE, "spot-moderation");
     const ref = await db.collection(PHOTOS_COLLECTION).doc();
@@ -1197,40 +1214,34 @@ describe("moderateReportedPhotos (authoritative moderation)", () => {
       timestamp: Date.now(),
     });
 
-    const calls = [];
-    const result = await moderateReportedPhotos(
-      db,
-      recordingBucket({ calls }),
-      { threshold, nowMs: () => FIXED_NOW }
-    );
+    const result = await moderateReportedPhotos(db, bucket, {
+      threshold,
+      nowMs: () => FIXED_NOW,
+    });
 
-    assert.deepStrictEqual(result, { processed: 1, removed: 1, kept: 0, failed: 0 });
-    assert.deepStrictEqual(calls, []);
+    assert.deepStrictEqual(result, { processed: 1, hidden: 1, kept: 0, failed: 0 });
+    const doc = await ref.get();
+    assert.strictEqual(doc.get("moderationState"), "hidden");
+  });
+
+  it("skips an already-removed record (a reviewed takedown is terminal, the sweep never changes it)", async () => {
+    const threshold = nextThreshold();
+    const { ref, objectPath } = await seedReportedPhoto(threshold);
+    await ref.update({ moderationState: "removed" });
+
+    const result = await moderateReportedPhotos(db, bucket, {
+      threshold,
+      nowMs: () => FIXED_NOW,
+    });
+
+    assert.deepStrictEqual(result, { processed: 1, hidden: 0, kept: 1, failed: 0 });
     const doc = await ref.get();
     assert.strictEqual(doc.get("moderationState"), "removed");
-  });
-
-  it("deletes an object re-uploaded to a removed photo's path on the next sweep", async () => {
-    const threshold = nextThreshold();
-    const { objectPath } = await seedReportedPhoto(threshold);
-    await moderateReportedPhotos(db, bucket, { threshold, nowMs: () => FIXED_NOW });
-
-    // The owner re-uploads to the same path after moderation deleted the object
-    // (storage.rules allows create once the object is gone). The next sweep must
-    // delete the re-upload: otherwise the moderated photo's slot in Storage could
-    // serve arbitrary unvalidated bytes through a fresh download URL.
-    await seedObject(objectPath);
-    const [existsBefore] = await bucket.file(objectPath).exists();
-    assert.strictEqual(existsBefore, true);
-
-    const result = await moderateReportedPhotos(db, bucket, { threshold, nowMs: () => FIXED_NOW });
-
-    assert.deepStrictEqual(result, { processed: 1, removed: 1, kept: 0, failed: 0 });
     const [stillExists] = await bucket.file(objectPath).exists();
-    assert.strictEqual(stillExists, false, "the re-uploaded object is deleted by the sweep");
+    assert.strictEqual(stillExists, true, "the sweep does not delete the object of a removed record");
   });
 
-  it("refuses to re-register a removed photo's path: finalization rejects a re-uploaded object", async () => {
+  it("refuses to re-register a hidden photo's path: finalization rejects a re-uploaded object", async () => {
     const threshold = nextThreshold();
     const objectPath = nextObjectPath(ALICE, "spot-mod-reregister");
     await seedObject(objectPath);
@@ -1242,11 +1253,11 @@ describe("moderateReportedPhotos (authoritative moderation)", () => {
     const photoRef = db.collection(PHOTOS_COLLECTION).doc(registered.photoId);
     await photoRef.update({ reportsCount: threshold });
     await moderateReportedPhotos(db, bucket, { threshold, nowMs: () => FIXED_NOW });
-    assert.strictEqual((await photoRef.get()).get("moderationState"), "removed");
+    assert.strictEqual((await photoRef.get()).get("moderationState"), "hidden");
 
     // The owner re-uploads an object to the moderated path and tries to re-register it
-    // (e.g. with a fresh download URL). The replay must refuse instead of publishing
-    // the re-uploaded — never re-validated — bytes behind the removed record.
+    // (e.g. with a fresh download URL). The replay must refuse instead of publishing the
+    // re-uploaded — never re-validated — bytes behind a moderated record.
     await seedObject(objectPath);
     await expectHttpsError(
       () =>
@@ -1259,11 +1270,201 @@ describe("moderateReportedPhotos (authoritative moderation)", () => {
     );
 
     const record = await photoRef.get();
-    assert.strictEqual(record.get("moderationState"), "removed", "the removed record is untouched");
+    assert.strictEqual(record.get("moderationState"), "hidden", "the hidden record is untouched");
     const registrations = await db
       .collection(PHOTOS_COLLECTION)
       .where("photoPath", "==", objectPath)
       .get();
     assert.strictEqual(registrations.size, 1, "no second registration was written for the object");
+  });
+
+  it("refuses to re-register a manually-removed photo's path", async () => {
+    const objectPath = nextObjectPath(ALICE, "spot-mod-removed");
+    await seedObject(objectPath);
+    const registered = await finalizePhotoUploadDocument(db, bucket, ALICE, {
+      spotId: "spot-mod-removed",
+      filename: objectPath.split("/").pop(),
+      photoUrl: tokenUrlFor(objectPath),
+    });
+    const photoRef = db.collection(PHOTOS_COLLECTION).doc(registered.photoId);
+    // The manual-review takedown state, set directly by a human moderator.
+    await photoRef.update({ moderationState: "removed" });
+
+    await seedObject(objectPath);
+    await expectHttpsError(
+      () =>
+        finalizePhotoUploadDocument(db, bucket, ALICE, {
+          spotId: "spot-mod-removed",
+          filename: objectPath.split("/").pop(),
+          photoUrl: tokenUrlFor(objectPath),
+        }),
+      "permission-denied"
+    );
+
+    const record = await photoRef.get();
+    assert.strictEqual(record.get("moderationState"), "removed", "the removed record is untouched");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// reportPhotoDocument (trusted report writer behind the reportPhoto callable)
+// ---------------------------------------------------------------------------
+
+describe("reportPhotoDocument (trusted report writer)", () => {
+  const REPORT_NOW = 43_000_000;
+
+  // Each report gets its own rate-limit counter document: the tests share one emulator
+  // project, and a limit counter is per-UID state, so reusing one key would leak budget
+  // between tests (exactly like a shared production key would).
+  let reportLimitCounter = 0;
+  const reportRateLimitFor = (maxPerHour = 2) => {
+    reportLimitCounter += 1;
+    return {
+      ref: db.collection("rate_limits").doc(`photo_report_test_${reportLimitCounter}`),
+      maxPerHour,
+    };
+  };
+
+  const counterCount = async (ref) => {
+    const doc = await ref.get();
+    return doc.exists ? (doc.data() || {}).count || 0 : 0;
+  };
+
+  /** Seeds one reportable photo owned by ALICE (reports never touch Storage, so no object is needed). */
+  const seedReportablePhoto = async (options = {}) => {
+    const objectPath = nextObjectPath(ALICE, "spot-reports");
+    const ref = db.collection(PHOTOS_COLLECTION).doc();
+    await ref.create({
+      id: ref.id,
+      spotId: "spot-reports",
+      photoPath: objectPath,
+      photoUrl: tokenUrlFor(objectPath),
+      ownerUid: ALICE,
+      reportsCount: options.reportsCount ?? 0,
+      timestamp: Date.now(),
+      ...(options.moderationState ? { moderationState: options.moderationState } : {}),
+    });
+    return ref;
+  };
+
+  it("creates the report document and increments reportsCount by exactly one", async () => {
+    const photoRef = await seedReportablePhoto();
+
+    const result = await reportPhotoDocument(db, BOB, { photoId: photoRef.id }, {
+      nowMs: REPORT_NOW,
+    });
+
+    assert.deepStrictEqual(result, { photoId: photoRef.id, reportsCount: 1 });
+
+    const reportDoc = await db
+      .collection(PHOTOS_COLLECTION)
+      .doc(photoRef.id)
+      .collection(REPORTS_SUBCOLLECTION)
+      .doc(BOB)
+      .get();
+    assert.strictEqual(reportDoc.exists, true);
+    assert.deepStrictEqual(reportDoc.data(), { reporterUid: BOB, timestamp: REPORT_NOW });
+
+    const photoDoc = await photoRef.get();
+    assert.strictEqual(photoDoc.get("reportsCount"), 1);
+  });
+
+  it("rejects a duplicate report from the same account without consuming rate-limit budget", async () => {
+    const photoRef = await seedReportablePhoto();
+    const limit = reportRateLimitFor();
+
+    await reportPhotoDocument(db, BOB, { photoId: photoRef.id }, { rateLimit: limit, nowMs: REPORT_NOW });
+    await expectHttpsError(
+      () => reportPhotoDocument(db, BOB, { photoId: photoRef.id }, { rateLimit: limit, nowMs: REPORT_NOW }),
+      "already-exists"
+    );
+
+    assert.strictEqual((await photoRef.get()).get("reportsCount"), 1, "the counter is not incremented twice");
+    assert.strictEqual(await counterCount(limit.ref), 1, "a rejected duplicate never consumes rate-limit budget");
+  });
+
+  it("accepts reports from distinct accounts, keeping the counter exact", async () => {
+    const photoRef = await seedReportablePhoto();
+    const limit = reportRateLimitFor(5);
+
+    assert.deepStrictEqual(
+      await reportPhotoDocument(db, BOB, { photoId: photoRef.id }, { rateLimit: limit, nowMs: REPORT_NOW }),
+      { photoId: photoRef.id, reportsCount: 1 }
+    );
+    assert.deepStrictEqual(
+      await reportPhotoDocument(db, "carol-uid", { photoId: photoRef.id }, { rateLimit: limit, nowMs: REPORT_NOW + 1 }),
+      { photoId: photoRef.id, reportsCount: 2 }
+    );
+
+    assert.strictEqual((await photoRef.get()).get("reportsCount"), 2);
+    assert.strictEqual(await counterCount(limit.ref), 2, "one rate-limit slot per accepted report");
+  });
+
+  it("rejects a report on an already-hidden photo with failed-precondition", async () => {
+    const photoRef = await seedReportablePhoto({ moderationState: "hidden" });
+    const limit = reportRateLimitFor();
+
+    await expectHttpsError(
+      () => reportPhotoDocument(db, BOB, { photoId: photoRef.id }, { rateLimit: limit, nowMs: REPORT_NOW }),
+      "failed-precondition"
+    );
+
+    assert.strictEqual((await photoRef.get()).get("reportsCount"), 0, "no report is recorded");
+    assert.strictEqual(await counterCount(limit.ref), 0, "a rejected report never consumes rate-limit budget");
+  });
+
+  it("rejects a report on a removed photo with failed-precondition", async () => {
+    const photoRef = await seedReportablePhoto({ moderationState: "removed" });
+
+    await expectHttpsError(
+      () => reportPhotoDocument(db, BOB, { photoId: photoRef.id }, { nowMs: REPORT_NOW }),
+      "failed-precondition"
+    );
+  });
+
+  it("rejects a report on a missing photo with not-found", async () => {
+    await expectHttpsError(
+      () => reportPhotoDocument(db, BOB, { photoId: "photo-that-does-not-exist" }, { nowMs: REPORT_NOW }),
+      "not-found"
+    );
+  });
+
+  it("rejects an unauthenticated caller", async () => {
+    await expectHttpsError(
+      () => reportPhotoDocument(db, "", { photoId: "whatever" }, { nowMs: REPORT_NOW }),
+      "unauthenticated"
+    );
+  });
+
+  it("validates the payload: non-object, unexpected field, and malformed photoId", async () => {
+    const cases = [
+      "not-an-object",
+      { photoId: "ok", extra: 1 },
+      {},
+      { photoId: "" },
+      { photoId: "has/slash" },
+      { photoId: "has space" },
+      { photoId: "a".repeat(257) },
+    ];
+    for (const payload of cases) {
+      await expectHttpsError(
+        () => reportPhotoDocument(db, BOB, payload, { nowMs: REPORT_NOW }),
+        "invalid-argument"
+      );
+    }
+  });
+
+  it("enforces the per-UID rate limit with resource-exhausted", async () => {
+    const first = await seedReportablePhoto();
+    const second = await seedReportablePhoto();
+    const limit = reportRateLimitFor(1);
+
+    await reportPhotoDocument(db, BOB, { photoId: first.id }, { rateLimit: limit, nowMs: REPORT_NOW });
+    await expectHttpsError(
+      () => reportPhotoDocument(db, BOB, { photoId: second.id }, { rateLimit: limit, nowMs: REPORT_NOW }),
+      "resource-exhausted"
+    );
+
+    assert.strictEqual((await second.get()).get("reportsCount"), 0, "the rate-limited report is not recorded");
   });
 });

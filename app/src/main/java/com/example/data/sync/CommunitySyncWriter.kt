@@ -14,12 +14,14 @@ import kotlinx.coroutines.withContext
 
 /**
  * Community write-side synchronization extracted from [FirestoreSyncManager]: posting
- * tips through the trusted postCommunityTip Cloud Function, the atomic upvote
- * transaction, vote reconciliation, and the pending-tip retry queue.
+ * tips through the trusted postCommunityTip Cloud Function, upvotes through the
+ * trusted castTipVote Cloud Function, vote reconciliation, and the pending-tip
+ * retry queue.
  *
  * No direct client writes to community_tips: creation goes exclusively through the
- * callable (firestore.rules denies direct client creation), and upvotes mutate the
- * counter only inside a Firestore transaction together with the vote document.
+ * postCommunityTip callable and votes exclusively through castTipVote (firestore.rules
+ * denies direct client creation); each callable mutates the counters only inside a
+ * server-side Firestore transaction together with its child document.
  */
 internal object CommunitySyncWriter {
 
@@ -89,16 +91,23 @@ internal object CommunitySyncWriter {
     }
 
     /**
-     * Synchronizes a +1 upvote for a community tip using a Firestore transaction.
-     * Checks if the vote document at community_tips/{tipId}/votes/{currentUid} already exists,
-     * rejecting second votes from the same user, and writing the vote doc together with the upvote increment.
+     * Synchronizes a +1 upvote for a community tip through the trusted castTipVote
+     * Cloud Function. Inside one server-side transaction the callable re-checks the
+     * tip exists, rejects the tip owner's self-vote and a second vote from the same
+     * account, consumes the per-UID rate limit, and writes the vote document together
+     * with the exact +1 upvote increment. Keeping the increment server-side prevents
+     * a rejected or replayed vote from ever desynchronizing the counter.
+     *
+     * Returns false for every definitive rejection (duplicate vote, self-vote, rate
+     * limit, missing tip) as well as for transient failures — callers reconcile the
+     * local vote state via [reconcileTipVoteInCloud] when the outcome is ambiguous.
      */
     suspend fun incrementTipUpvoteInCloud(
         context: Context,
         tipId: String
     ): Boolean = withContext(Dispatchers.IO) {
         if (!FirebaseAccess.ensureFirebaseAuth(context)) return@withContext false
-        val firestore = FirebaseAccess.getFirestore(context) ?: return@withContext false
+        val app = FirebaseAccess.getFirebaseApp(context) ?: return@withContext false
         val currentUid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid
         if (currentUid.isNullOrBlank()) {
             SafeLog.w(TAG, "Cannot upvote tip '$tipId': No authenticated user UID found")
@@ -106,43 +115,30 @@ internal object CommunitySyncWriter {
         }
 
         try {
-            val tipRef = firestore.collection(TIPS_COLLECTION).document(tipId)
-            val voteRef = tipRef.collection("votes").document(currentUid)
-
-            val voteSuccess = firestore.runTransaction { transaction ->
-                val tipSnap = transaction.get(tipRef)
-                if (!tipSnap.exists() || !tipSnap.contains("legacyUpvotes")) {
-                    SafeLog.w(TAG, "Cannot upvote tip '$tipId': Document is missing 'legacyUpvotes' field. Aborting transaction.")
-                    return@runTransaction false
-                }
-
-                val voteSnap = transaction.get(voteRef)
-                if (voteSnap.exists()) {
-                    SafeLog.w(TAG, "User '${SafeLog.sanitizeUid(currentUid)}' has already voted on tip '$tipId'. Rejecting second vote.")
-                    return@runTransaction false
-                }
-
-                val currentUpvotes = tipSnap.getLong("upvotes") ?: 0L
-
-                val voteData = hashMapOf<String, Any>(
-                    "uid" to currentUid,
-                    "timestamp" to System.currentTimeMillis()
-                )
-
-                // Set vote doc in votes subcollection AND increment tip upvotes by 1
-                transaction.set(voteRef, voteData)
-                transaction.update(tipRef, "upvotes", currentUpvotes + 1)
-                true
-            }.await()
-
-            if (voteSuccess) {
-                SafeLog.i(TAG, "Successfully recorded vote from user '${SafeLog.sanitizeUid(currentUid)}' for tip '$tipId'")
-            }
-            voteSuccess
+            FirebaseFunctions.getInstance(app).getHttpsCallable("castTipVote")
+                .call(mapOf("tipId" to tipId)).await()
+            SafeLog.i(TAG, "Successfully recorded vote from user '${SafeLog.sanitizeUid(currentUid)}' for tip '$tipId'")
+            true
         } catch (e: CancellationException) {
             throw e
+        } catch (e: FirebaseFunctionsException) {
+            when (e.code) {
+                FirebaseFunctionsException.Code.ALREADY_EXISTS,
+                FirebaseFunctionsException.Code.PERMISSION_DENIED -> {
+                    // A definitive server-side rejection: this account already voted, or
+                    // it owns the tip (self-votes are refused). Not a transient failure.
+                    SafeLog.w(TAG, "Vote on tip '$tipId' rejected by backend: ${e.message}")
+                }
+                FirebaseFunctionsException.Code.RESOURCE_EXHAUSTED -> {
+                    SafeLog.w(TAG, "Vote on tip '$tipId' hit the hourly vote limit; try again later")
+                }
+                else -> {
+                    SafeLog.w(TAG, "Failed to record vote for tip '$tipId' via Cloud Function: ${e.message}")
+                }
+            }
+            false
         } catch (e: Exception) {
-            SafeLog.w(TAG, "Failed to execute upvote transaction for tip '$tipId': ${e.message}")
+            SafeLog.w(TAG, "Failed to execute upvote call for tip '$tipId': ${e.message}")
             false
         }
     }

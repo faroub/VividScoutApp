@@ -30,6 +30,10 @@ const { ownershipIndexRef } = require("./ownershipIndex");
 
 const TIPS_COLLECTION = "community_tips";
 const SUBMISSIONS_COLLECTION = "community_submissions";
+const VOTES_SUBCOLLECTION = "votes";
+// Voting is generously bounded: a human session casts far fewer votes than this, while
+// an abusive account scripting votes is still capped per hour.
+const TIP_VOTE_RATE_LIMIT_MAX_PER_HOUR = 100;
 
 // Per-UID community post limits: a rolling 24-hour window (rateLimits.js implements the
 // counter; the window is passed per-enforcer so community limits do not change the
@@ -426,6 +430,103 @@ async function submitCommunitySpotDocument(db, ownerUid, data, options = {}) {
   });
 }
 
+/**
+ * Validates the castTipVote callable payload: one plain object carrying exactly one
+ * key, "tipId", a non-empty document-id-looking string.
+ */
+const TIP_VOTE_PAYLOAD_KEYS = ["tipId"];
+
+function validateTipVotePayload(data) {
+  if (!isPlainObject(data)) {
+    throw invalid("Tip vote payload must be a JSON object.");
+  }
+  for (const key of Object.keys(data)) {
+    if (!TIP_VOTE_PAYLOAD_KEYS.includes(key)) {
+      throw invalid(`Unexpected field '${key}' in tip vote payload. Allowed: ${TIP_VOTE_PAYLOAD_KEYS.join(", ")}.`);
+    }
+  }
+  const tipId = data.tipId;
+  if (
+    typeof tipId !== "string" ||
+    tipId.length === 0 ||
+    tipId.length > MAX_ID_LENGTH ||
+    !/^[A-Za-z0-9_-]+$/.test(tipId)
+  ) {
+    throw invalid(`'tipId' must be a non-empty document id of at most ${MAX_ID_LENGTH} characters.`);
+  }
+  return { tipId };
+}
+
+/**
+ * The trusted tip-vote writer used by the castTipVote Cloud Function. One Firestore
+ * transaction atomically:
+ *   - reads the tip document (must exist) and its ownership record: the tip owner may
+ *     never cast a vote on their own tip (a self-vote is a fabricated community signal,
+ *     exactly what the direct-write rules path enforces);
+ *   - reads the per-voter document community_tips/{tipId}/votes/{voterUid}: an existing
+ *     document means a second vote and is rejected;
+ *   - consumes one slot of the per-UID voting rate limit;
+ *   - creates the voter's document (exactly the shape the rules' direct-write path
+ *     writes: { uid, timestamp }) and increments upvotes by exactly one.
+ * Direct client transaction writes (firestore.rules) remain permitted while older app
+ * versions are in the field; this callable produces the identical documents and
+ * invariants, plus the server-side rate limit the rules cannot express.
+ *
+ * Returns { tipId, upvotes } — the tip's upvote count after this vote.
+ */
+async function castTipVoteDocument(db, voterUid, data, options = {}) {
+  if (!voterUid) {
+    throw new HttpsError("unauthenticated", "User authentication required to vote on a tip.");
+  }
+  const { tipId } = validateTipVotePayload(data);
+  const tipRef = db.collection(TIPS_COLLECTION).doc(tipId);
+  const voteRef = tipRef.collection(VOTES_SUBCOLLECTION).doc(voterUid);
+  const indexRef = ownershipIndexRef(db, TIPS_COLLECTION, tipId);
+  const rateLimit = options.rateLimit || null;
+  const nowMs = typeof options.nowMs === "function" ? options.nowMs() : options.nowMs ?? Date.now();
+
+  return db.runTransaction(async (transaction) => {
+    // All reads precede all writes (Firestore transaction requirement).
+    const tipDoc = await transaction.get(tipRef);
+    if (!tipDoc.exists) {
+      throw new HttpsError("not-found", "This tip no longer exists and cannot be voted on.");
+    }
+    const indexDoc = await transaction.get(indexRef);
+    const owner = ownerOfExistingDocument(tipDoc, indexDoc);
+    if (owner === voterUid) {
+      throw new HttpsError("permission-denied", "You cannot upvote your own tip.");
+    }
+
+    const existingVoteDoc = await transaction.get(voteRef);
+    if (existingVoteDoc.exists) {
+      throw new HttpsError(
+        "already-exists",
+        "You have already voted on this tip."
+      );
+    }
+
+    if (rateLimit) {
+      const allowed = await decideRateLimitInTransaction(
+        transaction,
+        rateLimit.ref,
+        rateLimit.maxPerWindow,
+        nowMs
+      );
+      if (!allowed) {
+        throw new HttpsError(
+          "resource-exhausted",
+          `Rate limit exceeded. Maximum ${rateLimit.maxPerWindow} tip votes per hour per user.`
+        );
+      }
+    }
+
+    const currentUpvotes = Number(tipDoc.data().upvotes) || 0;
+    transaction.set(voteRef, { uid: voterUid, timestamp: nowMs });
+    transaction.update(tipRef, { upvotes: currentUpvotes + 1 });
+    return { tipId, upvotes: currentUpvotes + 1 };
+  });
+}
+
 module.exports = {
   TIPS_COLLECTION,
   SUBMISSIONS_COLLECTION,
@@ -447,9 +548,14 @@ module.exports = {
   MAX_CONTRIBUTOR_LENGTH,
   TIP_PAYLOAD_KEYS,
   SUBMISSION_PAYLOAD_KEYS,
+  TIP_VOTE_PAYLOAD_KEYS,
   validateCommunityTipPayload,
   validateCommunitySubmissionPayload,
+  validateTipVotePayload,
   ownerOfExistingDocument,
   postCommunityTipDocument,
   submitCommunitySpotDocument,
+  castTipVoteDocument,
+  VOTES_SUBCOLLECTION,
+  TIP_VOTE_RATE_LIMIT_MAX_PER_HOUR,
 };

@@ -24,6 +24,7 @@ const admin = require("firebase-admin");
 const {
   postCommunityTipDocument,
   submitCommunitySpotDocument,
+  castTipVoteDocument,
   validateCommunityTipPayload,
   validateCommunitySubmissionPayload,
   TIPS_COLLECTION,
@@ -420,5 +421,138 @@ describe("ownershipIndexRef", () => {
   it("addresses records under ownership_index/{collectionId}/records/{docId}", () => {
     const ref = ownershipIndexRef(db, TIPS_COLLECTION, "tip-1");
     assert.strictEqual(ref.path, `${OWNERSHIP_INDEX_COLLECTION}/${TIPS_COLLECTION}/${OWNERSHIP_INDEX_RECORDS_COLLECTION}/tip-1`);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// castTipVoteDocument (trusted vote writer behind the castTipVote callable)
+// ---------------------------------------------------------------------------
+
+describe("castTipVoteDocument", () => {
+  const VOTE_NOW = NOW + 100;
+
+  // Every vote test gets its own rate-limit counter: the tests share one emulator
+  // project, and a limit counter is per-UID state, so one key must never be reused.
+  const voteRateLimitFor = (maxPerWindow = 2) => {
+    limitCounter += 1;
+    return {
+      ref: db.collection("rate_limits").doc(`community_tips_vote_test_${limitCounter}`),
+      maxPerWindow,
+    };
+  };
+
+  const seedVoteableTip = async (owner = ALICE) => {
+    const result = await postCommunityTipDocument(db, owner, validTipPayload(), {
+      rateLimit: tipRateLimitFor(),
+      nowMs: NOW,
+    });
+    return result.tipId;
+  };
+
+  it("creates the vote document and increments upvotes by exactly one", async () => {
+    const tipId = await seedVoteableTip();
+    const limit = voteRateLimitFor();
+
+    const result = await castTipVoteDocument(db, BOB, { tipId }, { rateLimit: limit, nowMs: VOTE_NOW });
+
+    assert.deepStrictEqual(result, { tipId, upvotes: 1 });
+
+    const voteDoc = await db.collection(TIPS_COLLECTION).doc(tipId).collection("votes").doc(BOB).get();
+    assert.strictEqual(voteDoc.exists, true);
+    assert.deepStrictEqual(voteDoc.data(), { uid: BOB, timestamp: VOTE_NOW });
+
+    const tipDoc = await db.collection(TIPS_COLLECTION).doc(tipId).get();
+    assert.strictEqual(tipDoc.get("upvotes"), 1);
+  });
+
+  it("rejects a second vote by the same account without consuming rate-limit budget", async () => {
+    const tipId = await seedVoteableTip();
+    const limit = voteRateLimitFor();
+
+    await castTipVoteDocument(db, BOB, { tipId }, { rateLimit: limit, nowMs: VOTE_NOW });
+    await assert.rejects(
+      () => castTipVoteDocument(db, BOB, { tipId }, { rateLimit: limit, nowMs: VOTE_NOW + 1 }),
+      (error) => error.code === "already-exists"
+    );
+
+    const tipDoc = await db.collection(TIPS_COLLECTION).doc(tipId).get();
+    assert.strictEqual(tipDoc.get("upvotes"), 1, "the counter is not incremented twice");
+    assert.strictEqual(await counterCount(limit.ref), 1, "a rejected duplicate vote never consumes rate-limit budget");
+  });
+
+  it("rejects the tip owner's self-vote with permission-denied", async () => {
+    const tipId = await seedVoteableTip();
+    const limit = voteRateLimitFor();
+
+    await assert.rejects(
+      () => castTipVoteDocument(db, ALICE, { tipId }, { rateLimit: limit, nowMs: VOTE_NOW }),
+      (error) => error.code === "permission-denied"
+    );
+
+    const tipDoc = await db.collection(TIPS_COLLECTION).doc(tipId).get();
+    assert.strictEqual(tipDoc.get("upvotes"), 0, "a refused self-vote is not counted");
+    assert.strictEqual(await counterCount(limit.ref), 0);
+  });
+
+  it("rejects a self-vote on a legacy tip that carries only the ownerUid field", async () => {
+    // Legacy tips predate the ownership index; their owner is resolved from the
+    // document's own ownerUid field, and a self-vote must be refused there too.
+    const legacy = validTipPayload();
+    await db.collection(TIPS_COLLECTION).doc(legacy.id).set({ ...legacy, ownerUid: ALICE, upvotes: 0 });
+
+    await assert.rejects(
+      () => castTipVoteDocument(db, ALICE, { tipId: legacy.id }, { nowMs: VOTE_NOW }),
+      (error) => error.code === "permission-denied"
+    );
+
+    const result = await castTipVoteDocument(db, BOB, { tipId: legacy.id }, { nowMs: VOTE_NOW });
+    assert.deepStrictEqual(result, { tipId: legacy.id, upvotes: 1 }, "another voter may still vote on a legacy tip");
+  });
+
+  it("rejects a vote on a missing tip with not-found", async () => {
+    await assert.rejects(
+      () => castTipVoteDocument(db, BOB, { tipId: "tip-that-does-not-exist" }, { nowMs: VOTE_NOW }),
+      (error) => error.code === "not-found"
+    );
+  });
+
+  it("rejects an unauthenticated caller", async () => {
+    await assert.rejects(
+      () => castTipVoteDocument(db, "", { tipId: "whatever" }, { nowMs: VOTE_NOW }),
+      (error) => error.code === "unauthenticated"
+    );
+  });
+
+  it("validates the payload: non-object, unexpected field, and malformed tipId", async () => {
+    const cases = [
+      "not-an-object",
+      { tipId: "ok", extra: 1 },
+      {},
+      { tipId: "" },
+      { tipId: "has/slash" },
+      { tipId: "has space" },
+      { tipId: "a".repeat(129) },
+    ];
+    for (const payload of cases) {
+      await assert.rejects(
+        () => castTipVoteDocument(db, BOB, payload, { nowMs: VOTE_NOW }),
+        (error) => error.code === "invalid-argument"
+      );
+    }
+  });
+
+  it("enforces the per-UID rate limit with resource-exhausted", async () => {
+    const firstTipId = await seedVoteableTip();
+    const secondTipId = await seedVoteableTip();
+    const limit = voteRateLimitFor(1);
+
+    await castTipVoteDocument(db, BOB, { tipId: firstTipId }, { rateLimit: limit, nowMs: VOTE_NOW });
+    await assert.rejects(
+      () => castTipVoteDocument(db, BOB, { tipId: secondTipId }, { rateLimit: limit, nowMs: VOTE_NOW }),
+      (error) => error.code === "resource-exhausted"
+    );
+
+    const tipDoc = await db.collection(TIPS_COLLECTION).doc(secondTipId).get();
+    assert.strictEqual(tipDoc.get("upvotes"), 0, "the rate-limited vote is not counted");
   });
 });

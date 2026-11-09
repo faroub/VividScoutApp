@@ -48,12 +48,27 @@ const isPlainObject = (value) =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
 // Authoritative moderation: once a photo accumulates this many reports, the trusted
-// backend removes it — deleting the Storage object so even previously issued download
-// URLs stop resolving. The app-side isHidden() filter never was secure moderation
-// because a photo hidden in the UI was still publicly downloadable by URL.
+// backend hides it (moderationState "hidden"). Hiding — not deleting the Storage
+// object — is the automatic step: a content decision this consequential never becomes
+// irreversible from a plain report count alone (see moderateReportedPhotos).
+// "removed" remains the terminal, manually-reviewed takedown state.
 const MODERATION_REPORTS_THRESHOLD = 3;
+const MODERATION_STATE_HIDDEN = "hidden";
 const MODERATION_STATE_REMOVED = "removed";
 const MODERATION_SCAN_LIMIT = 100;
+const REPORTS_SUBCOLLECTION = "reports";
+// A non-anonymous account may file this many photo reports per hour: abusive mass
+// reporting of a single photo by one person is bounded, while aNormal flagging
+// session stay well under it.
+const PHOTO_REPORT_RATE_LIMIT_MAX_PER_HOUR = 20;
+
+/**
+ * Moderation states that quarantine a photo's path: hidden (auto-hidden by the report
+ * threshold sweep) and removed (taken down after review). In either state the photo is
+ * out of the app, and finalization must never hand its published URL back out.
+ */
+const isModeratedAway = (state) =>
+  state === MODERATION_STATE_HIDDEN || state === MODERATION_STATE_REMOVED;
 
 // Server-side bookkeeping for the orphan reaper. Both collections are written and read
 // only by the trusted backend (rules deny all client access): photo_cleanup_state holds
@@ -268,12 +283,13 @@ async function finalizePhotoUploadDocument(db, bucket, ownerUid, data, options =
   // Fast replay path (cheap direct read): an already-registered object returns its
   // published photo without re-validation — registration itself already proved the
   // object's bytes. Racy by design: a concurrent registration missed here is still
-  // caught authoritatively by the transaction below. A photo removed by moderation can
-  // never be re-registered: its path is quarantined, so a re-uploaded object is refused
-  // instead of replaying the removed record's (now untrusted) published URL.
+  // caught authoritatively by the transaction below. A photo hidden or removed by
+  // moderation can never be re-registered: its path is quarantined, so a re-uploaded
+  // object is refused instead of replaying the moderated record's (now untrusted)
+  // published URL.
   const replayedDoc = await photoRef.get();
   if (replayedDoc.exists) {
-    if ((replayedDoc.data() || {}).moderationState === MODERATION_STATE_REMOVED) {
+    if (isModeratedAway((replayedDoc.data() || {}).moderationState)) {
       throw new HttpsError("permission-denied", "This photo was removed by moderation.");
     }
     const replay = replayResult(replayedDoc, ownerUid, spotId, canonicalPath);
@@ -305,9 +321,10 @@ async function finalizePhotoUploadDocument(db, bucket, ownerUid, data, options =
     // in the server-written index (replayed here for legacy documents predating it).
     if (photoDoc.exists) {
       // Moderation quarantine inside the transaction too: the fast path above may have
-      // missed a record removed concurrently, so the authoritative replay refuses the
-      // same way. Throwing aborts the transaction, so no partial state is committed.
-      if ((photoDoc.data() || {}).moderationState === MODERATION_STATE_REMOVED) {
+      // missed a record hidden or removed concurrently, so the authoritative replay
+      // refuses the same way. Throwing aborts the transaction, so no partial state is
+      // committed.
+      if (isModeratedAway((photoDoc.data() || {}).moderationState)) {
         throw new HttpsError("permission-denied", "This photo was removed by moderation.");
       }
       const replay = replayResult(photoDoc, ownerUid, spotId, canonicalPath);
@@ -847,36 +864,31 @@ async function reapUnregisteredPhotoObjects(db, bucket, options = {}) {
 }
 
 /**
- * The authoritative photo moderation sweep. The 3-report threshold hides a photo in the
- * app UI only; that is NOT secure moderation, because anyone holding the object's public
- * download URL (issued once and valid until the object is deleted) could still fetch the
- * image. This function instead deletes the Storage object — which revokes the download
- * URL with it — and marks the Firestore record [MODERATION_STATE_REMOVED], so a removed
- * photo is genuinely inaccessible and hidden everywhere.
+ * The authoritative photo moderation sweep. The 3-report threshold HIDES the photo:
+ * the Firestore record is marked [MODERATION_STATE_HIDDEN], so it stops appearing in
+ * the app immediately and stays consistent with the app-side hidden filter.
+ *
+ * Deleting the Storage object is deliberately NOT part of this step: a plain report
+ * count is not sufficient grounds to make content permanently unreachable, and keeping
+ * the object preserves both the evidence and the ability to un-hide a photo after a
+ * mistaken or abusive flagging campaign. A takedown becomes irreversible only in the
+ * manually reviewed [MODERATION_STATE_REMOVED] state.
  *
  * Semantics:
- *   - scans photos whose reportsCount has reached the threshold (the reportsCount
- *     single-field index serves the query); records already marked removed are still
- *     scanned so their path can be re-verified;
- *   - deletes the referenced Storage object (a 404 is tolerated: a concurrent reaper or
- *     an earlier sweep may have removed it already); for an already-removed record this
- *     deletes any object the owner re-uploaded to the moderated path afterwards;
- *   - marks the record removed with a server-side timestamp ONLY after the object is
- *     gone (or already gone), never before, so a failed delete is retried by the next
- *     scheduled run instead of silently orphaning a live object;
- *   - an object-less record (no usable photoPath) is still quarantined: it cannot be
- *     fetched without an object, so marking it removed hides it everywhere.
+ *   - scans photos whose reportsCount has reached the threshold;
+ *   - records already hidden or already removed are skipped (idempotent: the sweep
+ *     never re-marks a moderated record and never deletes anything);
+ *   - a failed mark (Firestore write error) is counted as failed so the next scheduled
+ *     run retries it.
  *
- * Returns { processed, removed, kept, failed } diagnostics. Run as a scheduled function;
- * it is idempotent — already-removed records are re-checked (any object re-uploaded to
- * the moderated path is deleted again) but never re-marked, and a 404 keeps them.
+ * Returns { processed, hidden, kept, failed } diagnostics. Run as a scheduled function.
  */
 async function moderateReportedPhotos(db, bucket, options = {}) {
   const threshold = options.threshold ?? MODERATION_REPORTS_THRESHOLD;
   const scanLimit = options.scanLimit ?? MODERATION_SCAN_LIMIT;
   const nowMs = options.nowMs ?? null;
 
-  const result = { processed: 0, removed: 0, kept: 0, failed: 0 };
+  const result = { processed: 0, hidden: 0, kept: 0, failed: 0 };
 
   const snapshot = await db
     .collection(PHOTOS_COLLECTION)
@@ -891,63 +903,126 @@ async function moderateReportedPhotos(db, bucket, options = {}) {
   for (const photoDoc of snapshot.docs) {
     result.processed += 1;
     const data = photoDoc.data() || {};
-    const alreadyRemoved = data.moderationState === MODERATION_STATE_REMOVED;
 
-    const photoPath = data.photoPath;
-    let objectDeleted = false;
-    if (typeof photoPath === "string" && photoPath.length > 0) {
-      try {
-        await bucket.file(photoPath).delete();
-        objectDeleted = true;
-      } catch (err) {
-        // A missing object is consistent with an already-revoked photo; any other
-        // failure must leave the record unmarked so the next sweep retries it.
-        if (!isStorageNotFound(err)) {
-          result.failed += 1;
-          console.warn(`[moderateReportedPhotos] object delete failed for a reported photo: ${err.message}`);
-          continue;
-        }
-      }
-    }
-
-    if (alreadyRemoved) {
-      // The record is already quarantined, but the owner may have re-uploaded an object
-      // to the moderated path after the sweep deleted it (storage.rules allows create
-      // once the object is gone). The sweep deletes any such re-upload too — those bytes
-      // were never re-validated, and finalization refuses to re-register a removed
-      // photo's path, so the record itself never needs re-marking. Nothing found to
-      // delete (404 or no usable path) simply keeps the record (idempotent).
-      if (objectDeleted) {
-        result.removed += 1;
-      } else {
-        result.kept += 1;
-      }
+    // Terminal moderation states need no further automatic action: hidden is this
+    // sweep's own output, removed is a reviewed takedown.
+    if (isModeratedAway(data.moderationState)) {
+      result.kept += 1;
       continue;
     }
 
-    const updateData = { moderationState: MODERATION_STATE_REMOVED };
+    const updateData = { moderationState: MODERATION_STATE_HIDDEN };
     if (typeof nowMs === "function") {
       updateData.moderatedAt = nowMs();
     }
-    await photoDoc.ref.update(updateData);
-    result.removed += 1;
+    try {
+      await photoDoc.ref.update(updateData);
+      result.hidden += 1;
+    } catch (err) {
+      result.failed += 1;
+      console.warn(`[moderateReportedPhotos] failed to hide a reported photo: ${err.message}`);
+    }
   }
 
   return result;
 }
 
 /**
- * Google Cloud Storage reports a missing object as an error carrying code 404. Anything
- * else (permission, transient unavailability) is a real failure the caller must retry.
+ * Validates the reportPhoto callable payload: one plain object carrying exactly one
+ * key, "photoId", a non-empty document-id-looking string.
  */
-function isStorageNotFound(err) {
-  if (!err) return false;
-  if (err.code === 404 || err.status === 404) return true;
-  const errors = err.errors;
-  if (Array.isArray(errors) && errors.some((e) => e && (e.code === 404 || e.reason === "notFound"))) {
-    return true;
+const PHOTO_REPORT_PAYLOAD_KEYS = ["photoId"];
+
+function validatePhotoReportPayload(data) {
+  if (!isPlainObject(data)) {
+    throw invalid("Photo report payload must be a JSON object.");
   }
-  return false;
+  for (const key of Object.keys(data)) {
+    if (!PHOTO_REPORT_PAYLOAD_KEYS.includes(key)) {
+      throw invalid(`Unexpected field '${key}' in photo report payload. Allowed: ${PHOTO_REPORT_PAYLOAD_KEYS.join(", ")}.`);
+    }
+  }
+  const photoId = data.photoId;
+  if (
+    typeof photoId !== "string" ||
+    photoId.length === 0 ||
+    photoId.length > MAX_PHOTO_ID_LENGTH ||
+    !/^[A-Za-z0-9_-]+$/.test(photoId)
+  ) {
+    throw invalid(`'photoId' must be a non-empty document id of at most ${MAX_PHOTO_ID_LENGTH} characters.`);
+  }
+  return { photoId };
+}
+
+const MAX_PHOTO_ID_LENGTH = 256;
+
+/**
+ * The trusted photo report writer used by the reportPhoto Cloud Function. One Firestore
+ * transaction atomically:
+ *   - reads the photo document (must exist and not already be hidden/removed);
+ *   - reads the per-reporter document spot_photos/{photoId}/reports/{reporterUid}
+ *     (reporter identities stay private — the rules deny all client reads of the
+ *     subcollection): an existing document means a duplicate report and is rejected;
+ *   - consumes one slot of the per-UID report rate limit, so one account cannot
+ *     mass-report photos;
+ *   - creates the reporter's document (exactly the shape the rules' direct-write path
+ *     writes: { reporterUid, timestamp }) and increments reportsCount by exactly one.
+ * Direct client transaction writes (firestore.rules) remain permitted while older app
+ * versions are in the field; this callable produces the identical document shapes and
+ * invariants, and adds authentication-strength and rate-limit enforcement the rules
+ * cannot express (see docs/COMMUNITY_REPORTING_DESIGN.md).
+ *
+ * Returns { photoId, reportsCount } — the photo's report count after this report.
+ */
+async function reportPhotoDocument(db, reportingUid, data, options = {}) {
+  if (!reportingUid) {
+    throw new HttpsError("unauthenticated", "User authentication required to report a photo.");
+  }
+  const { photoId } = validatePhotoReportPayload(data);
+  const photoRef = db.collection(PHOTOS_COLLECTION).doc(photoId);
+  const reportRef = photoRef.collection(REPORTS_SUBCOLLECTION).doc(reportingUid);
+  const rateLimit = options.rateLimit || null;
+  const nowMs = typeof options.nowMs === "function" ? options.nowMs() : options.nowMs ?? Date.now();
+
+  return db.runTransaction(async (transaction) => {
+    // All reads precede all writes (Firestore transaction requirement).
+    const photoDoc = await transaction.get(photoRef);
+    if (!photoDoc.exists) {
+      throw new HttpsError("not-found", "This photo no longer exists and cannot be reported.");
+    }
+    const photoData = photoDoc.data() || {};
+    if (isModeratedAway(photoData.moderationState)) {
+      throw new HttpsError(
+        "failed-precondition",
+        "This photo was already hidden or removed, so it can no longer be reported."
+      );
+    }
+    const existingReportDoc = await transaction.get(reportRef);
+    if (existingReportDoc.exists) {
+      throw new HttpsError(
+        "already-exists",
+        "You have already reported this photo. Each photo can only be reported once per account."
+      );
+    }
+    if (rateLimit) {
+      const allowed = await decideRateLimitInTransaction(
+        transaction,
+        rateLimit.ref,
+        rateLimit.maxPerHour,
+        nowMs
+      );
+      if (!allowed) {
+        throw new HttpsError(
+          "resource-exhausted",
+          `Rate limit exceeded. Maximum ${rateLimit.maxPerHour} photo reports per hour per user.`
+        );
+      }
+    }
+    const currentCount = Number(photoData.reportsCount) || 0;
+    transaction.set(reportRef, { reporterUid: reportingUid, timestamp: nowMs });
+    transaction.update(photoRef, { reportsCount: currentCount + 1 });
+    return { photoId, reportsCount: currentCount + 1 };
+  });
 }
 
 module.exports = {
@@ -969,8 +1044,11 @@ module.exports = {
   CLEANUP_CLAIM_COLLECTION,
   CLEANUP_CLAIM_TTL_MS,
   MODERATION_REPORTS_THRESHOLD,
+  MODERATION_STATE_HIDDEN,
   MODERATION_STATE_REMOVED,
   MODERATION_SCAN_LIMIT,
+  REPORTS_SUBCOLLECTION,
+  PHOTO_REPORT_RATE_LIMIT_MAX_PER_HOUR,
   parseStorageObjectPath,
   parseOwnershipAwarePhotoPath,
   finalizePhotoUploadDocument,
@@ -980,4 +1058,6 @@ module.exports = {
   releaseDeletionClaimFor,
   reapUnregisteredPhotoObjects,
   moderateReportedPhotos,
+  validatePhotoReportPayload,
+  reportPhotoDocument,
 };
