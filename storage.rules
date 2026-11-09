@@ -11,13 +11,17 @@ service firebase.storage {
       // uploads; a human moderator's takedown state), never from these rules.
       allow read: if true;
 
-      // Create allowed only if authenticated UID matches path owner. The trailing
-      // `resource == null` condition is what blocks byte-level overwrites: in the
-      // Storage rules runtime a client re-upload of an existing object is evaluated
-      // against the create rule with `resource` bound to the existing object, so the
-      // condition rejects the overwrite while still allowing brand-new uploads.
-      // (Metadata changes are blocked separately by `allow update: if false` below —
-      // the two guards are kept because they reject different operations.)
+      // Create allowed only if authenticated UID matches path owner. `resource == null`
+      // is the byte-level overwrite guard: the Storage rules engine evaluates a client
+      // re-upload of an existing object against the create rule with `resource` bound
+      // to the existing object, so the clause denies the overwrite while still allowing
+      // brand-new uploads (verified against the Storage emulator; this is also
+      // Firebase's documented immutability pattern, e.g. allow write: if resource == null).
+      // Note: contentType and size are client-supplied metadata and are NOT proof of a
+      // real image — the authoritative image validation (content sniffing and server-side
+      // re-encode) happens in functions/photos.js at finalize. Metadata edits are blocked
+      // by `allow update: if false` below, but uploads never evaluate the update rule,
+      // so the overwrite guard above is what protects the object's bytes.
       allow create: if request.auth != null
                     && request.auth.uid == uid
                     && request.resource.size < 5 * 1024 * 1024
