@@ -68,8 +68,11 @@ class SharedTripDeepLinkHandler(
                 activeSharedTrip = fetchResult.getOrNull()
                 activeSharedTripError = null
             } else {
+                // Generic failure message only: the raw exception message can leak
+                // implementation detail (network vs. expired vs. missing document) and
+                // must never reach the UI.
                 activeSharedTrip = null
-                activeSharedTripError = fetchResult.exceptionOrNull()?.message ?: SHARED_TRIP_DEFAULT_ERROR
+                activeSharedTripError = SHARED_TRIP_DEFAULT_ERROR
             }
             showSharedTripDialog = true
         }

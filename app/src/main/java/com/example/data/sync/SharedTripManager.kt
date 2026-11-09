@@ -71,6 +71,23 @@ object SharedTripManager {
      */
     const val LOCAL_PLACEHOLDER_TRIP_ID = "local_unpublished_trip"
 
+    /**
+     * The shape every accepted trip id must match, enforced before any Firestore call.
+     * Server ids are 20-char base-URL-safe push ids; the window [8, 64] admits them and
+     * any id shaped like them while rejecting everything that could encode path
+     * traversal, collection paths, or oversized probes.
+     */
+    private val TRIP_ID_REGEX = Regex("^[A-Za-z0-9_-]{8,64}$")
+
+    /**
+     * True only for ids matching [TRIP_ID_REGEX]. This is the validation boundary for
+     * every deep-link id: malformed ids never reach Firestore (no document read, no
+     * error message distinguishing existing from missing ids).
+     */
+    fun isValidTripId(tripId: String?): Boolean {
+        return !tripId.isNullOrBlank() && TRIP_ID_REGEX.matches(tripId.trim())
+    }
+
     private fun getFirestore(context: Context): FirebaseFirestore? {
         return try {
             val app = if (FirebaseApp.getApps(context).isNotEmpty()) {
@@ -169,12 +186,15 @@ object SharedTripManager {
             val path = uri.path ?: ""
             val queryId = uri.getQueryParameter("id")
 
-            when {
+            val candidate = when {
                 !queryId.isNullOrBlank() -> queryId.trim()
                 path.startsWith("/trip/") -> path.removePrefix("/trip/").trim()
                 path.startsWith("/") -> path.removePrefix("/").trim()
                 else -> null
             }
+
+            // The id policy: only well-formed ids ever become a Firestore lookup.
+            if (candidate != null && isValidTripId(candidate)) candidate else null
         } catch (_: Exception) {
             null
         }
@@ -287,6 +307,12 @@ object SharedTripManager {
         tripId: String,
         currentTimeMs: Long = System.currentTimeMillis()
     ): Result<SharedTrip> = withContext(Dispatchers.IO) {
+        // Defense in depth: a malformed id never reaches Firestore. Callers validate
+        // through parseTripIdFromUri, but this entry point is public.
+        if (!isValidTripId(tripId)) {
+            return@withContext Result.failure(IllegalStateException("Shared trip not found or expired."))
+        }
+
         try {
             val firestore = getFirestore(context)
                 ?: return@withContext Result.failure(IllegalStateException("Firestore instance unavailable."))

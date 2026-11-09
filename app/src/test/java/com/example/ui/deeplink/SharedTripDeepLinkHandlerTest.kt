@@ -37,17 +37,17 @@ class SharedTripDeepLinkHandlerTest {
             }
         )
 
-        handler.handleIntent(sharedTripIntent("https://vividscout.app/trip/abc123"))
+        handler.handleIntent(sharedTripIntent("https://vividscout.app/trip/abc12345"))
         advanceUntilIdle()
 
-        assertEquals(listOf("abc123"), fetchedTripIds)
-        assertEquals("abc123", handler.activeSharedTrip?.id)
+        assertEquals(listOf("abc12345"), fetchedTripIds)
+        assertEquals("abc12345", handler.activeSharedTrip?.id)
         assertNull(handler.activeSharedTripError)
         assertTrue(handler.showSharedTripDialog)
 
         // Re-delivering the identical intent (recomposition, duplicate effect key, or a
         // repeated tap of the same link): no second fetch, no state churn.
-        handler.handleIntent(sharedTripIntent("https://vividscout.app/trip/abc123"))
+        handler.handleIntent(sharedTripIntent("https://vividscout.app/trip/abc12345"))
         advanceUntilIdle()
 
         assertEquals("The same URI must not be fetched twice", 1, fetchedTripIds.size)
@@ -65,13 +65,13 @@ class SharedTripDeepLinkHandlerTest {
             }
         )
 
-        handler.handleIntent(sharedTripIntent("https://vividscout.app/trip/one"))
+        handler.handleIntent(sharedTripIntent("https://vividscout.app/trip/trip-id-one"))
         advanceUntilIdle()
-        handler.handleIntent(sharedTripIntent("https://vividscout.app/trip/two"))
+        handler.handleIntent(sharedTripIntent("https://vividscout.app/trip/trip-id-two"))
         advanceUntilIdle()
 
-        assertEquals(listOf("one", "two"), fetchedTripIds)
-        assertEquals("two", handler.activeSharedTrip?.id)
+        assertEquals(listOf("trip-id-one", "trip-id-two"), fetchedTripIds)
+        assertEquals("trip-id-two", handler.activeSharedTrip?.id)
     }
 
     @Test
@@ -108,11 +108,57 @@ class SharedTripDeepLinkHandlerTest {
             }
         )
 
-        handler.handleIntent(sharedTripIntent("vividscout://trip/missing"))
+        handler.handleIntent(sharedTripIntent("vividscout://trip/abcdefgh"))
         advanceUntilIdle()
 
         assertNull(handler.activeSharedTrip)
-        assertEquals("Shared trip not found or expired.", handler.activeSharedTripError)
+        assertEquals(SHARED_TRIP_DEFAULT_ERROR, handler.activeSharedTripError)
         assertTrue(handler.showSharedTripDialog)
+    }
+
+    @Test
+    fun handleIntent_failureNeverShowsTheRawExceptionMessage() = runTest {
+        // The fetch may fail with implementation-specific messages (network error,
+        // permissions error); the UI must only ever show the generic message.
+        val handler = SharedTripDeepLinkHandler(
+            context = context,
+            coroutineScope = this,
+            fetchSharedTrip = {
+                Result.failure(com.google.firebase.firestore.FirebaseFirestoreException(
+                    "firestore: PERMISSION_DENIED: missing or insufficient permissions",
+                    com.google.firebase.firestore.FirebaseFirestoreException.Code.PERMISSION_DENIED
+                ))
+            }
+        )
+
+        handler.handleIntent(sharedTripIntent("vividscout://trip/abcdefgh"))
+        advanceUntilIdle()
+
+        assertEquals(SHARED_TRIP_DEFAULT_ERROR, handler.activeSharedTripError)
+        assertFalse(handler.activeSharedTripError!!.contains("PERMISSION_DENIED"))
+    }
+
+    @Test
+    fun handleIntent_neverFetchesSlashContainingOversizedOrBlankIds() = runTest {
+        val fetchedTripIds = mutableListOf<String>()
+        val handler = SharedTripDeepLinkHandler(
+            context = context,
+            coroutineScope = this,
+            fetchSharedTrip = { tripId ->
+                fetchedTripIds.add(tripId)
+                Result.success(SharedTrip(id = tripId, title = "t", spots = emptyList()))
+            }
+        )
+
+        // Slash-containing ids (collection/path probing) and oversized ids are rejected
+        // by the parser, so no fetch may ever run for them.
+        handler.handleIntent(sharedTripIntent("vividscout://trip/abcd/../../users/secret"))
+        handler.handleIntent(sharedTripIntent("vividscout://trip/" + "a".repeat(65)))
+        handler.handleIntent(sharedTripIntent("vividscout://trip/"))
+        handler.handleIntent(sharedTripIntent("vividscout://trip?id="))
+        advanceUntilIdle()
+
+        assertTrue("No fetch may run for invalid ids: $fetchedTripIds", fetchedTripIds.isEmpty())
+        assertFalse(handler.showSharedTripDialog)
     }
 }

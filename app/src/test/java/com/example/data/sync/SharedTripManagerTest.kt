@@ -143,4 +143,40 @@ class SharedTripManagerTest {
         val parsed = SharedTripManager.parseTripIdFromUri("https://vividscout.app/trip/")
         assertTrue(parsed.isNullOrBlank())
     }
+
+    @Test
+    fun parseTripIdFromUri_rejectsSlashContainingIds() {
+        // Path traversal / collection probing must never yield an id that reaches Firestore.
+        assertEquals(null, SharedTripManager.parseTripIdFromUri("https://vividscout.app/trip/abcd/../../users/secret"))
+        assertEquals(null, SharedTripManager.parseTripIdFromUri("vividscout://trip/good-id/shared_trips/secret"))
+        assertEquals(null, SharedTripManager.parseTripIdFromUri("vividscout://trip?id=ok-id-but/with-slash"))
+    }
+
+    @Test
+    fun parseTripIdFromUri_rejectsOversizedAndUndersizedIds() {
+        val tooShort = "short" // 5 chars
+        val exactMin = "abcdefgh" // 8 chars
+        val exactMax = "a".repeat(64)
+        val tooLong = "a".repeat(65)
+
+        assertEquals(null, SharedTripManager.parseTripIdFromUri("https://vividscout.app/trip/$tooShort"))
+        assertEquals(exactMin, SharedTripManager.parseTripIdFromUri("https://vividscout.app/trip/$exactMin"))
+        assertEquals(exactMax, SharedTripManager.parseTripIdFromUri("https://vividscout.app/trip/$exactMax"))
+        assertEquals(null, SharedTripManager.parseTripIdFromUri("https://vividscout.app/trip/$tooLong"))
+    }
+
+    @Test
+    fun isValidTripId_acceptsTheDocumentedShapeOnly() {
+        assertTrue(SharedTripManager.isValidTripId("abcd-1234-efgh-5678"))
+        assertTrue(SharedTripManager.isValidTripId("abcdefgh"))
+        assertTrue(SharedTripManager.isValidTripId("A_b-9cdE"))
+        assertFalse(SharedTripManager.isValidTripId(null))
+        assertFalse(SharedTripManager.isValidTripId(""))
+        assertFalse(SharedTripManager.isValidTripId("   "))
+        assertFalse(SharedTripManager.isValidTripId("has space"))
+        assertFalse(SharedTripManager.isValidTripId("shrt"))
+        assertFalse(SharedTripManager.isValidTripId("a".repeat(65)))
+        assertFalse(SharedTripManager.isValidTripId("with/slash"))
+        assertFalse(SharedTripManager.isValidTripId("has.spec"))
+    }
 }
