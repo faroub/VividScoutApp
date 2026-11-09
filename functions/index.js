@@ -11,7 +11,7 @@
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { initializeApp } = require("firebase-admin/app");
-const { getFirestore, Timestamp } = require("firebase-admin/firestore");
+const { getFirestore } = require("firebase-admin/firestore");
 const { getStorage } = require("firebase-admin/storage");
 const axios = require("axios");
 const { validateSharedTripPublishPayload, publishSharedTripDocument } = require("./sharedTrips");
@@ -123,7 +123,10 @@ async function fetchOpenTripMap(lat, lon, radiusMeters) {
       });
     return { records, status: PROVIDER_OK };
   } catch (err) {
-    console.warn(`[OpenTripMap] Fetch failed: ${err.message}`);
+    // Log the classified outcome only: axios errors embed the request config,
+    // including the API key inside config.url, so the raw error must never be
+    // printed (see the log-hygiene tests in nearbyPlacesCallable.test.js).
+    console.warn(`[OpenTripMap] Fetch failed (${providerStatusForError(err)}).`);
     return { records: [], status: providerStatusForError(err) };
   }
 }
@@ -169,10 +172,17 @@ async function fetchGeonames(lat, lon, radiusMeters) {
       });
     return { records, status: PROVIDER_OK };
   } catch (err) {
-    console.warn(`[GeoNames] Fetch failed: ${err.message}`);
+    // Same sanitization as fetchOpenTripMap: never print the raw axios error, whose
+    // config carries the provider username in the URL.
+    console.warn(`[GeoNames] Fetch failed (${providerStatusForError(err)}).`);
     return { records: [], status: providerStatusForError(err) };
   }
 }
+
+// Exported for the log-hygiene tests in nearbyPlacesCallable.test.js: the functions
+// themselves are unchanged.
+exports.fetchOpenTripMap = fetchOpenTripMap;
+exports.fetchGeonames = fetchGeonames;
 
 exports.nearbyPlaces = onCall(
   {
@@ -187,23 +197,24 @@ exports.nearbyPlaces = onCall(
       throw new HttpsError("unauthenticated", "User authentication required to query nearbyPlaces.");
     }
 
-    // 2. Per-UID Rate Limit Check
-    const uid = auth.uid;
-    const isAllowed = await checkRateLimit(uid);
-    if (!isAllowed) {
-      throw new HttpsError("resource-exhausted", "Rate limit exceeded. Maximum 60 requests per hour per user.");
-    }
-
-    const data = request.data || {};
-
-    // 3. Strict end-to-end request validation: App Check, auth, coordinates,
+    // 2. Strict end-to-end request validation: App Check, auth, coordinates,
     //    integer radius bounds and the source allowlist (shared with tests via
-    //    functions/validation.js — never duplicated).
+    //    functions/validation.js — never duplicated). Runs BEFORE the rate limit so a
+    //    malformed request cannot consume the caller's hourly quota.
+    const uid = auth.uid;
+    const data = request.data || {};
     const validated = validateNearbyPlacesRequest(data, request.auth, request.app);
     if (!validated.ok) {
       throw new HttpsError(validated.error, validated.message);
     }
     const { lat, lon, radiusMeters, requestedSources } = validated;
+
+    // 3. Per-UID Rate Limit Check (60 requests/UID/hour): a slot is consumed exactly
+    //    when a request that passed validation is counted.
+    const isAllowed = await checkRateLimit(uid);
+    if (!isAllowed) {
+      throw new HttpsError("resource-exhausted", "Rate limit exceeded. Maximum 60 requests per hour per user.");
+    }
 
     console.log(`[nearbyPlaces] Processing query for UID=${uid.substring(0, 4)}*** at coords (${lat.toFixed(2)}, ${lon.toFixed(2)}) radius=${radiusMeters}m`);
 

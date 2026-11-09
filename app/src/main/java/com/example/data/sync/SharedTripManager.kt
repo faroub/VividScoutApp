@@ -62,6 +62,15 @@ object SharedTripManager {
     private const val TAG = "SharedTripManager"
     const val TTL_DURATION_MS = 30L * 24 * 3600 * 1000L // 30 days
 
+    /**
+     * Id for trips that exist only locally, before [publishSharedTripToFirestore]
+     * returns the server-generated id. A fresh random UUID here would look exactly like
+     * a real, published trip id even though it never reaches the server — the link
+     * derived from it resolves to nothing. The explicit placeholder makes that
+     * unmistakable: only [PublishedSharedTrip.shareableLink] resolves to a document.
+     */
+    const val LOCAL_PLACEHOLDER_TRIP_ID = "local_unpublished_trip"
+
     private fun getFirestore(context: Context): FirebaseFirestore? {
         return try {
             val app = if (FirebaseApp.getApps(context).isNotEmpty()) {
@@ -138,10 +147,8 @@ object SharedTripManager {
             )
         }
 
-        val randomId = UUID.randomUUID().toString()
-
         return SharedTrip(
-            id = randomId,
+            id = LOCAL_PLACEHOLDER_TRIP_ID,
             title = title.trim().ifBlank { "Shared Scout Itinerary" }.take(120),
             spots = spotItems,
             createdAt = currentTimeMs,

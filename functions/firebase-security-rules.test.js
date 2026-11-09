@@ -1365,9 +1365,9 @@ describe("shared_trips", () => {
     );
     await assertFails(deleteDoc(doc(dbAs(ALICE), "photo_cleanup_claims", claimId)));
 
-    // Remove the internal bookkeeping fixtures: node --test runs this suite concurrently
-    // with photos.test.js in the same emulator, and leaving the claim behind perturbs the
-    // reaper's exact claim assertions there.
+    // The suite runs with --test-concurrency=1, so this file's fixtures cannot leak into
+    // photos.test.js's exact-count reaper assertions; cleanup still keeps the emulator
+    // tidy for any future caller.
     await adminDb.collection("photo_cleanup_state").doc(stateId).delete();
     await adminDb.collection("photo_cleanup_claims").doc(claimId).delete();
   });

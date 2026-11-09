@@ -3,7 +3,6 @@ package com.example.data.sync
 import com.example.data.local.ScoutSpotEntity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -32,7 +31,7 @@ class SharedTripManagerTest {
     }
 
     @Test
-    fun createSharedTrip_enforcesThirtyDayExpiration_andRandom128BitUuid() {
+    fun createSharedTrip_enforcesThirtyDayExpiration_andLocalPlaceholderId() {
         val now = System.currentTimeMillis()
         val spots = listOf(
             createSpot("s1", "Miradouro de Santa Luzia"),
@@ -45,8 +44,13 @@ class SharedTripManagerTest {
             currentTimeMs = now
         )
 
-        assertNotNull(trip.id)
-        assertTrue("Trip ID must be a valid 128-bit UUID string", trip.id.length >= 32)
+        // The local id is an obvious placeholder, never a random UUID: only the
+        // server-generated link returned by publishSharedTripToFirestore resolves.
+        assertEquals(SharedTripManager.LOCAL_PLACEHOLDER_TRIP_ID, trip.id)
+        assertEquals(
+            "https://vividscout.app/trip/${SharedTripManager.LOCAL_PLACEHOLDER_TRIP_ID}",
+            trip.shareableLink
+        )
 
         val expectedExpireAt = now + (30L * 24 * 3600 * 1000L)
         assertEquals("expireAt TTL timestamp must be exactly 30 days after creation", expectedExpireAt, trip.expireAt)

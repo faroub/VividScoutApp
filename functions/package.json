@@ -8,7 +8,7 @@
     "shell": "firebase functions:shell",
     "start": "npm run shell",
     "deploy": "firebase deploy --only functions",
-    "test": "node --test firebase-security-rules.test.js sharedTrips.test.js photos.test.js community.test.js firestoreDatabase.test.js migrate-private-notes.test.js androidFirebaseConfig.test.js"
+    "test": "node --test --test-concurrency=1 firebase-security-rules.test.js sharedTrips.test.js photos.test.js community.test.js firestoreDatabase.test.js migrate-private-notes.test.js androidFirebaseConfig.test.js nearbyPlacesCallable.test.js"
   },
   "dependencies": {
     "axios": "^1.7.9",
