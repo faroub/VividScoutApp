@@ -1,6 +1,7 @@
 package com.example.ui.dialogs
 
 import android.widget.Toast
+import com.example.BuildConfig
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -110,11 +111,14 @@ fun SpotDetailBottomSheet(
                 onDismiss = onDismiss
             )
 
-            // Diagnostic Telemetry & Re-Fetch Visualizer
-            ImageDiagnosticVisualizerCard(
-                spot = spot,
-                onReFetchImage = onReFetchImage
-            )
+            // Diagnostic Telemetry & Re-Fetch Visualizer (debug builds only — never
+            // ship developer diagnostics in release).
+            if (BuildConfig.DEBUG) {
+                ImageDiagnosticVisualizerCard(
+                    spot = spot,
+                    onReFetchImage = onReFetchImage
+                )
+            }
 
             SpotDetailPhotosSection(
                 spot = spot,

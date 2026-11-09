@@ -5,7 +5,7 @@ import com.example.util.SafeLog
 import com.example.BuildConfig
 import com.google.firebase.FirebaseApp
 import com.google.firebase.appcheck.FirebaseAppCheck
-import com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory
+import com.google.firebase.appcheck.AppCheckProviderFactory
 import com.google.firebase.appcheck.playintegrity.PlayIntegrityAppCheckProviderFactory
 
 private const val TAG = "AppCheckInit"
@@ -30,9 +30,10 @@ fun configureAppCheck(context: Context) {
 
         val appCheck = FirebaseAppCheck.getInstance(app)
         if (BuildConfig.DEBUG) {
-            appCheck.installAppCheckProviderFactory(
-                DebugAppCheckProviderFactory.getInstance()
-            )
+            // The debug provider ships only through debugImplementation (app/build
+            // .gradle.kts), so the release classpath does not carry it. It is loaded
+            // reflectively to avoid a compile-time reference from release sources.
+            appCheck.installAppCheckProviderFactory(loadDebugAppCheckProviderFactory())
             SafeLog.d(TAG, "DebugAppCheckProviderFactory installed.")
         } else {
             appCheck.installAppCheckProviderFactory(
@@ -43,4 +44,15 @@ fun configureAppCheck(context: Context) {
     } catch (e: Exception) {
         SafeLog.d(TAG, "Firebase App Check initialization skipped: ${e.message}")
     }
+}
+
+/**
+ * Reflectively obtains the debug App Check provider factory, which lives in the
+ * debug-only `firebase-appcheck-debug` artifact. Any failure to load it means the
+ * debug build cannot attest — surfaced loudly so debug sessions notice immediately.
+ */
+private fun loadDebugAppCheckProviderFactory(): AppCheckProviderFactory {
+    val factoryClass = Class.forName("com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory")
+    val instance = factoryClass.getMethod("getInstance").invoke(null)
+    return instance as AppCheckProviderFactory
 }

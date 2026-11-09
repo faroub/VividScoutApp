@@ -207,7 +207,10 @@ dependencies {
   implementation(libs.firebase.storage)
   implementation(libs.firebase.appcheck.playintegrity)
   implementation(libs.firebase.appcheck.recaptcha)
-  implementation(libs.firebase.appcheck.debug)
+  // Debug-only App Check provider: ships exclusively in debug builds (P5). The
+  // reference in AppCheckInitializer.loadDebugAppCheckProviderFactory is reflective
+  // so release compilation does not resolve this artifact.
+  debugImplementation(libs.firebase.appcheck.debug)
   implementation(libs.kotlinx.coroutines.android)
   implementation(libs.kotlinx.coroutines.core)
   implementation(libs.logging.interceptor)

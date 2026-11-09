@@ -43,6 +43,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.example.BuildConfig
 import com.example.data.local.ScoutSpotEntity
 import com.example.data.sync.OfflineSyncState
 import com.example.data.sync.OfflineSyncStateResolver
@@ -280,19 +281,22 @@ fun OfflineQueueDialog(
                     }
                 }
 
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable {
-                            onDismiss()
-                            onOpenDiagnostics()
-                        }
-                        .padding(vertical = 6.dp)
-                        .testTag("queue_open_diagnostics_button"),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                // Developer diagnostics ship only in debug builds (P5): release users
+                // never see Overpass JSON tooling.
+                if (BuildConfig.DEBUG) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable {
+                                onDismiss()
+                                onOpenDiagnostics()
+                            }
+                            .padding(vertical = 6.dp)
+                            .testTag("queue_open_diagnostics_button"),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                     Icon(
                         imageVector = Icons.Default.Storage,
                         contentDescription = "Diagnostics",
@@ -305,6 +309,7 @@ fun OfflineQueueDialog(
                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
                         color = Secondary
                     )
+                    }
                 }
             }
         }

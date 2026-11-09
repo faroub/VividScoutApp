@@ -65,7 +65,7 @@ fun CacheHealthDialog(
     health: VicinityCacheHealth,
     onDismiss: () -> Unit,
     onPreCacheVicinity: () -> Unit,
-    onOpenDiagnostics: () -> Unit,
+    onOpenDiagnostics: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val levelColor = Color(health.level.colorHex)
@@ -353,16 +353,18 @@ fun CacheHealthDialog(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // Overpass Diagnostic Quick Link
-                OutlinedButton(
-                    onClick = onOpenDiagnostics,
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.25f)),
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .defaultMinSize(minHeight = 48.dp)
-                        .testTag("open_overpass_diagnostics_from_health")
-                ) {
+                // Overpass Diagnostic Quick Link — hidden when no diagnostics callback is
+                // wired (release builds, where AppDialogLayer passes null).
+                if (onOpenDiagnostics != null) {
+                    OutlinedButton(
+                        onClick = onOpenDiagnostics,
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.25f)),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .defaultMinSize(minHeight = 48.dp)
+                            .testTag("open_overpass_diagnostics_from_health")
+                    ) {
                     Icon(
                         imageVector = Icons.Default.Speed,
                         contentDescription = null,
@@ -375,6 +377,7 @@ fun CacheHealthDialog(
                         style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
                         color = Color.White.copy(alpha = 0.9f)
                     )
+                    }
                 }
             }
         }

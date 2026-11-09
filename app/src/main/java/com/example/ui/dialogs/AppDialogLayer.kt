@@ -1,6 +1,7 @@
 package com.example.ui.dialogs
 
 import androidx.compose.runtime.Composable
+import com.example.BuildConfig
 import com.example.ui.permissions.LocationPermissionActions
 import com.example.ui.viewmodel.ExploreUiState
 import com.example.ui.viewmodel.ExploreViewModel
@@ -60,12 +61,20 @@ fun AppDialogLayer(
             drafts = offlineMapsState.offlineDrafts,
             onSyncAll = { offlineMapsViewModel.syncAllDrafts() },
             onDismiss = { offlineMapsViewModel.dismissQueueDialog() },
-            onOpenDiagnostics = { offlineMapsViewModel.openDiagnosticDialog() }
+            // Developer diagnostics (Overpass JSON tooling) are debug-only, so the
+            // release build never wires the action that opens it.
+            onOpenDiagnostics = if (BuildConfig.DEBUG) {
+                { offlineMapsViewModel.openDiagnosticDialog() }
+            } else {
+                { }
+            }
         )
     }
 
-    // Overpass API Diagnostics Dialog
-    if (offlineMapsState.showDiagnosticDialog) {
+    // Overpass API Diagnostics Dialog (debug builds only — the action that opens it is
+    // gated above and in OfflineQueueDialog; the state setter cannot be reached in
+    // release, and this composition guard is defense in depth).
+    if (BuildConfig.DEBUG && offlineMapsState.showDiagnosticDialog) {
         OverpassDiagnosticDialog(
             log = offlineMapsState.diagnosticLog,
             isRunning = offlineMapsState.isDiagnosticRunning,
@@ -80,9 +89,15 @@ fun AppDialogLayer(
             health = offlineMapsState.vicinityCacheHealth,
             onDismiss = { offlineMapsViewModel.dismissCacheHealthDialog() },
             onPreCacheVicinity = { offlineMapsViewModel.prefetchVicinityCache() },
-            onOpenDiagnostics = {
-                offlineMapsViewModel.dismissCacheHealthDialog()
-                offlineMapsViewModel.openDiagnosticDialog()
+            // Same debug-only diagnostics surface: no dead "open diagnostics" button
+            // in release (CacheHealthDialog hides the action when the callback is null).
+            onOpenDiagnostics = if (BuildConfig.DEBUG) {
+                {
+                    offlineMapsViewModel.dismissCacheHealthDialog()
+                    offlineMapsViewModel.openDiagnosticDialog()
+                }
+            } else {
+                null
             }
         )
     }
