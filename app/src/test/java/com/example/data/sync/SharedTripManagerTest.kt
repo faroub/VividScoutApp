@@ -73,6 +73,39 @@ class SharedTripManagerTest {
     }
 
     @Test
+    fun createSharedTrip_dropsImageUrlsHostedOutsideTheAllowlist() {
+        // Every viewer's device fetches a shared trip's spot images, so only the
+        // allowlisted hosts may be shared: a GeoNames thumbnail (or any other host)
+        // would expose each viewer's IP address to an unknown third party. Dropped
+        // images become the empty string (the shared-trip missing-image
+        // representation); the trusted publishSharedTrip Cloud Function rejects
+        // non-allowlisted hosts server-side as well.
+        val wikimedia = createSpot("s1", "Miradouro de Santa Luzia").copy(
+            imageUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/Photo.jpg/800px-Photo.jpg"
+        )
+        val geonames = createSpot("s2", "Convento do Carmo").copy(
+            imageUrl = "https://a1.geonames.org/img/wikipedia/12345.jpg"
+        )
+        val unsplash = createSpot("s3", "Manteigaria").copy(
+            imageUrl = "https://images.unsplash.com/photo-tiny-cafe"
+        )
+        val missing = createSpot("s4", "Alfama Steps").copy(imageUrl = "")
+
+        val trip = SharedTripManager.createSharedTrip(
+            "Lisbon Gems",
+            listOf(wikimedia, geonames, unsplash, missing)
+        )
+
+        assertEquals(
+            "https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/Photo.jpg/800px-Photo.jpg",
+            trip.spots[0].imageUrl
+        )
+        assertEquals("", trip.spots[1].imageUrl)
+        assertEquals("https://images.unsplash.com/photo-tiny-cafe", trip.spots[2].imageUrl)
+        assertEquals("", trip.spots[3].imageUrl)
+    }
+
+    @Test
     fun parseTripIdFromUri_parsesAppLinksAndCustomSchemes() {
         val appLink = "https://vividscout.app/trip/abcd-1234-efgh-5678"
         assertEquals("abcd-1234-efgh-5678", SharedTripManager.parseTripIdFromUri(appLink))

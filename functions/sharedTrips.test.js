@@ -32,6 +32,7 @@ const {
   TRIP_COLLECTION,
   PUBLISH_REQUEST_COLLECTION,
   ALLOWED_CATEGORIES,
+  ALLOWED_IMAGE_HOSTS,
 } = require("./sharedTrips");
 
 const PROJECT_ID = "vividscout-rules-emulator";
@@ -203,12 +204,12 @@ describe("validateSharedTripSpot", () => {
       spotId: "  padded-id  ",
       title: "  Padded Title  ",
       category: "  Sights  ",
-      imageUrl: "  https://example.com/img.jpg  ",
+      imageUrl: `  https://${ALLOWED_IMAGE_HOSTS[0]}/img.jpg  `,
     });
     assert.strictEqual(spot.spotId, "padded-id");
     assert.strictEqual(spot.title, "Padded Title");
     assert.strictEqual(spot.category, "sights");
-    assert.strictEqual(spot.imageUrl, "https://example.com/img.jpg");
+    assert.strictEqual(spot.imageUrl, `https://${ALLOWED_IMAGE_HOSTS[0]}/img.jpg`);
   });
 
   it("accepts every canonical category", () => {
@@ -252,6 +253,21 @@ describe("validateSharedTripSpot", () => {
     expectSpotInvalid({ ...validSpot(1), imageUrl: "javascript:alert(1)" });
     expectSpotInvalid({ ...validSpot(1), imageUrl: "file:///etc/passwd" });
     expectSpotInvalid({ ...validSpot(1), imageUrl: "x".repeat(MAX_IMAGE_URL_LENGTH + 1) });
+  });
+
+  it("accepts image URLs hosted on the allowed hosts", () => {
+    for (const host of ALLOWED_IMAGE_HOSTS) {
+      const spot = validateSharedTripSpot({ ...validSpot(1), imageUrl: `https://${host}/commons/thumb/a/ab/Photo.jpg/800px-Photo.jpg` });
+      assert.strictEqual(spot.imageUrl, `https://${host}/commons/thumb/a/ab/Photo.jpg/800px-Photo.jpg`);
+    }
+  });
+
+  it("rejects an https URL on any other host (viewer tracking surface)", () => {
+    // A well-formed https URL on an unknown host would still make every viewer's
+    // device contact that host, exposing IP addresses and enabling tracking.
+    expectSpotInvalid({ ...validSpot(1), imageUrl: "https://example.com/img.jpg" });
+    expectSpotInvalid({ ...validSpot(1), imageUrl: "https://a1.geonames.org/img/wikipedia/12345.jpg" });
+    expectSpotInvalid({ ...validSpot(1), imageUrl: "https://evil.example/tracking.png?u=victim" });
   });
 
   it("accepts the empty image URL as the missing-image representation", () => {

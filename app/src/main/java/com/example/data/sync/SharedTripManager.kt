@@ -91,6 +91,27 @@ object SharedTripManager {
      * Creates a validated SharedTrip instance containing up to 50 valid spot items,
      * filtering out invalid coordinates or malformed spots, and assigning a 30-day TTL expiration.
      */
+    /**
+     * Hosts permitted in shared-trip spot images. Mirrors the server-side allowlist in
+     * functions/sharedTrips.js (validateSharedTripSpot): every viewer's device fetches
+     * these URLs, so sharing an image hosted anywhere else (e.g. a GeoNames thumbnail)
+     * would expose each viewer's IP address to an unknown third party. Such an imageUrl
+     * is dropped (empty string: the shared-trip missing-image representation) instead of
+     * published — the trusted Cloud Function rejects it anyway.
+     */
+    private val sharedImageHostAllowlist = setOf("upload.wikimedia.org", "images.unsplash.com")
+
+    private fun sharedTripImageUrl(url: String?): String {
+        if (url.isNullOrBlank()) return ""
+        return try {
+            // java.net.URI (not android.net.Uri) so this stays unit-testable on the JVM.
+            val host = java.net.URI(url.trim()).host
+            if (host != null && sharedImageHostAllowlist.contains(host)) url.trim().take(2048) else ""
+        } catch (_: Exception) {
+            ""
+        }
+    }
+
     fun createSharedTrip(
         title: String,
         spots: List<ScoutSpotEntity>,
@@ -113,7 +134,7 @@ object SharedTripManager {
                 category = ScoutCategory.normalize(spot.category),
                 latitude = spot.latitude,
                 longitude = spot.longitude,
-                imageUrl = spot.imageUrl?.take(2048)
+                imageUrl = sharedTripImageUrl(spot.imageUrl)
             )
         }
 

@@ -27,6 +27,14 @@ const TTL_DURATION_MS = 30 * 24 * 3600 * 1000; // 30-day maximum lifetime
 // categories are normalized to exactly one of these ids before persistence.
 const ALLOWED_CATEGORIES = ["sights", "eats", "history", "shortcut"];
 
+// Hosts permitted for shared-trip spot imagery. Every viewer's device fetches these
+// URLs, so only well-known, purpose-fit hosts are allowed: an arbitrary host would
+// expose each viewer's IP address to a third party and enable cross-user tracking
+// (the same reasoning as firestore.rules' isValidPhotoUri for community submissions).
+// Grounded in the app's real image sources: catalog/curated spots serve Wikimedia
+// Commons thumbnails; Gemini-authored suggestions may reference Unsplash.
+const ALLOWED_IMAGE_HOSTS = ["upload.wikimedia.org", "images.unsplash.com"];
+
 const TRIP_COLLECTION = "shared_trips";
 const PUBLISH_REQUEST_COLLECTION = "shared_trip_publish_requests";
 const SHAREABLE_LINK_BASE = "https://vividscout.app/trip/";
@@ -51,7 +59,8 @@ const invalid = (message) => new HttpsError("invalid-argument", message);
  * all six fields present and of the permitted type/length, coordinates within
  * range and not null-island. User-provided strings are trimmed before validation
  * and persistence, categories must match the canonical category policy, and a
- * non-empty imageUrl must be a valid https URL. The empty string is the Android
+ * non-empty imageUrl must be a valid https URL on an allowed image host
+ * (ALLOWED_IMAGE_HOSTS). The empty string is the Android
  * serializer's deliberate representation of a missing image and is permitted.
  */
 function validateSharedTripSpot(spot) {
@@ -114,7 +123,8 @@ function validateSharedTripSpot(spot) {
   }
   if (imageUrl.length > 0) {
     // Only the empty string (missing image) is exempt; every other value must be a
-    // well-formed https URL so shared trips can never carry arbitrary link targets.
+    // well-formed https URL on an allowed image host so shared trips can never carry
+    // arbitrary link targets (or expose viewers' IP addresses to unknown hosts).
     let parsed;
     try {
       parsed = new URL(imageUrl);
@@ -123,6 +133,11 @@ function validateSharedTripSpot(spot) {
     }
     if (parsed.protocol !== "https:") {
       throw invalid("Shared trip spot 'imageUrl' must be an https URL.");
+    }
+    if (!ALLOWED_IMAGE_HOSTS.includes(parsed.hostname)) {
+      throw invalid(
+        `Shared trip spot 'imageUrl' must be hosted on an allowed image host: ${ALLOWED_IMAGE_HOSTS.join(", ")}.`
+      );
     }
   }
 
@@ -302,6 +317,7 @@ module.exports = {
   TRIP_COLLECTION,
   PUBLISH_REQUEST_COLLECTION,
   ALLOWED_CATEGORIES,
+  ALLOWED_IMAGE_HOSTS,
   validateSharedTripPublishPayload,
   validateSharedTripSpot,
   buildSharedTripDocument,
