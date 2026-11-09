@@ -6,7 +6,7 @@ Existing community tips in Firestore and on local devices contain historical `up
 
 Under the newly implemented per-user vote tracking rules:
 - `firestore.rules` requires `existsAfter(/databases/$(database)/documents/community_tips/$(tipId)/votes/$(request.auth.uid))` on every upvote update.
-- `FirestoreSyncManager.incrementTipUpvoteInCloud()` executes a transaction requiring a vote document write alongside the upvote increment.
+- `CommunitySyncWriter.incrementTipUpvoteInCloud()` (reached through `FirestoreSyncManager`) calls the trusted `castTipVote` Cloud Function (F1): inside one server-side Firestore transaction it requires a fresh vote document together with the exact +1 `upvotes` increment, refuses the tip owner's self-vote, and enforces the per-UID vote rate limit.
 
 ---
 
@@ -21,14 +21,27 @@ The following locations in the codebase read, write, or render `tip.upvotes`:
    - Initializes newly created local tips with `upvotes = 0` and `legacyUpvotes = 0`.
    - `upvoteTip()` checks `isSyncedToCloud` and local `TipVoteDao` before triggering `FirestoreSyncManager.incrementTipUpvoteInCloud()`.
 
-3. **`app/src/main/java/com/example/data/sync/FirestoreSyncManager.kt`** (Cloud Sync):
-   - Sets `"upvotes" to 0` when posting new tips to Firestore (`postCommunityTipToCloud`).
-   - Transaction in `incrementTipUpvoteInCloud()` reads `currentUpvotes` and updates `"upvotes" to currentUpvotes + 1` while preserving `legacyUpvotes`.
-   - Parses `legacyUpvotes` and `upvotes` from downloaded remote documents in `syncRemoteContentDown()`.
+3. **`app/src/main/java/com/example/data/sync/CommunitySyncWriter.kt`** (Cloud Sync, extracted from `FirestoreSyncManager`):
+   - Does NOT send `upvotes` when posting new tips through the `postCommunityTip` callable (`postCommunityTipToCloud`): the counter is server-owned and initialized to 0 server-side. It also refuses to post any tip with `legacyUpvotes !== 0` — legacy counts are introduced only by the migration script.
+   - `incrementTipUpvoteInCloud()` delegates to the `castTipVote` callable, whose transaction writes the vote document and increments `upvotes` by exactly one while preserving `legacyUpvotes` (documents written directly by the migration script keep `legacyUpvotes`).
+   - Parses `legacyUpvotes` and `upvotes` from downloaded remote documents in the shared remote-content download path (`syncRemoteContentDown` in `FirestoreSyncManager`).
 
 4. **`firestore.rules`** (Security Rules):
-   - Enforces `request.resource.data.upvotes == 0` on document creation and allows `legacyUpvotes`.
-   - Requires `request.resource.data.upvotes == resource.data.upvotes + 1` and `existsAfter(...)` vote doc creation on upvoting.
+   - Direct client creation of community-tips documents is denied entirely
+     (`allow create: if false`): `postCommunityTipDocument` was never a client write,
+     and after the trusted-callable change (F3) the rules cannot be bypassed by
+     constructing a "create" with a server-owned counter. The client-controlled-field
+     validator (`isValidTipData`) still constrains the owner-edit branch, where
+     `upvotes` and `legacyUpvotes` must remain byte-for-byte unchanged.
+   - The trusted `postCommunityTip` callable is the only creation path, and it rejects
+     `legacyUpvotes !== 0` with `invalid-argument` on both create and replay (F3):
+     legacy counts can only ever come from `scripts/migrate_legacy_upvotes.js`,
+     never from a client payload. It also sets `upvotes` to 0 server-side.
+   - Upvote increments (the direct-write atomic path older app versions still use)
+     require `request.resource.data.upvotes == resource.data.upvotes + 1` together
+     with `existsAfter(...)` vote-document creation; the primary path is now the
+     `castTipVote` callable (F1), which enforces the same invariant server-side plus
+     the owner self-vote refusal and the per-UID vote rate limit.
 
 ---
 
@@ -56,26 +69,27 @@ The following locations in the codebase read, write, or render `tip.upvotes`:
 ```javascript
      match /community_tips/{tipId} {
        allow read: if true;
-       allow create: if isAuthenticated()
-                     && request.resource.data.keys().hasOnly([
-                          'id', 'ownerUid', 'spotId', 'spotTitle', 'authorName', 'content',
-                          'timestamp', 'isStatusUpdate', 'statusCategory', 'legacyUpvotes', 'upvotes'
-                        ])
-                     && request.resource.data.ownerUid == request.auth.uid
-                     && request.resource.data.legacyUpvotes is number
-                     && request.resource.data.upvotes == 0;
+       // Direct client creation is DENIED: the trusted postCommunityTip callable is
+       // the only creation path (it rejects legacyUpvotes !== 0 and sets upvotes = 0
+       // server-side), and its Admin SDK writes bypass these rules.
+       allow create: if false;
 
        allow update: if isAuthenticated() && (
          (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['upvotes'])
           && request.resource.data.upvotes == resource.data.upvotes + 1
           && request.resource.data.legacyUpvotes == resource.data.legacyUpvotes
+          && request.auth.uid != communityOwnerUid('community_tips', tipId, resource.data)
+          && !exists(/databases/$(database)/documents/community_tips/$(tipId)/votes/$(request.auth.uid))
           && existsAfter(/databases/$(database)/documents/community_tips/$(tipId)/votes/$(request.auth.uid))) ||
-         (isOwner(resource.data.ownerUid)
+         (isOwner(communityOwnerUid('community_tips', tipId, resource.data))
           && request.resource.data.ownerUid == request.auth.uid
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
                'id', 'ownerUid', 'spotId', 'spotTitle', 'authorName', 'content',
-               'timestamp', 'isStatusUpdate', 'statusCategory', 'legacyUpvotes'
-             ]))
+               'timestamp', 'isStatusUpdate', 'statusCategory', 'legacyUpvotes', 'upvotes'
+             ])
+          && isValidTipData(request.resource.data)
+          && request.resource.data.upvotes == resource.data.upvotes
+          && request.resource.data.legacyUpvotes == resource.data.legacyUpvotes)
        );
 ```
 

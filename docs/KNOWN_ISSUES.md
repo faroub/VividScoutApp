@@ -35,7 +35,9 @@
    - Firestore security rules configured in `firestore.rules` (reported).
 
 8. **Automated Verification**:
-   - `./gradlew :app:testDebugUnitTest`: 285 unit and integration tests passing, 0 skipped, 0 failed.
-   - `./gradlew lintDebug`: 0 errors (9 warnings; 182 filtered by `lint-baseline.xml`).
+   - `./gradlew :app:testDebugUnitTest`: 512 unit and integration tests passing, 0 skipped, 0 failed.
+   - `npm --prefix functions test` under `firebase emulators:exec --only firestore,storage`: 267 Cloud Functions, rules, and backend-behavior tests passing, 0 failed (the suite runs serialized against the Firestore + Storage emulators and refuses to start without them).
+   - `node functions/nearbyPlaces.test.js`: 25 validation tests passing.
+   - `./gradlew lintDebug`: 0 errors, 0 warnings (185 pre-existing findings filtered by `app/lint-baseline.xml`).
    - `./gradlew assembleDebug`: debug APK builds successfully.
    - Room migration tests resolve exported schemas through the app's merged assets (`app/schemas/` wired via `main.assets.srcDirs` in `app/build.gradle.kts`).

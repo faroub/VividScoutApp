@@ -3,29 +3,34 @@ service firebase.storage {
   match /b/{bucket}/o {
     // Ownership-aware storage path: spot_photos/{uid}/{spotId}/{filename}
     match /spot_photos/{uid}/{spotId}/{filename} {
-      // Public reads allowed for viewing photos. When a photo is moderated by the
-      // trusted backend, the object is deleted, which also revokes any previously
-      // issued download URL — see functions/photos.js moderateReportedPhotos.
+      // Public reads allowed for viewing photos. Moderation (functions/photos.js
+      // moderateReportedPhotos) HIDES a photo by marking its Firestore record, and
+      // deliberately does not delete the object: the record, the object, and the
+      // report evidence stay available for review and restore. Objects are deleted
+      // only by trusted backend functions (the scheduled reaper for unregistered
+      // uploads; a human moderator's takedown state), never from these rules.
       allow read: if true;
 
       // Create allowed only if authenticated UID matches path owner. The trailing
-      // `resource == null` condition makes objects immutable in practice: in the
-      // Storage rules runtime a client re-upload (overwrite) of an existing object is
-      // evaluated against the create rule (resource is the existing object), so this
+      // `resource == null` condition is what blocks byte-level overwrites: in the
+      // Storage rules runtime a client re-upload of an existing object is evaluated
+      // against the create rule with `resource` bound to the existing object, so the
       // condition rejects the overwrite while still allowing brand-new uploads.
+      // (Metadata changes are blocked separately by `allow update: if false` below —
+      // the two guards are kept because they reject different operations.)
       allow create: if request.auth != null
                     && request.auth.uid == uid
                     && request.resource.size < 5 * 1024 * 1024
                     && (request.resource.contentType == 'image/jpeg' || request.resource.contentType == 'image/png')
                     && resource == null;
 
-      // Community photo objects are IMMUTABLE to clients: metadata changes and
-      // byte-level replacement through update are denied (byte overwrite is blocked
-      // by the resource == null clause of the create rule above), and clients must
-      // never delete objects. Cleanup happens only through trusted backend functions
-      // (the scheduled reaper for unregistered orphans, and the moderation sweep for
-      // removed photos), which keep Storage and Firestore consistent. Enforced here
-      // rather than in app code: rules are the boundary.
+      // Community photo objects are IMMUTABLE to clients: `allow update: if false`
+      // blocks every metadata (including byte-replacement) update, and
+      // `allow delete: if false` blocks deletion. Clients must never modify or remove
+      // a published photo — cleanup happens only through trusted backend functions
+      // (the scheduled reaper for unregistered orphans, and the moderation states it
+      // reads from Firestore), which keep Storage and Firestore consistent. Enforced
+      // here rather than in app code: rules are the boundary.
       allow update: if false;
       allow delete: if false;
     }

@@ -1,7 +1,10 @@
 // Abuse prevention and data integrity rely on three layers, each enforcing different controls:
-// - App Check: only the genuine app can invoke backend services (callable Cloud Functions enforce it in code; Firestore/Storage enforcement is a Console toggle).
+// - App Check: only the genuine app can invoke backend services. The callables enforce it in code (enforceAppCheck).
+//   IMPORTANT: App Check enforcement for direct Firestore/Storage reads is a separate Firebase Console
+//   toggle that is OFF by default and has NOT been enabled or verified for this project — these rules
+//   cannot rely on it. Every read path here is additionally restricted by authentication/ownership rules.
 // - These rules: authentication, per-owner access, schema/field validation, atomic vote/report accounting, immutability, and shared-trip expiry.
-// - Cloud Functions (Admin SDK): the only writers of community tips/submissions, shared trips, and photo metadata — server-side per-UID rate limiting (including 24-hour community post limits), the ownership index that lets the rules enforce ownership without publishing UIDs, trusted photo registration with real image-byte validation, idempotent shared-trip publishing, and moderation/cleanup.
+// - Cloud Functions (Admin SDK): the only writers of community tips/submissions, shared trips, and photo metadata — server-side per-UID rate limiting (including 24-hour community post limits), non-anonymous sign-in enforcement for reports, the ownership index that lets the rules enforce ownership without publishing UIDs, trusted photo registration with real image-byte validation, idempotent shared-trip publishing, and moderation/cleanup (soft-hide at the report threshold, reaping of unregistered uploads).
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -225,6 +228,9 @@ service cloud.firestore {
 
       // Atomic photo report increment: requires report doc NOT to exist before operation, and TO exist after operation.
       // Pre-write (!exists) + Post-write (existsAfter) prevents re-using pre-existing report docs for replay increments.
+      // The primary path since F1 is the trusted reportPhoto callable (enforceAppCheck, non-anonymous sign-in
+      // required, 20 reports/hour/UID, transaction identical to the rules' path): this direct-write rule stays so
+      // older installed app versions keep working; a later release denies it once adoption allows.
       allow update: if isAuthenticated()
                     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reportsCount'])
                     && request.resource.data.reportsCount == resource.data.reportsCount + 1
