@@ -55,11 +55,10 @@ class OverpassScraperService : PlaceSource {
         .readTimeout(20, TimeUnit.SECONDS)
         .build()
 
-    // Multiple public Overpass API mirrors for maximum reliability
-    private val endpoints = listOf(
-        "https://overpass-api.de/api/interpreter",
-        "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
-        "https://overpass.kumi.systems/api/interpreter"
+    // Only the official Overpass endpoint: third-party mirrors would receive the user's
+    // queried area. Kept internal so tests can observe the egress allowlist.
+    internal val endpoints = listOf(
+        "https://overpass-api.de/api/interpreter"
     )
 
     private val viewpointImages = listOf(
@@ -94,16 +93,18 @@ class OverpassScraperService : PlaceSource {
         lng: Double,
         radiusMeters: Int = 1500
     ): Result<List<ScoutSpotEntity>> = withContext(Dispatchers.IO) {
+        // Egress: send the rounded-outward area, never the exact GPS fix.
+        val egressArea = com.example.util.Geo.roundOutwardForEgress(lat, lng, radiusMeters)
         // Query viewpoints, historic ruins/monuments, bakeries, cafes, and pedestrian stairs/shortcuts
         val query = """
             [out:json][timeout:20];
             (
-              node["tourism"="viewpoint"](around:$radiusMeters,$lat,$lng);
-              node["historic"](around:$radiusMeters,$lat,$lng);
-              node["shop"="bakery"](around:$radiusMeters,$lat,$lng);
-              node["amenity"="cafe"]["name"](around:$radiusMeters,$lat,$lng);
-              way["highway"="steps"]["name"](around:$radiusMeters,$lat,$lng);
-              way["highway"="pedestrian"]["name"](around:$radiusMeters,$lat,$lng);
+              node["tourism"="viewpoint"](around:${egressArea.radiusMeters},${egressArea.lat},${egressArea.lng});
+              node["historic"](around:${egressArea.radiusMeters},${egressArea.lat},${egressArea.lng});
+              node["shop"="bakery"](around:${egressArea.radiusMeters},${egressArea.lat},${egressArea.lng});
+              node["amenity"="cafe"]["name"](around:${egressArea.radiusMeters},${egressArea.lat},${egressArea.lng});
+              way["highway"="steps"]["name"](around:${egressArea.radiusMeters},${egressArea.lat},${egressArea.lng});
+              way["highway"="pedestrian"]["name"](around:${egressArea.radiusMeters},${egressArea.lat},${egressArea.lng});
             );
             out body center qt 30;
         """.trimIndent()
@@ -134,7 +135,7 @@ class OverpassScraperService : PlaceSource {
                     }
                 }
             } catch (e: Exception) {
-                SafeLog.w("OverpassScraper", "Mirror $endpoint failed: ${e.message}")
+                SafeLog.w("OverpassScraper", "Endpoint $endpoint failed: ${e.message}")
             }
         }
 

@@ -1,6 +1,7 @@
 package com.example.util
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.Locale
 
@@ -83,5 +84,69 @@ class GeoTest {
         assertEquals(-180.0, Geo.roundForPrompt(-180.0), 0.0)
         assertEquals(0.0, Geo.roundForPrompt(0.0), 0.0)
         assertEquals(0.001, Geo.roundForPrompt(0.0009), 0.0) // smallest representable rounded step
+    }
+
+    @Test
+    fun roundOutwardForEgress_floorsCoordinatesToCoarseGridAndGrowsRadius() {
+        val area = Geo.roundOutwardForEgress(38.7112, -9.1423, 1500)
+
+        // 0.01° grid: the endpoint learns only the cell (38.71, -9.15), never the fix.
+        assertEquals(38.71, area.lat, 1e-9)
+        assertEquals(-9.15, area.lng, 1e-9)
+        // Worst-case center shift at 0.01° = ceil(0.01 * 111320 * sqrt(2)) = 1575 m.
+        assertEquals(1500 + 1575, area.radiusMeters)
+    }
+
+    @Test
+    fun roundOutwardForEgress_roundedAreaCoversTheRequestedCircle() {
+        val lat = 38.7119
+        val lng = -9.1401
+        val radius = 1200
+
+        val area = Geo.roundOutwardForEgress(lat, lng, radius)
+
+        // Every point within `radius` of the true fix stays inside the queried circle:
+        // dist(roundedCenter, anyPoint) <= dist(center, point) + worstCaseShift.
+        assertTrue(area.radiusMeters > radius)
+        val worstCaseShift = Math.ceil(0.01 * 111_320.0 * Math.sqrt(2.0))
+        assertTrue(
+            "rounded center must stay within one grid cell of the true position",
+            Geo.calculateDistanceMeters(lat, lng, area.lat, area.lng) <= worstCaseShift + 1.0
+        )
+    }
+
+    @Test
+    fun roundOutwardForEgress_southernAndEasternHemispheresFloorOutward() {
+        // Sydney: -33.8688, 151.2093 -> floors to -33.87, 151.20 (SW grid corner).
+        val area = Geo.roundOutwardForEgress(-33.8688, 151.2093, 800)
+        assertEquals(-33.87, area.lat, 1e-9)
+        assertEquals(151.20, area.lng, 1e-9)
+        assertEquals(800 + 1575, area.radiusMeters)
+    }
+
+    @Test
+    fun roundOutwardForEgress_invalidInputPassedThroughUntouched() {
+        val nan = Geo.roundOutwardForEgress(Double.NaN, -9.1423, 1500)
+        assertTrue(nan.lat.isNaN())
+        assertEquals(-9.1423, nan.lng, 0.0)
+        assertEquals(1500, nan.radiusMeters)
+
+        val infinite = Geo.roundOutwardForEgress(38.7112, Double.POSITIVE_INFINITY, 1500)
+        assertEquals(38.7112, infinite.lat, 0.0)
+        assertTrue(infinite.lng.isInfinite())
+
+        val noRadius = Geo.roundOutwardForEgress(38.7112, -9.1423, 0)
+        assertEquals(38.7112, noRadius.lat, 0.0)
+        assertEquals(-9.1423, noRadius.lng, 0.0)
+        assertEquals(0, noRadius.radiusMeters)
+    }
+
+    @Test
+    fun roundOutwardForEgress_neverRevealsMorePreciseThanTheGrid() {
+        // Any coordinate inside one 0.01° cell maps to the same SW corner.
+        val a = Geo.roundOutwardForEgress(38.7101, -9.1499, 500)
+        val b = Geo.roundOutwardForEgress(38.7199, -9.1401, 500)
+        assertEquals(a.lat, b.lat, 1e-9)
+        assertEquals(a.lng, b.lng, 1e-9)
     }
 }

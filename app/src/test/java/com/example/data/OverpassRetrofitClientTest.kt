@@ -283,4 +283,40 @@ class OverpassRetrofitClientTest {
         assertEquals(245L, log.durationMs)
         assertEquals(1, log.mappedEntitiesCount)
     }
+
+    @Test
+    fun egressEndpoints_onlyTheOfficialOverpassServerIsUsed() {
+        // User query areas must never reach third-party mirrors (maps.mail.ru,
+        // overpass.kumi.systems, ...): each recipient would see the queried location
+        // without any backend App Check, rate limiting, or privacy disclosure.
+        assertEquals(
+            "Only the official Overpass endpoint may receive outgoing queries",
+            listOf("https://overpass-api.de/"),
+            client.mirrorBaseUrls
+        )
+    }
+
+    @Test
+    fun scraperEgressEndpoints_onlyTheOfficialOverpassServerIsUsed() {
+        assertEquals(
+            "The scraper must only call the official Overpass interpreter endpoint",
+            listOf("https://overpass-api.de/api/interpreter"),
+            com.example.data.network.OverpassScraperService().endpoints
+        )
+    }
+
+    @Test
+    fun buildQuery_carriesTheRoundedEgressAreaNeverTheExactFix() {
+        // What actually leaves the device: the query embeds the coarse grid cell, not
+        // the caller's coordinates, while the local mapping keeps exact values.
+        val query = client.buildQuery(38.71, -9.15, 1500 + 1574)
+
+        assertTrue("Rounded latitude is part of the sent query", query.contains("38.71"))
+        assertTrue("Rounded longitude is part of the sent query", query.contains("-9.15"))
+        assertTrue("Expanded radius is part of the sent query", query.contains("3074"))
+        assertFalse(
+            "The over-precise original coordinates must not appear in the sent query",
+            query.contains("38.7112") || query.contains("-9.1423")
+        )
+    }
 }

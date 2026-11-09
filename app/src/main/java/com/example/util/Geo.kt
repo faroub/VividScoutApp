@@ -27,6 +27,43 @@ object Geo {
         BigDecimal(value).setScale(3, RoundingMode.HALF_UP).toDouble()
 
     /**
+     * A third-party endpoint must never observe the user's exact GPS fix. The query
+     * center is therefore rounded DOWN to a coarse grid before it leaves the device.
+     *
+     * Both coordinates floor to the [gridStep] grid (0.01° ≈ 1.1 km of latitude), so the
+     * endpoint learns only the grid cell the user is in. Because the rounded center can
+     * sit up to one cell away from the true position in each axis, the radius grows by
+     * the worst-case center shift (~1.6 km at 0.01°) — the queried area always fully
+     * contains the requested area, so no nearby result is lost.
+     *
+     * Trade-off: the queried circle is larger than requested (radius +~1.6 km), so the
+     * response may contain a few extra results slightly outside the true radius; the
+     * local distance ranking and the 50 km safety filter already handle those.
+     */
+    data class OutwardQueryArea(
+        val lat: Double,
+        val lng: Double,
+        val radiusMeters: Int
+    )
+
+    fun roundOutwardForEgress(
+        lat: Double,
+        lng: Double,
+        radiusMeters: Int,
+        gridStep: Double = 0.01
+    ): OutwardQueryArea {
+        if (!lat.isFinite() || !lng.isFinite() || radiusMeters <= 0) {
+            return OutwardQueryArea(lat, lng, radiusMeters)
+        }
+        val roundedLat = Math.floor(lat / gridStep) * gridStep
+        val roundedLng = Math.floor(lng / gridStep) * gridStep
+        // Worst-case shift of the rounded center: up to gridStep in each axis, i.e.
+        // gridStep * 111_320 * sqrt(2) meters (~1.6 km at 0.01°).
+        val worstCaseShiftMeters = Math.ceil(gridStep * 111_320.0 * Math.sqrt(2.0)).toInt()
+        return OutwardQueryArea(roundedLat, roundedLng, radiusMeters + worstCaseShiftMeters)
+    }
+
+    /**
      * Calculates straight-line geodesic distance in meters between two lat/lng points using the Haversine formula.
      */
     fun calculateDistanceMeters(

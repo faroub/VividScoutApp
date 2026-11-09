@@ -80,11 +80,12 @@ class OverpassRetrofitClient(
     private val _lastDiagnosticLog = MutableStateFlow<OverpassDiagnosticLog?>(null)
     val lastDiagnosticLog: StateFlow<OverpassDiagnosticLog?> = _lastDiagnosticLog.asStateFlow()
 
-    // Mirror URLs if primary server experiences high traffic
-    private val mirrorBaseUrls = listOf(
-        "https://overpass-api.de/",
-        "https://maps.mail.ru/osm/tools/overpass/",
-        "https://overpass.kumi.systems/"
+    // Third-party Overpass mirrors (maps.mail.ru, overpass.kumi.systems, ...) each
+    // receive the user's queried area and are not covered by the app's privacy
+    // disclosures, so only the official endpoint is used. Kept a list (and internal)
+    // so the retry loop and tests can observe the egress allowlist.
+    internal val mirrorBaseUrls = listOf(
+        "https://overpass-api.de/"
     )
 
     private val viewpointImages = listOf(
@@ -282,7 +283,11 @@ class OverpassRetrofitClient(
         radiusMeters: Int = 1500,
         category: String = "all"
     ): OverpassDiagnosticLog = withContext(Dispatchers.IO) {
-        val qlQuery = buildQuery(lat, lng, radiusMeters, category)
+        // Egress: the sent query carries the rounded-outward area, never the exact GPS
+        // fix. The diagnostic log below still records the exact requested coordinates
+        // (on-device telemetry only).
+        val egressArea = com.example.util.Geo.roundOutwardForEgress(lat, lng, radiusMeters)
+        val qlQuery = buildQuery(egressArea.lat, egressArea.lng, egressArea.radiusMeters, category)
         val formBody = FormBody.Builder()
             .add("data", qlQuery)
             .build()
@@ -344,7 +349,7 @@ class OverpassRetrofitClient(
             }
         }
 
-        // If all mirrors failed, record failure log with fallback simulation
+        // If the endpoint failed, record failure log with fallback simulation
         val fallbackSpots = generateNearbyFallbackSpots(lat, lng, 6, category)
         val syntheticJson = JSONObject().apply {
             put("version", 0.6)
@@ -368,7 +373,7 @@ class OverpassRetrofitClient(
             droppedElementsCount = 0,
             dropReasons = emptyList(),
             isFallbackTriggered = true,
-            errorMessage = lastError?.message ?: "All Overpass mirrors unreachable or timed out."
+            errorMessage = lastError?.message ?: "Overpass endpoint unreachable or timed out."
         )
         _lastDiagnosticLog.value = failureLog
         failureLog
