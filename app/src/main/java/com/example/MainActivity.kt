@@ -1,6 +1,6 @@
 package com.example
 
-import android.app.Activity
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -21,6 +21,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Modifier
@@ -69,6 +70,21 @@ class MainActivity : ComponentActivity() {
     private val offlineMapsViewModel: OfflineMapsViewModel by viewModels { AppViewModelProvider.Factory }
     private val profileViewModel: ProfileViewModel by viewModels { AppViewModelProvider.Factory }
     private val spotPhotoViewModel: SpotPhotoViewModel by viewModels { AppViewModelProvider.Factory }
+
+    // Latest intent delivered while the activity was already running (see onNewIntent),
+    // exposed as Compose state so the deep-link LaunchedEffect in VividScoutApp observes
+    // a key change. setIntent() alone mutates Activity.getIntent() without triggering
+    // recomposition, so without this state a link tapped while the app runs is ignored.
+    internal val latestDeepLinkIntent = mutableStateOf<Intent?>(null)
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        // launchMode="singleTop" delivers new VIEW intents here instead of stacking a
+        // second MainActivity. setIntent() keeps Activity.getIntent() in sync so the
+        // LaunchedEffect(currentActivity?.intent) router also sees the new intent.
+        setIntent(intent)
+        latestDeepLinkIntent.value = intent
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -135,9 +151,21 @@ fun VividScoutApp(
     val coroutineScope = rememberCoroutineScope()
     val deepLinkHandler = rememberSharedTripDeepLinkHandler(context, coroutineScope)
 
-    val currentActivity = context as? Activity
-    LaunchedEffect(currentActivity?.intent) {
-        deepLinkHandler.handleIntent(currentActivity?.intent)
+    val currentActivity = context as? MainActivity
+    // The launching intent, or — once onNewIntent fires — the latest delivered intent.
+    val deepLinkIntent = currentActivity?.latestDeepLinkIntent?.value
+        ?: currentActivity?.intent
+    // Rotation and process recreation re-deliver the launching deep-link intent to a
+    // fresh composition (and recreate the handler), which would re-fetch and re-show
+    // the same itinerary. Remembering the handled URI across recreation keeps only
+    // genuinely new links in play.
+    var handledDeepLinkUri by rememberSaveable { mutableStateOf<String?>(null) }
+    LaunchedEffect(deepLinkIntent) {
+        val uri = deepLinkIntent?.dataString
+        if (uri != null && uri != handledDeepLinkUri) {
+            handledDeepLinkUri = uri
+            deepLinkHandler.handleIntent(deepLinkIntent)
+        }
     }
 
     CompositionLocalProvider(

@@ -20,9 +20,23 @@ const val SHARED_TRIP_DEFAULT_ERROR = "Shared itinerary not found or expired."
  * not mix deep-link plumbing into its own composition.
  *
  * [handleIntent] is safe to call repeatedly: it only acts on intents carrying a
- * shared-trip URI, and [SharedTripManager] treats re-fetches idempotently.
+ * shared-trip URI, and it handles each distinct URI exactly once — a re-delivered
+ * identical intent (recomposition, duplicate LaunchedEffect key) does not re-fetch
+ * or re-show the same itinerary. Activity-level rememberSaveable in VividScoutApp
+ * covers the additional case where the launching intent is re-delivered to a fresh
+ * composition after rotation or process recreation.
+ *
+ * [fetchSharedTrip] is injectable so the dedup behavior is unit-testable without
+ * Firestore; production callers use the default, which goes through
+ * [SharedTripManager].
  */
-class SharedTripDeepLinkHandler(private val context: Context, private val coroutineScope: CoroutineScope) {
+class SharedTripDeepLinkHandler(
+    private val context: Context,
+    private val coroutineScope: CoroutineScope,
+    private val fetchSharedTrip: suspend (String) -> Result<SharedTrip> = { tripId ->
+        SharedTripManager.fetchSharedTripFromFirestore(context, tripId)
+    }
+) {
 
     var activeSharedTrip: SharedTrip? by mutableStateOf(null)
         private set
@@ -33,13 +47,23 @@ class SharedTripDeepLinkHandler(private val context: Context, private val corout
     var showSharedTripDialog: Boolean by mutableStateOf(false)
         private set
 
+    // The last shared-trip URI this handler acted on. Without it, every re-delivery
+    // of the same intent would re-fetch the trip and re-open the dialog.
+    private var lastHandledUri: String? = null
+
     fun handleIntent(deepIntent: Intent?) {
         val dataUri = deepIntent?.dataString
         val tripId = SharedTripManager.parseTripIdFromUri(dataUri)
         if (tripId.isNullOrBlank()) return
 
+        // Only a genuinely new URI starts a fetch: rotation and recomposition re-deliver
+        // the same launching intent, and a second tap of the same link while its
+        // itinerary is already shown must not re-open it.
+        if (dataUri == lastHandledUri) return
+        lastHandledUri = dataUri
+
         coroutineScope.launch {
-            val fetchResult = SharedTripManager.fetchSharedTripFromFirestore(context, tripId)
+            val fetchResult = fetchSharedTrip(tripId)
             if (fetchResult.isSuccess) {
                 activeSharedTrip = fetchResult.getOrNull()
                 activeSharedTripError = null
